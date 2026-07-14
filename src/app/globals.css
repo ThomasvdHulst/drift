@@ -1,26 +1,71 @@
 @import "tailwindcss";
 
+/*
+  Drift — "a quiet reading room."
+  Warm cream paper, ink-dark text, one muted sage accent used sparingly.
+  Dark mode ("night library") arrives in Phase 2; the tokens are structured as
+  CSS variables so it becomes a drop-in [data-theme="dark"] override later.
+*/
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --paper: #f5efe4; /* soft warm cream, not stark white */
+  --paper-raised: #fbf7ef; /* card / raised surfaces */
+  --ink: #2b2723; /* warm near-black for body text */
+  --ink-soft: #6f665b; /* muted warm gray for secondary text */
+  --accent: #6f8f74; /* muted sage green */
+  --accent-strong: #4f6d55; /* darker sage for links / hover / text-on-paper */
+  --line: #e4dbcb; /* hairline borders */
+  --shadow: 20 14 6;
+  color-scheme: light;
+}
+
+/* "Night library" dark mode — deep warm gray, not pure black (CLAUDE.md §6).
+   Set on <html data-theme="dark"> by the pre-paint script in layout.tsx. */
+:root[data-theme="dark"] {
+  --paper: #1b1917; /* deep warm charcoal */
+  --paper-raised: #24211d; /* raised surfaces */
+  --ink: #ece4d6; /* warm off-white text */
+  --ink-soft: #a79d8d; /* muted warm gray */
+  --accent: #86a98c; /* sage, lifted for contrast on dark */
+  --accent-strong: #a9c6ad; /* lighter sage for links / text-on-dark */
+  --line: #37322c; /* hairline borders */
+  color-scheme: dark;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-paper: var(--paper);
+  --color-paper-raised: var(--paper-raised);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-line: var(--line);
+
+  --font-sans: var(--font-inter);
+  --font-serif: var(--font-fraunces);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  height: 100%;
+}
+
+/* Theme-toggle icon swap, driven purely by the data-theme attribute (no JS
+   state, so no hydration mismatch). Moon in light mode, sun in dark mode. */
+.theme-icon-dark {
+  display: none;
+}
+:root[data-theme="dark"] .theme-icon-light {
+  display: none;
+}
+:root[data-theme="dark"] .theme-icon-dark {
+  display: block;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
 }

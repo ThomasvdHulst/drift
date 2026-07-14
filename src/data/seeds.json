@@ -1,0 +1,243 @@
+[
+  {
+    "name": "Space",
+    "glyph": "✦",
+    "tint": "#dfe6ef",
+    "blurb": "Black holes, comets, the edge of everything",
+    "titles": [
+      "Black hole",
+      "Neutron star",
+      "Voyager 1",
+      "Kuiper belt",
+      "Supernova",
+      "Exoplanet",
+      "Oort cloud",
+      "Cosmic microwave background",
+      "Event Horizon Telescope",
+      "Nebula",
+      "Dark matter",
+      "Pulsar",
+      "Solar wind"
+    ]
+  },
+  {
+    "name": "Deep Ocean",
+    "glyph": "≈",
+    "tint": "#d9e6e6",
+    "blurb": "The crushing dark and the creatures that glow in it",
+    "titles": [
+      "Mariana Trench",
+      "Anglerfish",
+      "Hydrothermal vent",
+      "Giant squid",
+      "Bioluminescence",
+      "Deep sea",
+      "Challenger Deep",
+      "Abyssal plain",
+      "Coelacanth",
+      "Vampire squid",
+      "Whale fall",
+      "Deep-sea gigantism"
+    ]
+  },
+  {
+    "name": "Ancient Worlds",
+    "glyph": "▲",
+    "tint": "#ece2cf",
+    "blurb": "Empires, ruins, and the people who built them",
+    "titles": [
+      "Ancient Egypt",
+      "Roman Empire",
+      "Mesopotamia",
+      "Indus Valley Civilisation",
+      "Ancient Greece",
+      "Maya civilization",
+      "Göbekli Tepe",
+      "Pompeii",
+      "Terracotta Army",
+      "Nazca Lines",
+      "Rosetta Stone",
+      "Hittites"
+    ]
+  },
+  {
+    "name": "How Things Work",
+    "glyph": "⚙",
+    "tint": "#e2e4e2",
+    "blurb": "The machines quietly running the world",
+    "titles": [
+      "Internal combustion engine",
+      "Transistor",
+      "Refrigeration",
+      "Global Positioning System",
+      "Nuclear reactor",
+      "Laser",
+      "Jet engine",
+      "Electric battery",
+      "Steam engine",
+      "Semiconductor",
+      "Radio",
+      "Integrated circuit"
+    ]
+  },
+  {
+    "name": "Mathematics",
+    "glyph": "π",
+    "tint": "#e6e2ee",
+    "blurb": "Patterns, proofs, and beautiful infinities",
+    "titles": [
+      "Prime number",
+      "Pi",
+      "Fibonacci sequence",
+      "Fractal",
+      "Golden ratio",
+      "Gödel's incompleteness theorems",
+      "Euler's identity",
+      "Topology",
+      "Chaos theory",
+      "Set theory",
+      "Riemann hypothesis",
+      "Prisoner's dilemma"
+    ]
+  },
+  {
+    "name": "Human Body",
+    "glyph": "✚",
+    "tint": "#eee0dc",
+    "blurb": "The astonishing machine you live inside",
+    "titles": [
+      "Human brain",
+      "Immune system",
+      "DNA",
+      "Neuron",
+      "Human microbiome",
+      "Circulatory system",
+      "Retina",
+      "Liver",
+      "Sleep",
+      "Genome",
+      "Nervous system",
+      "Mitochondrion"
+    ]
+  },
+  {
+    "name": "Lost & Found",
+    "glyph": "◇",
+    "tint": "#eae4d6",
+    "blurb": "Mysteries, ciphers, and things dug back up",
+    "titles": [
+      "Antikythera mechanism",
+      "Voynich manuscript",
+      "Dead Sea Scrolls",
+      "Sutton Hoo",
+      "Machu Picchu",
+      "Lascaux",
+      "Roanoke Colony",
+      "Amelia Earhart",
+      "Tutankhamun",
+      "Nan Madol",
+      "Baghdad Battery",
+      "Olmecs"
+    ]
+  },
+  {
+    "name": "Animal Kingdom",
+    "glyph": "✧",
+    "tint": "#e0e9df",
+    "blurb": "The wonderfully strange company we keep",
+    "titles": [
+      "Octopus",
+      "Tardigrade",
+      "Axolotl",
+      "Platypus",
+      "Peregrine falcon",
+      "Blue whale",
+      "Chameleon",
+      "Mantis shrimp",
+      "Emperor penguin",
+      "Naked mole-rat",
+      "Pangolin",
+      "Honey bee"
+    ]
+  },
+  {
+    "name": "Art & Artists",
+    "glyph": "❖",
+    "tint": "#f0e2e6",
+    "blurb": "Makers, movements, and masterpieces",
+    "titles": [
+      "Vincent van Gogh",
+      "Leonardo da Vinci",
+      "Frida Kahlo",
+      "Impressionism",
+      "The Starry Night",
+      "Surrealism",
+      "Sistine Chapel ceiling",
+      "Johannes Vermeer",
+      "Bauhaus",
+      "Ukiyo-e",
+      "Salvador Dalí",
+      "Georgia O'Keeffe"
+    ]
+  },
+  {
+    "name": "Language",
+    "glyph": "¶",
+    "tint": "#efe8d4",
+    "blurb": "Scripts, tongues, and how we came to speak",
+    "titles": [
+      "Writing system",
+      "Proto-Indo-European language",
+      "Esperanto",
+      "Egyptian hieroglyphs",
+      "Sign language",
+      "Linguistics",
+      "Alphabet",
+      "Cuneiform",
+      "Phoneme",
+      "Etymology",
+      "Loanword",
+      "Braille"
+    ]
+  },
+  {
+    "name": "Inventions & Accidents",
+    "glyph": "✸",
+    "tint": "#dfe9e4",
+    "blurb": "Happy mistakes that changed everything",
+    "titles": [
+      "Penicillin",
+      "Microwave oven",
+      "Vulcanization",
+      "Post-it note",
+      "Dynamite",
+      "Velcro",
+      "Artificial cardiac pacemaker",
+      "Polytetrafluoroethylene",
+      "X-ray",
+      "Saccharin",
+      "Cyanoacrylate",
+      "Vaccine"
+    ]
+  },
+  {
+    "name": "Earth's Extremes",
+    "glyph": "∆",
+    "tint": "#e6e3dd",
+    "blurb": "The planet at its most dramatic",
+    "titles": [
+      "Mount Everest",
+      "Sahara",
+      "Antarctica",
+      "Volcano",
+      "Earthquake",
+      "Grand Canyon",
+      "Amazon rainforest",
+      "Atacama Desert",
+      "Aurora",
+      "Tornado",
+      "Great Barrier Reef",
+      "Geyser"
+    ]
+  }
+]
