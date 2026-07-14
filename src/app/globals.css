@@ -32,6 +32,20 @@
   color-scheme: dark;
 }
 
+/* Per-realm accent (Phase 5). Every component reads var(--accent) /
+   var(--accent-strong), so a realm recolors just by rebinding these two under a
+   [data-realm] scope (set on the /drift root, homepage panels, and trail cards).
+   Encyclopedia keeps the default sage above. Warm-paper/ink base is unchanged.
+   The dark variants are lifted for contrast, matching the sage dark treatment. */
+[data-realm="gallery"] {
+  --accent: #b97d59; /* muted terracotta */
+  --accent-strong: #955c3d;
+}
+:root[data-theme="dark"] [data-realm="gallery"] {
+  --accent: #cf9d80;
+  --accent-strong: #e2b89b;
+}
+
 @theme inline {
   --color-paper: var(--paper);
   --color-paper-raised: var(--paper-raised);

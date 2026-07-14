@@ -61,23 +61,34 @@ export function FeedTopBar({
   steps,
   pos,
   stops,
+  realm,
   onJump,
   onEnd,
 }: {
   steps: TrailStep[];
   pos: number;
   stops: number;
+  realm: { label: string; glyph: string };
   onJump: (index: number) => void;
   onEnd: () => void;
 }) {
   return (
     <header className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6">
-      <Link
-        href="/"
-        className="shrink-0 font-serif text-lg text-ink transition hover:text-accent-strong"
-      >
-        Drift
-      </Link>
+      <div className="flex shrink-0 items-baseline gap-2">
+        <Link
+          href="/"
+          className="font-serif text-lg text-ink transition hover:text-accent-strong"
+        >
+          Drift
+        </Link>
+        {/* Which "room" you're in — a quiet realm marker, accent-tinted via the
+            feed's data-realm scope. */}
+        <span className="hidden items-center gap-1 text-sm text-accent-strong sm:inline-flex">
+          <span aria-hidden="true">·</span>
+          <span aria-hidden="true">{realm.glyph}</span>
+          <span>{realm.label}</span>
+        </span>
+      </div>
 
       <TrailRail steps={steps} pos={pos} onJump={onJump} />
 

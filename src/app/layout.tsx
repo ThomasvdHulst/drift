@@ -42,7 +42,10 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body className="min-h-full">
+      {/* suppressHydrationWarning: browser extensions (e.g. Grammarly) inject
+          attributes like data-gr-ext-installed onto <body> before React hydrates,
+          which otherwise trips a false-positive hydration mismatch. */}
+      <body className="min-h-full" suppressHydrationWarning>
         {children}
         <ThemeToggle />
       </body>

@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { ArrivedVia, Card, Thread } from "@/lib/types";
 import type { Reaction } from "@/lib/interest";
-import { ThreadChips } from "./ThreadChips";
+import type { RealmId } from "@/lib/realms/types";
+import { summaryUrl } from "@/lib/realms";
+import { ThreadChips, KindIcon, KIND_META } from "./ThreadChips";
 
 // Quiet ♥ / ✕ that teach the interest model (M9). Sage when active, neutral
 // otherwise — deliberately calm, never a red badge (§6, the opposite of a
@@ -60,13 +62,19 @@ function ReactionButtons({
 // drifting reads quiet + neutral.
 function ModeChip({ via }: { via: ArrivedVia }) {
   if (via.type === "thread") {
+    // A directional thread (Phase 6) names its move ("Go deeper · Octopus");
+    // a plain/legacy thread reads "On a thread · …".
     return (
       <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-accent/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-accent-strong ring-1 ring-accent/30">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <circle cx="7" cy="7" r="3" />
-          <path d="M9.2 9.2C13 13 15 15 21 21" />
-        </svg>
-        On a thread · {via.label}
+        {via.kind ? (
+          <KindIcon kind={via.kind} size={12} />
+        ) : (
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="7" cy="7" r="3" />
+            <path d="M9.2 9.2C13 13 15 15 21 21" />
+          </svg>
+        )}
+        {via.kind ? `${KIND_META[via.kind].word} · ${via.label}` : `On a thread · ${via.label}`}
       </span>
     );
   }
@@ -102,6 +110,21 @@ function ImagePanel({ card }: { card: Card }) {
       </div>
     );
   }
+  // Art gets shown whole (never cropped) on a soft ground — a gallery wall, not a
+  // full-bleed hero. Everything else fills the panel.
+  const isArt = card.source === "artic";
+  if (isArt) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-ink/[0.04] p-4 sm:p-6">
+        <img
+          src={card.imageUrl}
+          alt={card.displayTitle}
+          className="max-h-full max-w-full object-contain shadow-md"
+          draggable={false}
+        />
+      </div>
+    );
+  }
   return (
     <img
       src={card.imageUrl}
@@ -112,8 +135,16 @@ function ImagePanel({ card }: { card: Card }) {
   );
 }
 
+// The "from the source" link label, per realm's content source.
+function sourceLinkLabel(source?: string): string {
+  if (source === "artic") return "View at the Art Institute ↗";
+  if (source === "gutenberg") return "Read the full text ↗";
+  return "From Wikipedia ↗";
+}
+
 export function CardView({
   card,
+  realm,
   arrivedVia,
   threads,
   threadsLoading,
@@ -123,6 +154,7 @@ export function CardView({
   onReact,
 }: {
   card: Card;
+  realm: RealmId;
   arrivedVia: ArrivedVia;
   threads: Thread[];
   threadsLoading: boolean;
@@ -149,7 +181,7 @@ export function CardView({
       setLoadingMore(true);
       try {
         const res = await fetch(
-          `/api/wiki/summary?title=${encodeURIComponent(card.pageTitle)}&extended=1`,
+          summaryUrl(realm, card.pageTitle, { extended: true }),
         );
         if (res.ok) {
           const data = (await res.json()) as {
@@ -248,7 +280,7 @@ export function CardView({
               rel="noopener noreferrer"
               className="text-sm font-medium text-accent-strong underline decoration-accent/40 underline-offset-4 transition hover:decoration-accent"
             >
-              From Wikipedia ↗
+              {sourceLinkLabel(card.source)}
             </a>
           </div>
         </div>

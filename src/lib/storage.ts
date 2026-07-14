@@ -1,7 +1,9 @@
 import localforage from "localforage";
 import type { Trail, SessionStats } from "./types";
+import type { RealmId } from "./realms/types";
 import type { Interest, Reaction } from "./interest";
 import { pushSeen } from "./seen";
+import { normalizeSeenEntry } from "./card";
 
 // ---------------------------------------------------------------------------
 // Thin IndexedDB wrapper (via localforage) — the app's only persistence. No
@@ -89,6 +91,9 @@ export interface Settings {
   // Whether drift is personalized by the interest model (M9). Undefined = on;
   // the user can switch it off from the /interests page.
   personalize?: boolean;
+  // The realm tab the user last used on the homepage (Phase 5). Undefined =
+  // Encyclopedia.
+  lastRealm?: RealmId;
 }
 
 export async function getSettings(): Promise<Settings> {
@@ -118,21 +123,27 @@ export function setInterest(interest: Interest): Promise<void> {
 }
 
 export async function getReactions(): Promise<Record<string, Reaction>> {
-  return (await db().getItem<Record<string, Reaction>>(KEY.reactions)) ?? {};
+  const raw = (await db().getItem<Record<string, Reaction>>(KEY.reactions)) ?? {};
+  // Migrate legacy title-keyed reactions to cardId keys (Phase 5). Pure remap on
+  // read; the next setReaction persists the normalized shape.
+  const out: Record<string, Reaction> = {};
+  for (const [k, v] of Object.entries(raw)) out[normalizeSeenEntry(k)] = v;
+  return out;
 }
 
 let reactionChain: Promise<void> = Promise.resolve();
 
-/** Set (or clear, with null) a page's ♥/✕ reaction. Serialized to avoid races. */
+/** Set (or clear, with null) a card's ♥/✕ reaction, keyed by cardId. Serialized
+ *  to avoid races. */
 export function setReaction(
-  title: string,
+  id: string,
   reaction: Reaction | null,
 ): Promise<void> {
   reactionChain = reactionChain
     .then(async () => {
       const all = await getReactions();
-      if (reaction === null) delete all[title];
-      else all[title] = reaction;
+      if (reaction === null) delete all[id];
+      else all[id] = reaction;
       await db().setItem(KEY.reactions, all);
     })
     .catch(() => {});
@@ -166,7 +177,10 @@ export function cacheTopics(title: string, topics: string[]): Promise<void> {
 // ----- Seen list (persistent, decaying) -----
 
 export async function loadSeen(): Promise<string[]> {
-  return (await db().getItem<string[]>(KEY.seen)) ?? [];
+  const list = (await db().getItem<string[]>(KEY.seen)) ?? [];
+  // Normalize legacy bare-title entries to cardIds (Phase 5). Re-persisting via
+  // persistSeen then lazily migrates the stored list.
+  return list.map(normalizeSeenEntry);
 }
 
 // Serialize seen writes so rapid fire-and-forget calls (one per card) can't race

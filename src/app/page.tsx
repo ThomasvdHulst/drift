@@ -2,28 +2,22 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import seedsData from "@/data/seeds.json";
-import { listTrails } from "@/lib/storage";
+import { useEffect, useMemo, useState } from "react";
+import { listTrails, getSettings, setSettings } from "@/lib/storage";
 import { pickRandom } from "@/lib/pick";
+import { listRealms, getRealm } from "@/lib/realms";
+import type { RealmId, SeedTile } from "@/lib/realms/types";
+import { RealmTabs } from "@/components/RealmTabs";
 
-type Seed = {
-  name: string;
-  glyph: string;
-  tint: string;
-  blurb: string;
-  titles: string[];
-};
-
-const seeds = seedsData as Seed[];
-
-// Deterministic during render; the actual random pick happens in the click
-// handler (below), so no impurity here.
 export default function Home() {
   const router = useRouter();
   const [stats, setStats] = useState<{ trails: number; stops: number } | null>(
     null,
   );
+  const [active, setActive] = useState<RealmId>("encyclopedia");
+
+  const realms = useMemo(() => listRealms(), []);
+  const realm = getRealm(active);
 
   useEffect(() => {
     listTrails().then((ts) => {
@@ -33,13 +27,25 @@ export default function Home() {
         stops: ts.reduce((n, t) => n + t.steps.length, 0),
       });
     });
+    getSettings().then((s) => {
+      if (s.lastRealm && getRealm(s.lastRealm).id === s.lastRealm)
+        setActive(s.lastRealm);
+    });
   }, []);
 
-  function openSeed(seed: Seed) {
-    const title = pickRandom(seed.titles) ?? seed.titles[0];
-    router.push(
-      `/drift?title=${encodeURIComponent(title)}&seed=${encodeURIComponent(seed.name)}`,
-    );
+  function selectRealm(id: RealmId) {
+    setActive(id);
+    setSettings({ lastRealm: id });
+  }
+
+  function openSeed(tile: SeedTile) {
+    const params = new URLSearchParams({ realm: active, seed: tile.label });
+    if (tile.titles && tile.titles.length > 0) {
+      params.set("title", pickRandom(tile.titles) ?? tile.titles[0]);
+    } else if (tile.bucket) {
+      params.set("bucket", tile.bucket);
+    }
+    router.push(`/drift?${params.toString()}`);
   }
 
   return (
@@ -50,77 +56,83 @@ export default function Home() {
           Pull a thread. See where it goes.
         </p>
         <p className="mt-4 max-w-md text-base leading-relaxed text-ink/75">
-          A calm feed of Wikipedia knowledge cards where <em>you</em> are the
-          algorithm — no autoplay, no hidden ranking. Pick a direction, or let
+          A calm feed of knowledge cards where <em>you</em> are the algorithm —
+          no autoplay, no hidden ranking. Pick a realm, pick a direction, or let
           curiosity surprise you.
         </p>
 
-        <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
-          <button
-            type="button"
-            onClick={() => router.push("/drift")}
-            className="inline-flex items-center gap-2 rounded-full bg-accent px-7 py-3 text-base font-semibold text-paper-raised shadow-sm transition hover:bg-accent-strong"
-          >
-            Surprise me
-            <span aria-hidden="true">→</span>
-          </button>
-          <Link
-            href="/trails"
-            className="rounded-full border border-line bg-paper-raised px-6 py-3 text-base font-medium text-ink transition hover:border-accent/50 hover:text-accent-strong"
-          >
-            My Trails
-          </Link>
-          <Link
-            href="/interests"
-            className="rounded-full border border-line bg-paper-raised px-6 py-3 text-base font-medium text-ink transition hover:border-accent/50 hover:text-accent-strong"
-          >
-            Interests
-          </Link>
+        <div className="mt-7">
+          <RealmTabs realms={realms} active={active} onSelect={selectRealm} />
         </div>
-
-        {stats && (
-          <p className="mt-4 text-sm text-ink-soft">
-            You&apos;ve saved {stats.trails}{" "}
-            {stats.trails === 1 ? "trail" : "trails"} · {stats.stops} stops
-            mapped.
-          </p>
-        )}
       </header>
 
-      <section className="mt-12">
-        <h2 className="mb-4 text-center text-xs font-medium uppercase tracking-widest text-ink-soft">
+      {/* Active realm panel — data-realm scopes the accent to this realm. */}
+      <section data-realm={active} className="mt-8 flex flex-col items-center">
+        <p className="max-w-md text-center text-sm text-ink-soft">{realm.blurb}</p>
+
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => router.push(`/drift?realm=${active}`)}
+            className="inline-flex items-center gap-2 rounded-full bg-accent px-7 py-3 text-base font-semibold text-paper-raised shadow-sm transition hover:bg-accent-strong"
+          >
+            Surprise me in {realm.label}
+            <span aria-hidden="true">→</span>
+          </button>
+        </div>
+
+        <h2 className="mb-4 mt-10 text-center text-xs font-medium uppercase tracking-widest text-ink-soft">
           Or start somewhere
         </h2>
-        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {seeds.map((seed) => (
-            <li key={seed.name}>
+        <ul className="grid w-full grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          {realm.seeds.map((tile) => (
+            <li key={tile.label}>
               <button
                 type="button"
-                onClick={() => openSeed(seed)}
+                onClick={() => openSeed(tile)}
                 style={{
-                  // Blend the seed's tint into the current surface so tiles read
-                  // correctly in both light and dark ("night library") themes.
-                  backgroundColor: `color-mix(in srgb, ${seed.tint} 45%, var(--paper-raised))`,
+                  backgroundColor: `color-mix(in srgb, ${tile.tint} 45%, var(--paper-raised))`,
                 }}
                 className="group flex h-full w-full flex-col rounded-2xl p-5 text-left ring-1 ring-line transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
               >
-                <span
-                  className="font-serif text-2xl text-ink/70"
-                  aria-hidden="true"
-                >
-                  {seed.glyph}
+                <span className="font-serif text-2xl text-ink/70" aria-hidden="true">
+                  {tile.glyph}
                 </span>
                 <span className="mt-3 font-serif text-xl leading-tight text-ink">
-                  {seed.name}
+                  {tile.label}
                 </span>
                 <span className="mt-1 text-xs leading-snug text-ink/60">
-                  {seed.blurb}
+                  {tile.blurb}
                 </span>
               </button>
             </li>
           ))}
         </ul>
       </section>
+
+      <footer className="mt-12 flex flex-col items-center gap-4">
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <Link
+            href="/trails"
+            className="rounded-full border border-line bg-paper-raised px-6 py-2.5 text-base font-medium text-ink transition hover:border-accent/50 hover:text-accent-strong"
+          >
+            My Trails
+          </Link>
+          <Link
+            href="/interests"
+            className="rounded-full border border-line bg-paper-raised px-6 py-2.5 text-base font-medium text-ink transition hover:border-accent/50 hover:text-accent-strong"
+          >
+            Interests
+          </Link>
+        </div>
+        {stats && (
+          <p className="text-sm text-ink-soft">
+            You&apos;ve saved {stats.trails}{" "}
+            {stats.trails === 1 ? "trail" : "trails"} · {stats.stops} stops
+            mapped.
+          </p>
+        )}
+      </footer>
     </main>
   );
 }

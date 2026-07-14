@@ -91,6 +91,7 @@ export function actionPageToCard(page: ActionPage): Card {
     imageUrl: page.thumbnail?.source,
     sourceUrl:
       page.canonicalurl ?? page.fullurl ?? titleToSourceUrl(pageTitle),
+    source: "wikipedia",
   };
 }
 
@@ -107,6 +108,7 @@ export function relatedToCandidates(raw: unknown): RelatedCandidate[] {
       description: p.description,
       extract: p.extract,
       imageUrl: p.thumbnail?.source,
+      source: "wikipedia" as const,
     }))
     .filter((c) => c.pageTitle.length > 0);
 }
@@ -133,14 +135,19 @@ export function selectCardBatch(
   return [...imaged, ...imageless.slice(0, cap)].map(actionPageToCard);
 }
 
-/** Build a full Card from a related candidate (no extra fetch needed). */
+/** Build a full Card from a related candidate (no extra fetch needed). For
+ *  non-Wikipedia realms the candidate already carries its own `source` and a
+ *  ready `sourceUrl` — respect them; only synthesize the Wikipedia URL. */
 export function candidateToCard(c: RelatedCandidate): Card {
+  const source = c.source ?? "wikipedia";
   return {
     pageTitle: c.pageTitle,
     displayTitle: c.displayTitle || c.pageTitle,
     description: c.description,
     extract: c.extract ?? "",
     imageUrl: c.imageUrl,
-    sourceUrl: titleToSourceUrl(c.pageTitle),
+    sourceUrl:
+      source === "wikipedia" ? titleToSourceUrl(c.pageTitle) : c.sourceUrl ?? "",
+    source,
   };
 }

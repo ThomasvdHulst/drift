@@ -71,7 +71,7 @@ describe("selectDiverseThreads", () => {
     ];
     const threads = selectDiverseThreads(candidates, {
       count: 3,
-      seen: new Set(["Seen one"]),
+      seen: new Set(["wikipedia:Seen one"]), // seen is keyed by cardId now
     });
     expect(threads.map((t) => t.candidate.pageTitle)).toEqual(["Fresh one"]);
   });

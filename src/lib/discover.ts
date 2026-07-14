@@ -2,7 +2,7 @@ import { TOPICS, type Topic, type TopicId } from "./topics";
 
 // ---------------------------------------------------------------------------
 // Pure topic-sampling + list helpers for the "interesting random" drift buffer.
-// No network here (the /api/wiki/discover route fetches). RNG is injected for
+// No network here (the /api/realm/[realm]/discover route fetches). RNG is injected for
 // deterministic tests. `uniformTopic` is the cold-start pick (M8); the interest
 // model (M9) supplies weights to `weightedTopic`.
 // ---------------------------------------------------------------------------

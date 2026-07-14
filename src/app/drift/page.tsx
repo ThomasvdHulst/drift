@@ -11,15 +11,14 @@ import type {
   TrailStep,
 } from "@/lib/types";
 import { candidateToCard } from "@/lib/wiki";
-import { selectDiverseThreads } from "@/lib/diversity";
+import { cardId } from "@/lib/card";
+import { selectDiverseThreads, selectFacetThreads } from "@/lib/diversity";
+import { classifyThreads } from "@/lib/threads";
 import { pickDriftNext, pickRandomThread } from "@/lib/drift";
-import { uniformTopic, randomOffset, interleave } from "@/lib/discover";
-import {
-  pickDriftTopic,
-  applyFeedback,
-  type Interest,
-  type Reaction,
-} from "@/lib/interest";
+import { randomOffset, interleave } from "@/lib/discover";
+import { applyFeedback, type Interest, type Reaction } from "@/lib/interest";
+import { getRealm, discoverUrl, relatedUrl, summaryUrl } from "@/lib/realms";
+import type { RealmId } from "@/lib/realms/types";
 import { autoTrailName } from "@/lib/naming";
 import { computeTrailStats, formatDuration } from "@/lib/stats";
 import { trailToText } from "@/lib/export";
@@ -108,9 +107,14 @@ export default function DriftPage() {
   const [advancing, setAdvancing] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Per-title ♥/✕ (drives the button state on each card). The interest weights
+  // Per-cardId ♥/✕ (drives the button state on each card). The interest weights
   // themselves live in a ref (in-memory truth, persisted on change).
   const [reactions, setReactions] = useState<Record<string, Reaction>>({});
+  // Which realm this drift session is in (Phase 5). Fixed for the session — set
+  // from ?realm= (or a continued trail's realm) in the init effect. Kept in a ref
+  // too so handlers/effects read the latest without a stale-closure race.
+  const [realm, setRealm] = useState<RealmId>("encyclopedia");
+  const realmRef = useRef<RealmId>("encyclopedia");
 
   const seenRef = useRef<Set<string>>(new Set());
   // The interest model (topic → weight) + whether personalization is on. Held in
@@ -144,13 +148,23 @@ export default function DriftPage() {
   const sessionTrailRef = useRef<SessionTrail | null>(null);
 
   const current = history[pos];
-  const displayedTitle = current?.card.pageTitle;
+  const realmMeta = getRealm(realm);
+  // The displayed card's app-wide id (thread cache key) and source-native id
+  // (used to fetch related/summary). Distinct because two realms can share a
+  // native title string.
+  const displayedId = current ? cardId(current.card) : undefined;
+  const displayedNative = current?.card.pageTitle;
 
   // Threads come from a per-card cache, so going back shows the same threads a
   // card had (fixing the "threads disappear on back" bug) and any viewed card
   // that isn't cached yet counts as still-loading.
-  const threads = displayedTitle ? (threadCache[displayedTitle] ?? []) : [];
-  const threadsLoading = !!displayedTitle && !(displayedTitle in threadCache);
+  const threads = displayedId ? (threadCache[displayedId] ?? []) : [];
+  const threadsLoading = !!displayedId && !(displayedId in threadCache);
+  // The displayed card, mirrored to a ref so the (deferred) threads fetch can
+  // classify it (Phase 6) without adding it to the effect deps. The abort on
+  // navigation guarantees a resolved fetch still matches this card.
+  const cardForThreadsRef = useRef<Card | undefined>(undefined);
+  cardForThreadsRef.current = current?.card;
 
   // ----- initial card -----
   useEffect(() => {
@@ -160,10 +174,17 @@ export default function DriftPage() {
       const title = params.get("title");
       const seed = params.get("seed");
       const continueId = params.get("continue");
+      const realmParam = params.get("realm");
+      const bucketParam = params.get("bucket");
       if (!sessionIdRef.current) {
         sessionIdRef.current = crypto.randomUUID();
         sessionStartRef.current = Date.now();
       }
+      // Fix the session's realm up front (validated → unknown falls to
+      // Encyclopedia); a continued trail overrides it below from its own realm.
+      const initialRealm = getRealm(realmParam).id;
+      realmRef.current = initialRealm;
+      setRealm(initialRealm);
       try {
         // Hydrate the persistent seen-list so we don't immediately repeat pages
         // visited in earlier sessions (spec §5).
@@ -197,7 +218,10 @@ export default function DriftPage() {
           const trail = await getTrail(continueId);
           if (cancelled) return;
           if (trail && trail.steps.length > 0) {
-            trail.steps.forEach((s) => seenRef.current.add(s.card.pageTitle));
+            const trealm = getRealm(trail.realm).id;
+            realmRef.current = trealm;
+            setRealm(trealm);
+            trail.steps.forEach((s) => seenRef.current.add(cardId(s.card)));
             sessionTrailRef.current = {
               id: trail.id,
               name: trail.name,
@@ -212,33 +236,56 @@ export default function DriftPage() {
 
         let card: Card | undefined;
         if (title) {
-          const res = await fetch(
-            `/api/wiki/summary?title=${encodeURIComponent(title)}`,
-          );
+          const res = await fetch(summaryUrl(realmRef.current, title));
           const c = (await res.json()) as Card;
           if (!res.ok || !c?.pageTitle) throw new Error("no card");
           card = c;
+        } else if (bucketParam) {
+          // Seed a bucket drift (Gallery/Library seed tile): fetch that specific
+          // bucket's batch — first card is the starting point, the rest seed the
+          // buffer so the first drifts stay on-theme and instant.
+          const res = await fetch(
+            discoverUrl(realmRef.current, {
+              bucket: bucketParam,
+              offset: randomOffset(),
+              limit: 12,
+            }),
+          );
+          const cards = (await res.json()) as Card[];
+          if (!res.ok || !Array.isArray(cards) || cards.length === 0)
+            throw new Error("no card");
+          card = cards[0];
+          const bLabel = getRealm(realmRef.current).bucketLabel(bucketParam);
+          randomBufferRef.current.push(
+            ...cards.slice(1).map((c) => ({
+              card: c,
+              topic: { id: bucketParam, label: bLabel },
+            })),
+          );
         } else {
           // "Surprise me": seed from an interesting-random discover batch
           // (popular, on-topic, varied) — first card is the starting point, the
           // rest seed the drift buffer so the first several random drifts are
-          // instant. Falls back to the plain random endpoint if discover is down.
+          // instant. Encyclopedia falls back to the plain random endpoint if
+          // discover is down; other realms rely on discover alone.
           const batch = await fetchDiscoverBatch();
           if (batch.length > 0) {
             card = batch[0].card;
             randomBufferRef.current.push(...batch.slice(1));
-          } else {
+          } else if (realmRef.current === "encyclopedia") {
             const res = await fetch("/api/wiki/random");
             const cards = (await res.json()) as Card[];
             if (!res.ok || !Array.isArray(cards) || cards.length === 0)
               throw new Error("no card");
             card = cards[0];
             randomBufferRef.current.push(...cards.slice(1).map((c) => ({ card: c })));
+          } else {
+            throw new Error("no card");
           }
         }
         if (cancelled || !card) return;
-        seenRef.current.add(card.pageTitle);
-        persistSeen([card.pageTitle]);
+        seenRef.current.add(cardId(card));
+        persistSeen([cardId(card)]);
         const via: ArrivedVia = {
           type: "seed",
           seedName: seed ?? title ?? "Surprise me",
@@ -250,7 +297,7 @@ export default function DriftPage() {
       } catch {
         if (!cancelled)
           setError(
-            "Couldn't reach Wikipedia. Check your connection and try again.",
+            "Couldn't reach the source. Check your connection and try again.",
           );
       } finally {
         if (!cancelled) setInitialLoading(false);
@@ -265,24 +312,34 @@ export default function DriftPage() {
   // Aborting on cleanup cancels superseded requests during fast scrolling and
   // avoids React StrictMode's duplicate dev fetch — both help dodge 429s.
   useEffect(() => {
-    if (!displayedTitle || displayedTitle in threadCache) return;
+    if (!displayedId || !displayedNative || displayedId in threadCache) return;
     const controller = new AbortController();
-    fetch(`/api/wiki/related?title=${encodeURIComponent(displayedTitle)}`, {
+    fetch(relatedUrl(realmRef.current, displayedNative), {
       signal: controller.signal,
     })
       .then((r) => r.json())
       .then((cands: RelatedCandidate[]) => {
-        const chosen = Array.isArray(cands)
-          ? selectDiverseThreads(cands, { count: 3, seen: seenRef.current })
-          : [];
-        setThreadCache((c) => ({ ...c, [displayedTitle]: chosen }));
+        const rm = getRealm(realmRef.current);
+        const cc = cardForThreadsRef.current;
+        let chosen: Thread[] = [];
+        if (Array.isArray(cands)) {
+          if (rm.threadMode === "facet") {
+            chosen = selectFacetThreads(cands, { count: 3, seen: seenRef.current });
+          } else if (cc && cc.pageTitle === displayedNative) {
+            // Encyclopedia: classify into directional threads (Phase 6).
+            chosen = classifyThreads(cc, cands, { count: 3, seen: seenRef.current });
+          } else {
+            chosen = selectDiverseThreads(cands, { count: 3, seen: seenRef.current });
+          }
+        }
+        setThreadCache((c) => ({ ...c, [displayedId]: chosen }));
       })
       .catch((e: unknown) => {
         if ((e as { name?: string })?.name !== "AbortError")
-          setThreadCache((c) => ({ ...c, [displayedTitle]: [] }));
+          setThreadCache((c) => ({ ...c, [displayedId]: [] }));
       });
     return () => controller.abort();
-  }, [displayedTitle, threadCache]);
+  }, [displayedId, displayedNative, threadCache]);
 
   // ----- dwell time -----
   // Add the elapsed time to the step we're leaving (accumulates, so revisits add
@@ -343,8 +400,8 @@ export default function DriftPage() {
 
   // ----- navigation -----
   function pushStep(card: Card, via: ArrivedVia, direction: Dir) {
-    seenRef.current.add(card.pageTitle);
-    persistSeen([card.pageTitle]); // fire-and-forget; serialized in storage
+    seenRef.current.add(cardId(card));
+    persistSeen([cardId(card)]); // fire-and-forget; serialized in storage
     setDir(direction);
     const step: TrailStep = {
       card,
@@ -412,7 +469,7 @@ export default function DriftPage() {
       if (t) {
         pushStep(candidateToCard(t.candidate), { type: "drift" }, "drift");
       } else {
-        showHint("Wikipedia's catching its breath — try drifting again in a moment.");
+        showHint("The source is catching its breath — try drifting again in a moment.");
       }
     }
   }
@@ -423,7 +480,7 @@ export default function DriftPage() {
     const buf = randomBufferRef.current;
     while (buf.length > 0) {
       const bc = buf.shift()!;
-      if (bc?.card?.pageTitle && !seenRef.current.has(bc.card.pageTitle))
+      if (bc?.card?.pageTitle && !seenRef.current.has(cardId(bc.card)))
         return bc;
     }
     return null;
@@ -435,27 +492,32 @@ export default function DriftPage() {
   // failure. Topic choice is interest-weighted when personalization is on (with a
   // serendipity floor + truthful reason), else a plain uniform-random wander.
   async function fetchDiscoverBatch(): Promise<BufferedCard[]> {
+    const rid = realmRef.current;
+    const rm = getRealm(rid);
+    const personalize = personalizeRef.current && rm.hasInterestModel;
     const picks = Array.from({ length: REFILL_TOPICS }, () =>
-      personalizeRef.current
-        ? pickDriftTopic(interestRef.current)
-        : { topic: uniformTopic(), reason: undefined },
+      rm.pickDiscover({ interest: interestRef.current, personalize }),
     );
     const batches = await Promise.all(
-      picks.map(async ({ topic, reason }): Promise<BufferedCard[]> => {
+      picks.map(async (pick): Promise<BufferedCard[]> => {
         try {
           const res = await fetch(
-            `/api/wiki/discover?topic=${encodeURIComponent(topic.keyword)}&offset=${randomOffset()}&limit=${DISCOVER_LIMIT}`,
+            discoverUrl(rid, {
+              bucket: pick.bucket,
+              offset: randomOffset(),
+              limit: DISCOVER_LIMIT,
+            }),
             { signal: AbortSignal.timeout(6000) },
           );
           if (!res.ok) return [];
           const cards = (await res.json()) as Card[];
           if (!Array.isArray(cards)) return [];
           return cards
-            .filter((c) => c?.pageTitle && !seenRef.current.has(c.pageTitle))
+            .filter((c) => c?.pageTitle && !seenRef.current.has(cardId(c)))
             .map((card) => ({
               card,
-              topic: { id: topic.id, label: topic.label },
-              reason,
+              topic: { id: pick.id, label: pick.label },
+              reason: pick.reason,
             }));
         } catch {
           return [];
@@ -494,20 +556,20 @@ export default function DriftPage() {
   // adjusts the interest weights: undo the previous reaction (if any) and apply
   // the new one, so switching or clearing is consistent. Threads are untouched.
   async function handleReact(card: Card, signal: Reaction) {
-    const title = card.pageTitle;
-    const prev = reactions[title];
+    const id = cardId(card);
+    const prev = reactions[id];
     const next = prev === signal ? undefined : signal; // click the active one → clear
 
     setReactions((r) => {
       const copy = { ...r };
-      if (next) copy[title] = next;
-      else delete copy[title];
+      if (next) copy[id] = next;
+      else delete copy[id];
       return copy;
     });
-    setReaction(title, next ?? null);
+    setReaction(id, next ?? null);
 
     if (!prev && !next) return;
-    const topics = await resolveTopics(title);
+    const topics = await resolveTopics(card.pageTitle);
     if (topics.length === 0) return;
 
     let interest = interestRef.current;
@@ -562,7 +624,12 @@ export default function DriftPage() {
     window.setTimeout(() => setFollowingLabel(null), 950);
     pushStep(
       candidateToCard(thread.candidate),
-      { type: "thread", label: thread.label, fromTitle: current.card.pageTitle },
+      {
+        type: "thread",
+        label: thread.label,
+        fromTitle: current.card.pageTitle,
+        kind: thread.kind,
+      },
       "thread",
     );
   }
@@ -639,6 +706,7 @@ export default function DriftPage() {
   return (
     <div
       className="flex h-dvh flex-col overflow-hidden bg-paper"
+      data-realm={realm}
       onWheel={onWheel}
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
@@ -647,6 +715,7 @@ export default function DriftPage() {
         steps={history}
         pos={pos}
         stops={history.length}
+        realm={{ label: realmMeta.label, glyph: realmMeta.glyph }}
         onJump={jumpTo}
         onEnd={endSession}
       />
@@ -687,13 +756,18 @@ export default function DriftPage() {
             >
               <CardView
                 card={current.card}
+                realm={realm}
                 arrivedVia={current.arrivedVia}
                 threads={threads}
                 threadsLoading={threadsLoading}
                 onThread={onThread}
                 onExpand={() => markExpanded(pos)}
-                reaction={reactions[current.card.pageTitle]}
-                onReact={(sig) => handleReact(current.card, sig)}
+                reaction={reactions[cardId(current.card)]}
+                onReact={
+                  realmMeta.hasInterestModel
+                    ? (sig) => handleReact(current.card, sig)
+                    : undefined
+                }
               />
             </motion.div>
           </AnimatePresence>
@@ -760,6 +834,7 @@ export default function DriftPage() {
         {ended && (
           <EndOverlay
             history={history}
+            realm={realm}
             existing={endExisting}
             onSaved={(t) => {
               sessionTrailRef.current = t;
@@ -777,11 +852,13 @@ export default function DriftPage() {
 // Export + copy-as-text arrive in M5.
 function EndOverlay({
   history,
+  realm,
   existing,
   onSaved,
   onClose,
 }: {
   history: TrailStep[];
+  realm: RealmId;
   existing: SessionTrail | null;
   onSaved: (t: SessionTrail) => void;
   onClose: () => void;
@@ -839,8 +916,8 @@ function EndOverlay({
       createdAt: existing?.createdAt ?? saved?.createdAt ?? Date.now(),
     };
     try {
-      await saveTrail({ ...t, steps: history });
-      persistSeen(history.map((s) => s.card.pageTitle));
+      await saveTrail({ ...t, steps: history, realm });
+      persistSeen(history.map((s) => cardId(s.card)));
       setName(t.name);
       setSaved(t);
       onSaved(t);

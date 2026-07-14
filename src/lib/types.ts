@@ -1,35 +1,58 @@
 // Core data model (see drift-spec.md §7). Phase 1 uses Card / RelatedCandidate /
 // Thread; TrailStep / Trail / SessionStats are defined now but exercised in Phase 2.
 
+import type { SourceId, RealmId } from "./realms/types";
+
 export type Card = {
-  pageTitle: string; // canonical Wikipedia title — unique id
-  displayTitle: string;
-  description?: string; // Wikipedia short description
+  // Source-native id / key. For Wikipedia this is the canonical title (used in
+  // morelike/summary calls); for other realms it's the source's own id (e.g. an
+  // Art Institute artwork id). The app-wide unique id is `cardId` = source +
+  // ":" + pageTitle (see lib/card.ts).
+  pageTitle: string;
+  displayTitle: string; // the human title
+  description?: string; // short description / subtitle
   extract: string; // 2–3 sentence hook
   longExtract?: string; // fetched lazily on "read more" (Phase 2)
   imageUrl?: string;
-  sourceUrl: string; // canonical Wikipedia URL
+  sourceUrl: string; // canonical URL at the content source
+  // Where the content comes from. Absent ⇒ "wikipedia" (back-compat with trails
+  // saved before Phase 5's realms).
+  source?: SourceId;
 };
 
-// A related page returned by the morelike generator — already carries enough to
-// render a Card without a second fetch (we synthesize the canonical URL).
+// A related page returned by a realm's "related" endpoint — already carries
+// enough to render a Card without a second fetch (we synthesize the canonical
+// URL). `threadLabel`/`facet` are set by realms whose threads are facet-based
+// (Gallery/Library: "More by {artist}", "Other {style}", …); Wikipedia leaves
+// them unset and the client derives a label from the description.
 export type RelatedCandidate = {
   pageTitle: string;
   displayTitle: string;
   description?: string;
   extract?: string;
   imageUrl?: string;
+  source?: SourceId;
+  sourceUrl?: string; // set by non-Wikipedia realms (Wikipedia synthesizes it)
+  threadLabel?: string;
+  facet?: string;
 };
+
+// The "direction" a thread takes you (Phase 6). Encyclopedia threads are
+// classified into these; facet realms (Gallery) leave kind undefined.
+export type ThreadKind = "deeper" | "zoomout" | "nearby" | "tangent";
 
 // A chosen, labeled next-step shown as a chip on the card.
 export type Thread = {
   candidate: RelatedCandidate;
   label: string;
+  kind?: ThreadKind;
 };
 
 export type ArrivedVia =
   | { type: "seed"; seedName: string }
-  | { type: "thread"; label: string; fromTitle: string }
+  // `kind` records the thread's direction (Phase 6); optional ⇒ back-compatible
+  // with trails saved before it, and with facet realms (Gallery) that omit it.
+  | { type: "thread"; label: string; fromTitle: string; kind?: ThreadKind }
   // A drift may carry the topic it landed in (interesting-random, M8) and why
   // that topic was chosen (M9): "interest" = weighted by what you like,
   // "wildcard" = the serendipity floor. Optional → back-compatible with trails
@@ -54,6 +77,8 @@ export type Trail = {
   steps: TrailStep[];
   createdAt: number;
   liked: boolean;
+  // Which realm this trail was drifted in. Absent ⇒ "encyclopedia" (back-compat).
+  realm?: RealmId;
 };
 
 export type SessionStats = {

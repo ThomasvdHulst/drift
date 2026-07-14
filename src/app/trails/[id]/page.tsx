@@ -13,6 +13,7 @@ import {
 import { computeTrailStats, formatDuration } from "@/lib/stats";
 import { trailToText } from "@/lib/export";
 import { exportTrailPng } from "@/lib/export-image";
+import { getRealm } from "@/lib/realms";
 import { TrailMap } from "@/components/TrailMap";
 
 export default function TrailDetailPage() {
@@ -99,6 +100,7 @@ export default function TrailDetailPage() {
   }
 
   const stats = computeTrailStats(trail.steps);
+  const realm = getRealm(trail.realm);
   const statLine = [
     `${stats.stops} ${stats.stops === 1 ? "stop" : "stops"}`,
     formatDuration(stats.durationMs),
@@ -106,7 +108,12 @@ export default function TrailDetailPage() {
   ].join(" · ");
 
   return (
-    <main className="mx-auto min-h-dvh w-full max-w-2xl px-6 py-8">
+    // data-realm tints the trail-map edges + accents to the realm this trail was
+    // drifted in (sage for Encyclopedia, terracotta for Gallery).
+    <main
+      data-realm={realm.id}
+      className="mx-auto min-h-dvh w-full max-w-2xl px-6 py-8"
+    >
       <Link
         href="/trails"
         className="text-sm text-ink-soft transition hover:text-accent-strong"
@@ -116,6 +123,10 @@ export default function TrailDetailPage() {
 
       <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
+          <span className="mb-1 inline-flex w-fit items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-accent-strong">
+            <span aria-hidden="true">{realm.glyph}</span>
+            {realm.label}
+          </span>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}

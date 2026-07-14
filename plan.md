@@ -19,10 +19,24 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > like X") — threads untouched (M9). **Phase 3 (AI/Ollama) remains intentionally DEFERRED to the future.**
 > _Play it: `npm run dev` → `localhost:3000`._
 >
-> 🌱 **Proposed next (2026-07-14):** four **IDEA PHASES** (5–8) are drafted below the committed phases for
-> review — Realms/tabs (non-Wikipedia sources), Threads With Intention, Cross-Realm "Constellations", and a
-> deepened Reward. Not started; a menu to pick from. Phase 3 (AI/Ollama) stays deferred but is reframed as
-> the enabler of Phase 7.
+> ✅ **Phase 5 — Realms: Beyond Wikipedia — COMPLETE & verified (2026-07-14).** M10 (source/realm
+> abstraction) + M11 (Gallery realm + segmented homepage tabs) + M13 (multi-realm polish) all done; **M12
+> (Library + Today) deferred by user choice** — shipping two focused realms for now. Drift has tabs:
+> **Encyclopedia** (all of Wikipedia, sage, topic-personalized drift) + **Gallery** (public-domain art from
+> the Art Institute of Chicago, terracotta, facet threads "More by {artist}"). **115 tests green**, build+lint
+> clean, real-browser + light/dark verified (details in Phase 5 below). Plan file:
+> `~/.claude/plans/purring-skipping-breeze.md`.
+>
+> ✅ **Phase 6 — Threads With Intention — COMPLETE & verified (2026-07-14).** Encyclopedia threads are now
+> *directions* — **Go deeper / Zoom out / Tangent / Nearby** (honest "always-3" fallback) — via a pure
+> classifier (`src/lib/threads.ts`), with direction glyphs on the chips, the mode chip, and the trail-map
+> edges. **127 tests green**, build+lint clean, real-browser verified (Gallery unregressed, zero errors).
+>
+> ▶ **Next: Phase 8 — The Atlas (M19)** — a constellation page of everything you've wandered, clustered by
+> topic (planning now). **Phase 7 (Cross-Realm) is now DEFERRED** with Phase 3 (user is holding off on the
+> AI/Ollama layer for cost/capacity). After the Atlas, a **new v3+ direction is drafted below — Drift as a
+> (calm) social platform** (Phase 9 accounts & cloud sync → 10 sharing → 11 calm feed → 12 mobile app),
+> deliberately reopening the spec's "no accounts/social/app" line while keeping §2 intact.
 > _(Update this line whenever progress changes.)_
 
 ---
@@ -433,68 +447,101 @@ a random Wikipedia stub.
 - ⏸ **Science (arXiv)** — Atom XML (not JSON), 3 req/s, no key, `http://export.arxiv.org/api/query?search_query=cat:astro-ph&sortBy=submittedDate`. **Caveats:** no images (bad fit for an image-forward feed), dense abstracts, no per-paper "related" endpoint (threads would need embeddings → Phase 7), and preprints are **not peer-reviewed** — brushes §2.5's "vetted". Park unless there's appetite; if built, label cards honestly as preprints.
 - ⏸ **Data (Our World in Data)** — CSV + `.metadata.json`, no key (docs.owid.io). A "chart of the day" is a *different card type* (data viz, not image+prose+threads) and doesn't thread naturally. High effort, breaks the uniform model. Park for now.
 
-### M10 — The source abstraction *(foundational refactor — do this first; no user-visible change)*
-The current `Card` is Wikipedia-shaped: `pageTitle` doubles as the unique id and is the key for the seen-set,
-the thread cache, reactions, and buffer dedup. Multi-source needs a source-namespaced identity **without
-breaking saved trails** (which embed full `Card`s) or existing seen/reaction data.
-- [ ] Extend `Card` with `source: SourceId` (`"wikipedia" | "artic" | ...`). **Treat a missing `source` as
-      `"wikipedia"`** so every pre-Phase-5 saved trail, seen title, and reaction still resolves. Add a
-      stable `cardId` = `` `${source}:${nativeId}` `` helper (pure, `src/lib/card.ts`); migrate the seen-set,
-      `threadCache`, `reactions`, and buffer dedup to key on `cardId` (bare-title keys read as `wikipedia:`).
-- [ ] Define a `Realm` adapter interface (`src/lib/realms/types.ts`): `discover(topic?, offset?) → Card[]`,
-      `related(card) → RelatedCandidate[]`, `summary(id) → Card`, `extended(id) → {extract, hasMore}`,
-      plus realm metadata (`id`, `label`, `glyph`, seeds, topic taxonomy). **Refactor the existing
-      Wikipedia code into the first adapter** (`realms/wikipedia.ts`) behind this interface — the API routes
-      become thin dispatchers (`/api/realm/[realm]/discover`, `.../related`, ...). Keep every current route
-      working (alias or delegate) so nothing regresses.
-- [ ] Unit-test `cardId` round-tripping + the missing-source→wikipedia back-compat path. Existing 100 tests
-      stay green (this is a pure refactor).
-- [ ] **Test M10:** build + lint + tests green; the Encyclopedia realm behaves *identically* to today
-      (real-browser: seed, drift, threads, react, save, continue, export all unchanged); a saved pre-refactor
-      trail still opens and continues. Zero behavioural change is the pass condition.
+### M10 — The source abstraction ✅ *(foundational refactor — zero user-visible change; DONE 2026-07-14)*
+The old `Card` was Wikipedia-shaped: `pageTitle` doubled as the unique id and keyed the seen-set, thread
+cache, reactions, and buffer dedup. Now split into `Card.source` (content origin) + `cardId` (app-wide id),
+with everything defaulting to Wikipedia so pre-Phase-5 data still resolves.
+- [x] `Card.source?: SourceId` + `Trail.realm?: RealmId` (both default via helpers; missing ⇒
+      wikipedia/encyclopedia). `RelatedCandidate` gained optional `source`/`sourceUrl`/`threadLabel`/`facet`
+      for the art/book realms. `src/lib/realms/types.ts` = leaf module (`SourceId`, `RealmId`, `RealmMeta`,
+      `DiscoverPick`).
+- [x] `src/lib/card.ts` (pure, 7 tests): `cardId`/`toCardId`/`cardSource`/`nativeId` +
+      `normalizeSeenEntry` (legacy bare titles → `wikipedia:…`, known prefixes preserved). Seen-set,
+      thread cache, reactions, and buffer dedup all re-keyed on `cardId`; `selectDiverseThreads` filters by
+      `cardId`. `storage.ts` normalizes legacy seen/reaction keys on read (lazy migration) + adds `lastRealm`.
+- [x] `src/lib/upstream.ts` — generic per-host request-spacing **gate** + 429/503 retry (extracted from
+      `wiki-server.ts`, which now wraps it; its unit tests still pin the behaviour). Each source gets its own
+      gate.
+- [x] Realm registry: client `src/lib/realms/index.ts` (`getRealm`/`listRealms` + `discoverUrl`/`relatedUrl`/
+      `summaryUrl` + per-realm `pickDiscover`) and server `src/lib/realms/server/{index,wikipedia}.ts`.
+      Generic routes `/api/realm/[realm]/{discover,related,summary}` dispatch by realm (Next 16 async
+      `params`); old `/api/wiki/{discover,related,summary}` deleted, `random`+`topics` kept as Encyclopedia
+      helpers. Bucket allowlist (injection guard) preserved → 400.
+- [x] `drift/page.tsx` + `CardView` are now realm-driven (read `?realm=`, route through the generic routes,
+      set `data-realm`, gate ♥/✕ by `realmMeta.hasInterestModel`). Only Encyclopedia wired this milestone.
+- [x] **Test M10:** build + lint clean, **107 unit tests green** (100 + 7 `card.ts`). Real-browser
+      (`?title=Octopus`): seed → threads → thread-pull (Cephalopod limb) → read-more (557→3824) → ♥ (cardId-
+      keyed, persists) → 6 distinct drift titles → trail map (5 thumbs) → save → "View in My Trails";
+      surprise-me discover seeds a card; `data-realm="encyclopedia"`; **zero console/runtime errors**. Server
+      routes return real `source`-stamped data; unknown realm / unknown+injection bucket / missing id → 400.
+      **Legacy back-compat verified:** an injected pre-Phase-5 trail (no `realm`, cards with no `source`) +
+      legacy bare-title seen + title-keyed reaction all list, open, and continue at the last stop (defaulting
+      to Encyclopedia), then drift onward — zero errors.
 
-### M11 — The Gallery realm *(Art Institute of Chicago)*
-- [ ] `realms/artic.ts` implementing the adapter: `discover` = public-domain artworks by a browse facet
-      (department / style / place) with a random offset (mirror the `articletopic:` + offset trick that made
-      drift "interesting, not obscure"); `related` = same-artist ∪ same-classification ∪ shared subject term,
-      diversified with the **existing `selectDiverseThreads` heuristic** (reuse, don't reinvent). Server-side
-      junk filter (no image, no title). IIIF thumbnail URL builder. `AIC-User-Agent` header via the
-      `wiki-server.ts` request-spacing/retry gate pattern (generalize it to a shared `upstream.ts`).
-- [ ] Map art metadata onto `Card`: `displayTitle` = work title; `description` = "{artist}, {date}";
-      `extract` = medium + place + a sentence of provenance/blurb if present; `sourceUrl` = the artic.edu page.
-      Threads carry evocative labels ("More by Hokusai", "Other woodblock prints", "Also from Edo Japan").
-- [ ] Gallery seeds (`src/data/seeds.artic.json`): ~10 tiles (Impressionism, Japanese prints, Ancient
-      Mediterranean, Modern, Portraits, Still life, Textiles, Landscapes…). Graceful empties everywhere.
-- [ ] **Test M11:** build + lint + tests green (new pure bits — IIIF URL builder, art→Card mapper — unit
-      tested); real-browser: a Gallery session shows real public-domain images, pulling "more by this artist"
-      actually stays with the artist, drifting stays varied-but-interesting, a mixed trail (art stops) saves +
-      exports as a PNG with images (CORS/IIIF must allow canvas — verify, like Wikimedia thumbnails do).
+> **Definitive milestone breakdown + verified API contracts live in the approved plan file**
+> `~/.claude/plans/purring-skipping-breeze.md`. Locked decisions: homepage = **segmented tabs**; realms carry
+> a **subtle per-realm accent** (Encyclopedia sage / Gallery terracotta / Library dusty-blue / Today amber,
+> via a `[data-realm]` CSS scope over `--accent`); **interest model stays Encyclopedia-only** (Gallery/Library
+> drift = interesting-random by facet, ♥/✕ hidden); **one trail = one realm** (cross-realm = Phase 7).
 
-### M12 — Realm switcher (the "tabs") + homepage
-- [ ] Homepage becomes realm-aware: a quiet tab/segmented control (*Encyclopedia · Gallery · …*), each with
-      its own seed grid + "Surprise me". Calm, no badges (§6). Persist last-used realm in `settings`.
-- [ ] `/drift` reads a `realm` param; the feed's discover/related/threads route through that realm's adapter.
-      The mode chip + trail map already show "how you travelled" — extend the language so a **realm switch
-      mid-trail is legible** (e.g. a stop's node hints which realm it came from). Decide the default drift
-      policy: stay in-realm (simple, ship this) vs. mix realms (that's Phase 7's cross-realm magic — keep it
-      out of scope here).
-- [ ] **Test M12:** build + lint + tests; real-browser: switch to Gallery from the homepage, drift a full
-      session, switch back, saved trails from both realms coexist in My Trails and render correctly. No
-      console errors; principles §2 intact (still 1-ahead prefetch, still transparent, still no autoplay).
+### M11 — Gallery realm + first multi-realm UI ✅ *(Art Institute of Chicago; DONE 2026-07-14)*
+- [x] `realms/server/artic.ts` + pure `realms/artic.ts` + `artic.buckets.ts` (10 PD-rich buckets):
+      `discover` = PD artworks by a bucket theme (`q` + `is_public_domain`) + random page; `related` = facet
+      searches (**"More by {artist}"** via `artist_id` bool-must, **"Other {style}"** via `style_title`,
+      **"Also from {place}"** via `place_of_origin`) — legible thread *directions* for free. IIIF URL builder,
+      art→Card / art→candidate mappers (unit-tested, 8 new tests). Own `AIC-User-Agent` gate via `upstream.ts`.
+      Registered `gallery` in both client + server registries.
+- [x] `selectFacetThreads` (pure) for facet realms — one chip per distinct facet, label from the candidate;
+      feed picks it by `realmMeta.threadMode`. Art card: `ImagePanel` shows the whole work (object-contain on a
+      soft ground), `description` = "{artist} · {date}", source link "View at the Art Institute ↗", read-more =
+      curatorial description/provenance, **no ♥/✕** (Gallery has no interest model).
+- [x] Homepage **segmented tabs** (`RealmTabs`, each tab tinted by its own realm accent) — realm-aware seed
+      grids (Encyclopedia titles / Gallery buckets) + "Surprise me in {realm}" + `lastRealm` persistence. Feed
+      top-bar shows the realm marker. **Terracotta** accent scope in `globals.css` (light + dark) via
+      `[data-realm="gallery"]`. My-Trails realm badge + per-trail accent tint (`data-realm` on each card).
+- [x] **Test M11:** build + lint clean, **115 unit tests green** (107 + 8). API contract (curl): gallery
+      discover returns real PD art w/ images + "{artist} · {date}"; related returns the 3 facet directions
+      (verified Cassatt → "More by Mary Cassatt" / "Other Impressionism" / "Also from France"); extended returns
+      real curatorial text. Real-browser (Impressionism seed): art card renders (image loads, object-contain),
+      `data-realm="gallery"`, ♥/✕ hidden, facet chips shown, "More by Cézanne" → another Cézanne, read-more
+      grew, 5 distinct art titles drifting, trail map (5 thumbs) → save → **My Trails shows the ❖ Gallery
+      badge**; Encyclopedia unregressed (Octopus, ♥ present). **PNG export CORS resolved:** AIC IIIF images load
+      with `crossOrigin` and `canvas.toDataURL` is untainted (the curl 403 is a bot block only). **Zero console
+      errors.**
 
-### M13 — (Optional) a second content realm
-- [ ] Pick one from the fit ranking above — **Library (Gutendex)** is the natural second (a different
-      *kind* of knowing: books, authors, ideas over time) and is a clean adapter with an opening-passage read.
-      *Or* ship **Today** as a front-door instead (see Phase 8). Reuse the M10 adapter interface wholesale.
-- [ ] **Test M13:** as above, per realm.
+### M12 — Library + Today realms ⏸ *(DEFERRED by user decision 2026-07-14)*
+User chose to ship Phase 5 with just **Encyclopedia + Gallery** for now — two focused, polished realms —
+and add more later. The adapter interface (M10) makes this a clean drop-in whenever we return: each realm is
+one server adapter + a registry entry + optional card-body tweak. Preserved research/design for when we do:
+- [ ] `realms/server/gutenberg.ts` (+ buckets, book card body, dusty-blue accent): Gutendex discover by
+      subject; facet threads (author/subject); read-more = opening passage from `text/plain` (strip Gutenberg
+      header, reuse `extract.ts`). Proxy sends a real UA (Gutendex 403s bot UAs).
+- [ ] `realms/server/today.ts` (contentSource wikipedia; + amber accent): discover = today's `onthisday`/
+      `featured` feed (unauthenticated en.wikipedia REST — verified), shuffled; related/summary reuse Wikipedia;
+      tab shows today's event tiles. No ♥/✕.
 
-**Phase 5 exit:** Drift has tabs. You can spend a session wandering the world's public-domain art or a
-library of great books with the exact same pull-a-thread-see-your-trail loop — and every realm degrades
-gracefully when its source is slow or down.
+### M13 — Multi-realm polish & full look pass ✅ *(DONE 2026-07-14)*
+- [x] My-Trails **realm filter chips** (shown only when trails span >1 realm; each chip glows in its own
+      accent, toggles back to all) + realm badge + per-card accent tint (from M11). Trail-**detail** page now
+      realm-aware (`data-realm` → terracotta/sage map edges + a realm label). Interests copy **scoped to
+      Encyclopedia** ("Gallery isn't personalized"). Feed error/hint copy made **realm-agnostic** (no longer
+      says "Wikipedia").
+- [x] **Test M13:** build + lint clean, **115 tests green**. Real-browser: saved one Encyclopedia + one
+      Gallery trail → My Trails shows both realm badges + the realm filter (Gallery filter hides the
+      Encyclopedia trail); gallery trail detail is `data-realm="gallery"` with `--accent #b97d59`; **both
+      accents verified in light + dark** (Gallery #b97d59→#cf9d80, Encyclopedia #6f8f74, all distinct);
+      Interests page scoped to Encyclopedia. Graceful degradation: discover returns `[]` on failure, copy is
+      source-neutral. **Zero console errors.**
+
+**Phase 5 exit:** ✅ **Drift has tabs.** Two calm, polished realms — **Encyclopedia** (all of Wikipedia, sage,
+topic-personalized drift) and **Gallery** (public-domain art from the Art Institute of Chicago, terracotta,
+facet threads) — share one shell, the same pull-a-thread → trail-map loop, and per-realm accents in light +
+dark. Everything degrades gracefully when a source is slow/down. (Library + Today deferred; trivial to add
+later via the M10 adapter interface.)
 
 ---
 
-## Phase 6 — Threads With Intention  *(make the core mechanic legible — cheapest "more Drift" win)*
+## Phase 6 — Threads With Intention ✅ *(make the core mechanic legible — DONE 2026-07-14)*
 
 **Goal:** Today the 3 thread chips are all the *same flavour* — "here are 3 related pages." That's a menu,
 not steering. Drift's whole soul (§1, "you are the algorithm") is **direction**. Give each thread a
@@ -507,21 +554,32 @@ This is pure product craft, needs **no new API and no AI**, fits the existing `s
 and makes agency *felt*. It also plays perfectly with the trail map (edges could carry the direction glyph,
 so a saved trail reads like a route: "deeper, deeper, tangent, out…").
 
-- [ ] `src/lib/threads.ts` (pure, unit-tested): classify the ~20 `morelike` candidates into
-      deeper / broader / tangent using cheap, transparent signals — title containment ("X" ⊂ "X (specific)"),
-      description-class overlap vs. divergence (reuse `classOf` from `diversity.ts`), and `morelike` rank
-      position (top = closest ⇒ deeper/adjacent; mid-tail = tangent). Return exactly one of each when
-      possible, else fall back to today's diverse-3. **Never fabricate** a relationship it can't justify —
-      if it can't tell, it's an unlabelled "related" chip (honesty > cleverness, §2.1).
-- [ ] `ThreadChips.tsx`: give each chip its direction glyph + a one-word kind, keep the sage calm. The
-      thread-follow transition can lean into the direction (deeper = pull *down/in*, out = pull *up/back*,
-      tangent = the current sideways pull) — distinct, physical, still not a casino.
-- [ ] Trail map + `ArrivedVia` thread edges optionally carry the direction, so the map narrates the *shape*
-      of the rabbit hole. Back-compatible (older trails just omit it).
-- [ ] **Test M14:** build + lint + tests (the classifier is the star — many unit cases: containment,
-      class overlap, rank tiers, degenerate/narrow topics falling back cleanly); real-browser: on a broad
-      page (e.g. *Octopus*) the three chips genuinely differ in character and each lands where its label
-      promised; on a narrow page it degrades to plain related chips without lying. Principles §2 intact.
+> ✅ **DONE 2026-07-14.** Taxonomy decision (user): **"Aim high, always 3"** — aim for Deeper / Zoom out /
+> Tangent; when a direction can't be found honestly, fill that slot with **Nearby** (closest related), never a
+> fabricated relationship. Grounded in live `morelike` tests (deeper is reliable via title-containment +
+> "species of X" descriptions; zoom-out only *sometimes* — hence the Nearby fallback). Scope: Encyclopedia
+> only; Gallery facet threads unchanged. Plan file: `~/.claude/plans/purring-skipping-breeze.md`.
+- [x] `src/lib/threads.ts` (pure, 12 tests): `classifyThreads(current, candidates, {seen,count})` +
+      `isDeeper`/`isZoomOut`/`pickTangent` + `ThreadKind` (`deeper|zoomout|nearby|tangent`). Signals — deeper:
+      current.title is the head of candidate.title, or a `/(species|genus|branch|…) of/` description referencing
+      the current topic; zoom-out: candidate is the **head noun** of current.title (`phraseEndsWith`, so
+      "Octopus" zooms out "Giant Pacific octopus" but "Pacific" doesn't), or a hypernym named in the current's
+      **first sentence** ("…a large marine **cephalopod**…" → Cephalopod), with a precision guard against the
+      title's own words; tangent: `classOf` divergence + furthest rank. Always-3 assembly, dedupe by `cardId`,
+      thin-page graceful. Reuses `classOf`/`cardId`/`isJunk`.
+- [x] `types.ts` (`Thread.kind`, `ArrivedVia` thread `kind`), `trailmap.ts` (`MeanderSegment.threadKind`).
+      `ThreadChips.tsx`: two-line directional chip (kind glyph + word eyebrow + destination title) with a
+      shared exported `KindIcon`/`KIND_META` (magnifier-+ deeper / magnifier-− zoom-out / diverging-arrow
+      tangent / soft-wave nearby); facet (Gallery) chips render as before. `CardView` ModeChip names the
+      direction ("Go deeper · {label}"); `TrailMap` draws the glyph on the thread edge. `drift/page.tsx`:
+      Encyclopedia → `classifyThreads` (via a `cardForThreadsRef` to avoid a stale-closure race); records the
+      kind on pull. Gallery path untouched.
+- [x] **Test M14:** build + lint clean, **127 unit tests green** (115 + 12). Real-browser: **Octopus** →
+      Go deeper / Nearby / Tangent (zoom-out honestly unavailable → Nearby, by design), correct chip order;
+      **Giant Pacific octopus** → **Go deeper: Enteroctopus / Zoom out: Cephalopod / Tangent: Cuttlefish** (all
+      three distinct, zoom-out surfaced); pulling a thread → mode chip names the direction + the trail map edge
+      shows the glyph (kind persists in `ArrivedVia`); **Gallery unregressed** (facet chips, no direction
+      words). **Zero console errors**; §2 intact (transparent "why", ≤1-ahead prefetch, no autoplay).
 
 **Phase 6 exit:** pulling a thread feels like *choosing a direction*, not picking from a list — and the
 trail map reads back the journey's shape. (Forward tie-in: Phase 7's embeddings/LLM can sharpen the
@@ -529,12 +587,15 @@ classifier and write more evocative labels, but the heuristic ships first and al
 
 ---
 
-## Phase 7 — Cross-Realm Threads: "Constellations"  *(the magic — DEPENDS on an embedding layer)*
+## Phase 7 — Cross-Realm Threads: "Constellations"  ⏸ *(DEFERRED by user decision 2026-07-14 — AI/cost)*
 
+> ⏸ **DEFERRED.** The user is staying away from the Ollama/AI layer for now (initial cost/capacity), and this
+> phase depends on the embedding layer (Phase 3). Held until there's appetite for the local-AI stack. Nothing
+> below is cancelled — it's the most "Drift" idea and worth returning to once AI is on the table.
+>
 > ⚠️ **Depends on the embedding layer from the deferred Phase 3** (local `nomic-embed-text` via Ollama).
 > Do Phase 3 first, or build its minimal subset (embed endpoint + cosine + max-min) as M16 here. Also
-> assumes **Phase 5** (realms exist to thread *between*). This is the most ambitious idea and the most
-> "Drift" — hold it until the foundations are in.
+> assumes **Phase 5** (realms exist to thread *between*).
 
 **Goal:** the deepest expression of "you are the algorithm across all of human knowledge." Pull a thread on
 the *Octopus* card and a chip offers Hokusai's *The Great Wave* (Gallery) or *Twenty Thousand Leagues Under
@@ -567,34 +628,102 @@ across art, science, and literature that no feed algorithm on earth offers, beca
 
 ---
 
-## Phase 8 — The Reward, Deepened  *(dopamine at the exit + learning that sticks — serves success #3 & #4)*
+## Phase 8 — The Atlas: your constellation of curiosity  *(scoped to M19 by user — NEXT to implement)*
 
-**Goal:** today the reward is the per-session trail map — lovely, but it evaporates after "Save". The
-experiment's real questions are "does the trail map feel like a reward?" and "**did I learn things I remember
-two days later?**" (§9 #3, #4). This phase makes the reward *accumulate* and gently helps memory stick —
-all in the anti-slot-machine register (reward at the exit, gentle awareness, never streaks/guilt).
+> ▶ **Scoped to M19 only (user, 2026-07-14).** The user wants **the Atlas page** — a constellation view of
+> everything you've wandered, with the topics/clusters/nodes drawn out. M20–M22 are parked (see below).
+> **This is the next phase being planned** (plan file: `~/.claude/plans/purring-skipping-breeze.md`).
 
-- [ ] **M19 — The Atlas** (`/atlas`): a single, growing constellation built from *all* saved trails — nodes
-      you've visited, clustered by topic (the M9 interest topics are ready-made clusters), edges where you
-      threaded between them. The meta-reward: "here is the shape of my curiosity." Pure layout logic in
-      `src/lib/atlas.ts` (unit-tested), SVG paint like `TrailMap`. Read-only, calm, zoomable. Export as PNG.
-- [ ] **M20 — "Remember this?"** (spec §12 spaced resurfacing): occasionally — *only at a natural session
-      beginning*, never mid-drift, never as a notification — offer to reopen a card from a past trail you
-      haven't seen in a few days. Directly targets success-criterion #4. Fully optional, dismissible, quiet.
-- [ ] **M21 — Weekly reflection** (spec §12 + §9): a gentle, opt-in "this week" panel on `/trails` or
-      `/atlas` — "5 drifts · 3 realms · a few things worth remembering: {a}, {b}, {c}." **Descriptive, not
-      gamified** — no streaks, no goals, no "you're falling behind." Built only on the per-session stats we
-      already record. If it starts to feel like a metric to chase, cut it (§9).
-- [ ] **M22 — Keep a fact** (marginalia): a quiet "keep" on a card (or a highlighted sentence) that saves it
-      to a personal "kept" shelf *without* needing to save the whole trail — so a single gem isn't lost.
-      Feeds the Atlas and the weekly reflection. Storage via a new `kept` key in `storage.ts`.
-- [ ] **Test Phase 8:** each milestone real-browser verified — Atlas renders from multiple saved trails and
-      grows as you add more; "Remember this?" surfaces only at a beginning and only for aged cards; the
-      weekly panel reads as calm reflection, not a scoreboard; a kept fact persists and appears on the shelf.
-      Principles §2 hold — especially §2.3 (reward at the exit) and §2.4 (gentle, no guilt).
+**Goal:** today the reward is the per-session trail map — lovely, but it evaporates after "Save". Make the
+reward *accumulate*: a single, growing constellation of *all* your saved trails, so you can see the shape of
+your own curiosity. Anti-slot-machine register throughout (reward at the exit, calm, no streaks/metrics).
 
-**Phase 8 exit:** the reward compounds — every session adds to a personal atlas of what you've wondered
-about, and the app quietly helps you *remember* it. That's the difference between "I scrolled" and "I learned."
+- [ ] **M19 — The Atlas** (`/atlas`): a page that draws every saved trail as one constellation — cards you've
+      visited as nodes, **clustered by topic** (the M9 interest topics + Gallery buckets are ready-made
+      clusters), with the threads you pulled as edges between them. Node size ~ visit count; clusters gently
+      grouped and labeled; realm-tinted. Pure layout logic in `src/lib/atlas.ts` (unit-tested), SVG paint like
+      `TrailMap`. Read-only, calm, pan/zoom, hover a node → its title + which trails it's in; click → open the
+      card / its trail. Export as PNG. Empty state until there are trails. (Full design → the plan file.)
+
+**Parked (not this phase; revisit later):**
+- [ ] **M20 — "Remember this?"** — spaced resurfacing at a session *beginning* (spec §12), serving "did I
+      remember it two days later?" (§9 #4).
+- [ ] **M21 — Weekly reflection** — a gentle, opt-in "this week" panel (descriptive, never gamified).
+- [ ] **M22 — Keep a fact** — quiet "keep" of a card/sentence to a personal shelf, feeding the Atlas.
+
+**Phase 8 exit (this scope):** a living Atlas — every session adds to a personal, zoomable constellation of
+what you've wondered about, clustered by topic. The meta-reward, at the exit, never a scoreboard.
+
+---
+
+# 🌐 FUTURE DIRECTION — Drift as a (calm) social platform  *(v3+; proposed 2026-07-14, NOT started)*
+
+> The user wants to grow Drift into a social platform: **accounts** (trails, interests, preferences all stored
+> per-user), then **sharing cards & whole trails to other people**, and eventually a **native app**. This is a
+> big, multi-phase step that **deliberately reopens spec §3's "Out" list** (accounts / social / mobile app).
+>
+> ⚠️ **Non-negotiable:** the anti-slot-machine principles (§2) still bind. A *social* Drift must NOT become
+> the doomscroll it exists to replace — **no infinite feed, no like-counts as dopamine, no notification bait,
+> no streaks/leaderboards.** Social features stay in Drift's register: calm, bounded, transparent, agency-
+> first. If a social feature can't be built without engagement-maximizing patterns, it doesn't get built.
+>
+> **Recommended stack (researched 2026-07-14):** one integrated backend that serves the web app now *and* a
+> future mobile app — **[Supabase](https://supabase.com/docs)** (Postgres + Auth + Row-Level Security +
+> Storage + Realtime; generous free tier; first-class React Native SDKs). Postgres RLS does much of the
+> per-user authorization. Alternatives weighed: **Better Auth** (own your users in your own Postgres, TS-native)
+> and **Clerk** (best drop-in auth UX but gets expensive at scale, US-hosted user data) — see
+> [comparison](https://makerkit.dev/blog/tutorials/better-auth-vs-clerk). Auth.js/NextAuth is the free
+> DIY option.
+>
+> **Keep-the-future-app-in-mind (architecture guidance, applies from Phase 9 on):**
+> 1. **Pure logic already portable** — `src/lib/*` (filtering, diversity, drift, threads classifier, interest,
+>    trailmap, atlas, card ids) has no React/DOM deps; extract it to a shared package later and the app reuses it.
+> 2. **Everything behind an API/BaaS both web + app call** — no business logic trapped in React components;
+>    the Supabase client (or a thin Next API layer) is the shared contract.
+> 3. **Local-first sync** (so it stays instant + works offline, which an app needs): keep IndexedDB as the
+>    fast local cache, sync to Postgres in the background. Use **server-generated timestamps** as source of
+>    truth, a **`_deleted` soft-delete flag** (can't hard-delete until all clients replicate), and idempotent
+>    writes. Build lean (custom sync of our small key-value stores) or adopt **RxDB/PowerSync/ElectricSQL** if
+>    it grows — see [rxdb-supabase](https://github.com/marceljuenemann/rxdb-supabase) and
+>    [local-first sync notes](https://www.techbasics.online/local-first-web-architecture-indexeddb-postgres-sync).
+
+## Phase 9 — Accounts & Cloud Sync  *(the backend foundation — big; multi-milestone)*
+**Goal:** optional accounts that persist a user's world (trails, interests, reactions, sessions, seen, kept)
+in the cloud, syncing across devices — while keeping the app fully usable **signed-out/local** (accounts are
+additive, never a gate to drifting). This is the foundation every later social feature builds on.
+- [ ] Stand up Supabase (or chosen stack): Auth (email + 1–2 OAuth), Postgres schema mirroring today's local
+      stores as per-user tables (`trails`, `interests`, `reactions`, `sessions`, `seen`, `settings`, `kept`),
+      all guarded by **Row-Level Security** (`user_id = auth.uid()`).
+- [ ] A **sync layer** over the existing `storage.ts` seam: IndexedDB stays the local cache; a background
+      replicator pushes/pulls to Postgres (server-timestamp source of truth, soft-delete, idempotent). The rest
+      of the app keeps calling `storage.ts` unchanged.
+- [ ] **First-sign-in migration**: adopt the anonymous local data into the new account (don't lose a signed-out
+      user's trails). Sign-out returns to local-only mode.
+- [ ] Env/secrets in `.env.local`; graceful offline (backend down ⇒ local-only, never breaks the core loop, §4).
+- [ ] Keep it **API-first** for the future app (guidance above).
+
+## Phase 10 — Social graph & sharing  *(depends on Phase 9)*
+**Goal:** send a card or a whole trail to someone, and pick up where a friend's curiosity left off — the
+spec's §12 "trail seeds from friends", made real.
+- [ ] Profiles (handle + display name); a **follow/friend** model (start one-way follow, Twitter-style — simplest);
+      per-trail visibility (private / unlisted-link / shared-to-user).
+- [ ] **Share a card or a trail** to another user → their **inbox**; shareable unlisted links (works without an
+      account to view). "**Continue this trail**" from a received trail's last stop (reuses the existing
+      `?continue=` rehydration — now cross-user).
+- [ ] Calm by design: no public like counts, no follower-count vanity metrics surfaced as targets.
+
+## Phase 11 — A calm social feed  *(depends on Phase 10; the soul is most at risk here — guard §2 hard)*
+**Goal:** "what the people I follow have been wandering" — **without** becoming a feed to doomscroll.
+- [ ] A **bounded, digest-style** view (e.g. "this week's trails from people you follow"), explicitly **not**
+      an infinite auto-loading feed. Finite, has an end, no "just one more".
+- [ ] **Gentle, batched notifications** (a quiet digest, never per-event bait; opt-in). No red badges, no streaks.
+- [ ] Minimal, non-competitive reactions (if any) — a quiet "loved this trail", never a public score race.
+
+## Phase 12 — Mobile app  *(depends on Phase 9; the eventual "switch to an app")*
+**Goal:** a real Drift app (iOS/Android) reusing the same backend.
+- [ ] **Expo / React Native** app against the same Supabase backend; extract `src/lib/*` into a shared package
+      consumed by both web and app (see architecture guidance). Rebuild the feed/card/trail-map UI natively
+      (gestures map cleanly to the drift/thread mechanic). Web stays; the app is an additional client.
 
 ---
 

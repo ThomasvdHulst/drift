@@ -1,5 +1,6 @@
 import type { RelatedCandidate, Thread } from "./types";
 import { isJunk } from "./wiki";
+import { cardId } from "./card";
 
 // ---------------------------------------------------------------------------
 // Heuristic thread selection (the non-AI default that "always works").
@@ -10,7 +11,7 @@ import { isJunk } from "./wiki";
 
 export interface SelectOptions {
   count?: number; // default 3
-  seen?: Set<string>; // pageTitles already visited this session
+  seen?: Set<string>; // cardIds already visited this session (see lib/card.ts)
 }
 
 /**
@@ -42,7 +43,7 @@ export function selectDiverseThreads(
   // relevance ranking, which we lean on as the tie-breaker.
   const pool = candidates.filter(
     (c) =>
-      !seen.has(c.pageTitle) &&
+      !seen.has(cardId(c)) &&
       !isJunk({ title: c.pageTitle, extract: c.extract }),
   );
 
@@ -68,4 +69,40 @@ export function selectDiverseThreads(
   }
 
   return chosen.map((c) => ({ candidate: c, label: labelFor(c) }));
+}
+
+/**
+ * Thread selection for facet-based realms (Gallery/Library), where each
+ * candidate already carries a ready `threadLabel` and a `facet` group ("More by
+ * {artist}", "Other {style}", …). We take one per distinct facet (so the chips
+ * are different *directions*, not three of the same), drop seen cards, then fill
+ * any spare slots. Labels come from the candidate, not the description.
+ */
+export function selectFacetThreads(
+  candidates: RelatedCandidate[],
+  opts: SelectOptions = {},
+): Thread[] {
+  const count = opts.count ?? 3;
+  const seen = opts.seen ?? new Set<string>();
+  const pool = candidates.filter((c) => !seen.has(cardId(c)) && c.pageTitle);
+
+  const chosen: RelatedCandidate[] = [];
+  const usedFacets = new Set<string>();
+  for (const c of pool) {
+    if (chosen.length >= count) break;
+    const f = c.facet ?? `~${c.pageTitle}`;
+    if (usedFacets.has(f)) continue;
+    usedFacets.add(f);
+    chosen.push(c);
+  }
+  if (chosen.length < count) {
+    for (const c of pool) {
+      if (chosen.length >= count) break;
+      if (!chosen.includes(c)) chosen.push(c);
+    }
+  }
+  return chosen.map((c) => ({
+    candidate: c,
+    label: c.threadLabel || c.displayTitle || c.pageTitle,
+  }));
 }

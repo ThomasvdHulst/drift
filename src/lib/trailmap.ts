@@ -1,4 +1,4 @@
-import type { TrailStep } from "./types";
+import type { TrailStep, ThreadKind } from "./types";
 
 // ---------------------------------------------------------------------------
 // Pure geometry for the trail map — a gently meandering vertical spine. Nodes
@@ -22,6 +22,7 @@ export interface MeanderSegment {
   d: string; // SVG path data connecting node i-1 → i
   kind: "seed" | "thread" | "drift";
   label?: string; // thread label, when kind === "thread"
+  threadKind?: ThreadKind; // the thread's direction (Phase 6), for the edge glyph
 }
 
 export interface MeanderLayout {
@@ -73,6 +74,7 @@ export function layoutMeander(
       d,
       kind: via.type,
       label: via.type === "thread" ? via.label : undefined,
+      threadKind: via.type === "thread" ? via.kind : undefined,
     });
   }
 

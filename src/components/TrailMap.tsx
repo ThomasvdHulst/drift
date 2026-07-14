@@ -2,6 +2,7 @@
 
 import type { TrailStep } from "@/lib/types";
 import { layoutMeander } from "@/lib/trailmap";
+import { KindIcon } from "./ThreadChips";
 
 // The trail map: a gently meandering vertical spine (see CLAUDE.md §6 + the
 // drift-spec trail-map section). Geometry comes from the pure `layoutMeander`;
@@ -99,9 +100,10 @@ export function TrailMap({
           return (
             <span
               key={`lbl-${i}`}
-              className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-accent/12 px-2 py-0.5 text-[11px] font-medium text-accent-strong ring-1 ring-accent/25"
+              className="absolute inline-flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 whitespace-nowrap rounded-full bg-accent/12 px-2 py-0.5 text-[11px] font-medium text-accent-strong ring-1 ring-accent/25"
               style={{ left: midX, top: midY }}
             >
+              {seg.threadKind && <KindIcon kind={seg.threadKind} size={11} />}
               {seg.label}
             </span>
           );
