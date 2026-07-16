@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 300" width="480" height="300" fill="none">
+  <defs>
+    
+    <path id="lf" d="M0 0 C9 -9 10 -22 0 -34 C-10 -22 -9 -9 0 0 Z"></path>
+  </defs>
+  <text x="240" y="150" text-anchor="middle" font-family="Fraunces, serif" font-weight="600" font-size="150" letter-spacing="-1.5" fill="#f4efe4">Drift</text>
+  <g transform="translate(88,178) scale(0.68)">
+    <path d="M14 54 C140 54 250 42 378 20 C398 16 412 15 428 15" stroke="#9aac5f" stroke-width="5" stroke-linecap="round"></path>
+    <path d="M300 30 C312 27 318 22 322 13" stroke="#9aac5f" stroke-width="3" stroke-linecap="round"></path>
+    <path d="M238 44 C242 52 242 58 240 66" stroke="#9aac5f" stroke-width="2.6" stroke-linecap="round"></path>
+    <g fill="#a9bb6c">
+      <use href="#lf" transform="translate(298 30) rotate(20) scale(1.05)"></use>
+      <use href="#lf" transform="translate(336 22) rotate(30) scale(1.25)"></use>
+      <use href="#lf" transform="translate(374 16) rotate(40) scale(1.15)"></use>
+      <use href="#lf" transform="translate(410 14) rotate(50) scale(0.95)"></use>
+      <use href="#lf" transform="translate(260 36) rotate(12) scale(0.9)"></use>
+    </g>
+    <g fill="#c6d492">
+      <use href="#lf" transform="translate(240 66) rotate(176) scale(0.8)"></use>
+      <use href="#lf" transform="translate(322 13) rotate(26) scale(0.75)"></use>
+      <use href="#lf" transform="translate(356 34) rotate(120) scale(0.7)"></use>
+    </g>
+  </g>
+</svg>

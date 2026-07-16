@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { TrailStep } from "@/lib/types";
+import { Monogram } from "@/components/BrandLogo";
 
 // Quiet, persistent UI chrome. No red badges, no streaks — a home link, the
 // trail rail (where am I?), a soft stop counter, and gentle nav controls.
@@ -74,12 +75,13 @@ export function FeedTopBar({
 }) {
   return (
     <header className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6">
-      <div className="flex shrink-0 items-baseline gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <Link
           href="/"
-          className="font-serif text-lg text-ink transition hover:text-accent-strong"
+          aria-label="Drift — home"
+          className="opacity-90 transition hover:opacity-100"
         >
-          Drift
+          <Monogram className="h-7" />
         </Link>
         {/* Which "room" you're in — a quiet realm marker, accent-tinted via the
             feed's data-realm scope. */}

@@ -927,10 +927,12 @@ the public URL), and **each account sees only its own trails** (local data clear
       `#f5efe4` + `theme_color` `#6f8f74`, 192/512 + maskable icons). `layout.tsx`: `viewport.themeColor`
       (light `#f5efe4` / dark `#1b1917`) + `viewportFit:"cover"` + `metadata.appleWebApp` (`capable`, `title`,
       `statusBarStyle`). Icons auto-linked via file conventions (`app/icon.svg`, `app/apple-icon.png`).
-- [x] `scripts/make-icons.mjs` — renders an on-brand SVG "trail meander" mark (sage thread + nodes on cream)
-      via Playwright → `public/icon-192.png`, `icon-512.png`, `icon-maskable-512.png` (safe-zone scaled),
-      `src/app/apple-icon.png` (180×180 opaque), `src/app/icon.svg`. Removed the stock create-next-app SVGs +
-      the Next-logo `favicon.ico` (icon.svg is the favicon; ICO dropped — Next's ICO decoder needs RGBA PNG).
+- [x] `scripts/make-icons.mjs` — icons. _(Superseded by the user's real brand art, 2026-07-16: the script now
+      derives everything from `logos/png/*` — copies the wordmark + monogram to `public/brand/`, uses the
+      "D + dot" master for `src/app/icon.png` (favicon) / `apple-icon.png` / `public/icon-192/512` + a
+      full-bleed `icon-maskable-512`. New `src/components/BrandLogo.tsx` (`Wordmark`/`Monogram`, no-JS
+      light↔dark swap via `.brand-light/.brand-dark`) renders on the homepage hero, the AuthGate, and the
+      feed top bar. Baked-in-font PNGs used because the brand SVGs rely on the Fraunces webfont.)_
 - [x] **Mobile pass:** safe-area utilities in `globals.css` (`bottom-safe`/`pb-safe` = `calc(1rem +
       env(safe-area-inset-bottom))`) applied to the fixed ThemeToggle/AccountButton and the feed card wrapper
       + hint/nudge overlays (clear the iOS home indicator in standalone; no-ops in a normal tab). iOS

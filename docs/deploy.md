@@ -64,13 +64,17 @@ deploy, **redeploy** (Deployments → ⋯ → Redeploy) for them to take effect.
 
 ## Step 4 — Point Supabase at the Vercel URL
 
-After the first deploy you'll have a URL like `https://drift-xxxx.vercel.app`. In the Supabase
-dashboard → **Authentication → URL Configuration**:
+After the first deploy you'll have a URL like `https://drift-xxxx.vercel.app` (use the short,
+stable production alias). In the Supabase dashboard → **Authentication → URL Configuration**:
 
-1. Set **Site URL** to your Vercel production URL.
-2. Under **Redirect URLs**, add both:
-   - `https://drift-xxxx.vercel.app/**`
-   - `https://*-<your-vercel-scope>.vercel.app/**` (so preview deployments work too)
+1. Set **Site URL** to your Vercel production URL (exactly one, no wildcards).
+2. **Redirect URLs — you can leave this empty for now.** Drift signs in with **email + password**
+   (which returns a session directly, no redirect) and email confirmation is off, so nothing in
+   the current flow uses a redirect URL. You'd only need to add entries here **later** if you add
+   OAuth (Google/GitHub), magic links, or turn on email confirmation — in which case click
+   **Add URL** (it accepts several, and wildcards work) and add
+   `https://drift-xxxx.vercel.app/**` plus `https://*-<your-vercel-scope>.vercel.app/**` (preview
+   deploys).
 3. Leave **Authentication → Providers → Email → "Confirm email" OFF** for now — this keeps
    sign-up frictionless for you and a few friends. (With it off, anyone with the link can create
    an account, but RLS keeps every account's data private; revisit before sharing widely — see

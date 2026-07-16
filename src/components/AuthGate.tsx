@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { AuthForm } from "@/components/AuthForm";
+import { Wordmark, Monogram } from "@/components/BrandLogo";
 
 // Phase 13: when the cloud IS configured (i.e. the hosted app), Drift requires an
 // account — a logged-out visitor sees a calm sign-in / create-account screen
@@ -20,7 +21,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   if (loading) {
     return (
       <main className="flex min-h-dvh items-center justify-center bg-paper">
-        <p className="animate-pulse font-serif text-2xl text-ink-soft">Drift</p>
+        <Monogram className="h-14 animate-pulse" alt="Loading Drift" />
       </main>
     );
   }
@@ -31,9 +32,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
   // Configured but signed out ⇒ the welcome gate.
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-6 py-12">
-      <header className="mb-8 text-center">
-        <h1 className="font-serif text-6xl text-ink">Drift</h1>
-        <p className="mt-3 text-lg text-ink-soft">
+      <header className="mb-8 flex flex-col items-center text-center">
+        <h1>
+          <Wordmark className="h-20 sm:h-24" />
+        </h1>
+        <p className="-mt-1 text-lg text-ink-soft">
           Pull a thread. See where it goes.
         </p>
         <p className="mx-auto mt-4 max-w-sm text-sm leading-relaxed text-ink/75">

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 120" width="440" height="120" fill="none">
+  <defs><path id="lf" d="M0 0 C9 -9 10 -22 0 -34 C-10 -22 -9 -9 0 0 Z"></path></defs>
+  <path d="M14 60 C140 60 250 48 378 26 C398 22 412 21 428 21" stroke="#6f7e42" stroke-width="3.4" stroke-linecap="round"></path>
+  <path d="M300 36 C312 33 318 28 322 19" stroke="#6f7e42" stroke-width="2" stroke-linecap="round"></path>
+  <path d="M238 50 C242 58 242 64 240 72" stroke="#6f7e42" stroke-width="1.8" stroke-linecap="round"></path>
+  <g fill="#889a4e">
+    <use href="#lf" transform="translate(298 36) rotate(20) scale(1.05)"></use>
+    <use href="#lf" transform="translate(336 28) rotate(30) scale(1.25)"></use>
+    <use href="#lf" transform="translate(374 22) rotate(40) scale(1.15)"></use>
+    <use href="#lf" transform="translate(410 20) rotate(50) scale(0.95)"></use>
+    <use href="#lf" transform="translate(260 42) rotate(12) scale(0.9)"></use>
+  </g>
+  <g fill="#a2b46b">
+    <use href="#lf" transform="translate(240 72) rotate(176) scale(0.8)"></use>
+    <use href="#lf" transform="translate(322 19) rotate(26) scale(0.75)"></use>
+    <use href="#lf" transform="translate(356 40) rotate(120) scale(0.7)"></use>
+  </g>
+</svg>

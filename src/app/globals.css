@@ -87,6 +87,19 @@ body {
   display: block;
 }
 
+/* Brand logo light/dark swap — same no-JS, [data-theme]-driven mechanism as the
+   theme icons. The ink logo shows in light mode; the cream ("reversed") logo in
+   dark mode. No hydration flash, since it's pure CSS. */
+.brand-dark {
+  display: none;
+}
+:root[data-theme="dark"] .brand-light {
+  display: none;
+}
+:root[data-theme="dark"] .brand-dark {
+  display: block;
+}
+
 body {
   background: var(--paper);
   color: var(--ink);

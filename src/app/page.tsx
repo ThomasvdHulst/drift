@@ -9,6 +9,7 @@ import { listRealms, getRealm } from "@/lib/realms";
 import type { RealmId, SeedTile } from "@/lib/realms/types";
 import { RealmTabs } from "@/components/RealmTabs";
 import { useAuth } from "@/components/AuthProvider";
+import { Wordmark } from "@/components/BrandLogo";
 
 export default function Home() {
   const router = useRouter();
@@ -53,8 +54,10 @@ export default function Home() {
   return (
     <main className="mx-auto min-h-dvh w-full max-w-5xl px-6 py-12 sm:py-16">
       <header className="flex flex-col items-center text-center">
-        <h1 className="font-serif text-6xl text-ink sm:text-7xl">Drift</h1>
-        <p className="mt-3 text-lg text-ink-soft sm:text-xl">
+        <h1>
+          <Wordmark className="h-24 sm:h-28" />
+        </h1>
+        <p className="-mt-1 text-lg text-ink-soft sm:text-xl">
           Pull a thread. See where it goes.
         </p>
         <p className="mt-4 max-w-md text-base leading-relaxed text-ink/75">

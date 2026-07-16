@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 300" width="380" height="300" fill="none">
+  <defs>
+    
+    <path id="lf" d="M0 0 C9 -9 10 -22 0 -34 C-10 -22 -9 -9 0 0 Z"></path>
+  </defs>
+  <text x="150" y="252" text-anchor="middle" font-family="Fraunces, serif" font-weight="600" font-size="300" fill="#2a2723">D</text>
+  <g transform="translate(150,26) scale(1.5)">
+    <path d="M8 74 C55 74 100 56 142 30" stroke="#6f7e42" stroke-width="4" stroke-linecap="round"></path>
+    <path d="M112 44 C120 41 126 35 130 26" stroke="#6f7e42" stroke-width="2.4" stroke-linecap="round"></path>
+    <g fill="#889a4e">
+      <use href="#lf" transform="translate(110 44) rotate(24) scale(0.95)"></use>
+      <use href="#lf" transform="translate(132 32) rotate(36) scale(1.15)"></use>
+      <use href="#lf" transform="translate(152 24) rotate(48) scale(0.95)"></use>
+      <use href="#lf" transform="translate(88 52) rotate(14) scale(0.8)"></use>
+    </g>
+    <g fill="#a2b46b"><use href="#lf" transform="translate(130 26) rotate(30) scale(0.7)"></use></g>
+  </g>
+</svg>
