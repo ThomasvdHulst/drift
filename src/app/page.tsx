@@ -8,9 +8,11 @@ import { pickRandom } from "@/lib/pick";
 import { listRealms, getRealm } from "@/lib/realms";
 import type { RealmId, SeedTile } from "@/lib/realms/types";
 import { RealmTabs } from "@/components/RealmTabs";
+import { useAuth } from "@/components/AuthProvider";
 
 export default function Home() {
   const router = useRouter();
+  const { cloudConfigured } = useAuth();
   const [stats, setStats] = useState<{ trails: number; stops: number } | null>(
     null,
   );
@@ -119,11 +121,33 @@ export default function Home() {
             My Trails
           </Link>
           <Link
+            href="/atlas"
+            className="rounded-full border border-line bg-paper-raised px-6 py-2.5 text-base font-medium text-ink transition hover:border-accent/50 hover:text-accent-strong"
+          >
+            Atlas
+          </Link>
+          <Link
             href="/interests"
             className="rounded-full border border-line bg-paper-raised px-6 py-2.5 text-base font-medium text-ink transition hover:border-accent/50 hover:text-accent-strong"
           >
             Interests
           </Link>
+          {cloudConfigured && (
+            <>
+              <Link
+                href="/friends"
+                className="rounded-full border border-line bg-paper-raised px-6 py-2.5 text-base font-medium text-ink transition hover:border-accent/50 hover:text-accent-strong"
+              >
+                Friends
+              </Link>
+              <Link
+                href="/inbox"
+                className="rounded-full border border-line bg-paper-raised px-6 py-2.5 text-base font-medium text-ink transition hover:border-accent/50 hover:text-accent-strong"
+              >
+                Inbox
+              </Link>
+            </>
+          )}
         </div>
         {stats && (
           <p className="text-sm text-ink-soft">

@@ -15,16 +15,21 @@ import { trailToText } from "@/lib/export";
 import { exportTrailPng } from "@/lib/export-image";
 import { getRealm } from "@/lib/realms";
 import { TrailMap } from "@/components/TrailMap";
+import { useAuth } from "@/components/AuthProvider";
+import { ShareToFriend } from "@/components/ShareToFriend";
+import { trailToSharePayload } from "@/lib/social/share";
 
 export default function TrailDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
   const router = useRouter();
 
+  const { user, cloudConfigured } = useAuth();
   const [trail, setTrail] = useState<Trail | null | undefined>(undefined);
   const [name, setName] = useState("");
   const [liked, setLiked] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const mapRef = useRef<HTMLDivElement>(null);
 
   async function handleExport() {
@@ -173,6 +178,15 @@ export default function TrailDetailPage() {
         >
           {copied ? "Copied ✓" : "Copy as text"}
         </button>
+        {cloudConfigured && user && (
+          <button
+            type="button"
+            onClick={() => setSharing(true)}
+            className="rounded-full border border-line px-4 py-2 text-sm font-medium text-ink transition hover:border-accent/50 hover:text-accent-strong"
+          >
+            Send to a friend
+          </button>
+        )}
         <button
           type="button"
           onClick={handleDelete}
@@ -181,6 +195,15 @@ export default function TrailDetailPage() {
           Delete
         </button>
       </div>
+
+      {sharing && trail && (
+        <ShareToFriend
+          kind="trail"
+          payload={trailToSharePayload(trail)}
+          label={trail.name}
+          onClose={() => setSharing(false)}
+        />
+      )}
 
       <div className="mt-8 rounded-2xl bg-paper-raised p-4 shadow-sm ring-1 ring-line">
         <TrailMap steps={trail.steps} mapRef={mapRef} />

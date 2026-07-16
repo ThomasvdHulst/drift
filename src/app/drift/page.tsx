@@ -42,6 +42,9 @@ import {
 import { CardView } from "@/components/CardView";
 import { FeedTopBar, FeedBottomNav } from "@/components/FeedChrome";
 import { TrailMap } from "@/components/TrailMap";
+import { useAuth } from "@/components/AuthProvider";
+import { ShareToFriend } from "@/components/ShareToFriend";
+import { cardToSharePayload } from "@/lib/social/share";
 
 type Dir = "drift" | "thread" | "back";
 
@@ -93,6 +96,8 @@ const REFILL_TOPICS = 3;
 const DISCOVER_LIMIT = 4;
 
 export default function DriftPage() {
+  const { user, cloudConfigured } = useAuth();
+  const [shareCard, setShareCard] = useState<Card | null>(null);
   const [history, setHistory] = useState<TrailStep[]>([]);
   const [pos, setPos] = useState(0);
   const [threadCache, setThreadCache] = useState<Record<string, Thread[]>>({});
@@ -752,7 +757,7 @@ export default function DriftPage() {
               animate="center"
               exit="exit"
               transition={spring}
-              className="absolute inset-0 px-4 pb-4 sm:px-6"
+              className="absolute inset-0 px-4 pb-safe sm:px-6"
             >
               <CardView
                 card={current.card}
@@ -766,6 +771,11 @@ export default function DriftPage() {
                 onReact={
                   realmMeta.hasInterestModel
                     ? (sig) => handleReact(current.card, sig)
+                    : undefined
+                }
+                onShare={
+                  cloudConfigured && user
+                    ? () => setShareCard(current.card)
                     : undefined
                 }
               />
@@ -782,18 +792,27 @@ export default function DriftPage() {
         )}
 
         {hint && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-6 z-10 flex justify-center px-4">
+          <div className="pointer-events-none absolute inset-x-0 bottom-safe z-10 flex justify-center px-4">
             <span className="rounded-full bg-paper-raised px-4 py-2 text-center text-sm font-medium text-ink-soft shadow-lg ring-1 ring-line">
               {hint}
             </span>
           </div>
         )}
 
+        {shareCard && (
+          <ShareToFriend
+            kind="card"
+            payload={cardToSharePayload(shareCard)}
+            label={shareCard.displayTitle}
+            onClose={() => setShareCard(null)}
+          />
+        )}
+
         {current &&
           !ended &&
           !nudgeDismissed &&
           history.length >= NUDGE_AT && (
-            <div className="absolute inset-x-0 bottom-5 z-10 flex justify-center px-4">
+            <div className="absolute inset-x-0 bottom-safe z-10 flex justify-center px-4">
               <div className="flex items-center gap-3 rounded-2xl bg-paper-raised px-4 py-3 shadow-lg ring-1 ring-line">
                 <p className="text-sm text-ink-soft">
                   You&apos;ve wandered far — want to see your trail?

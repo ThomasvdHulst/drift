@@ -57,6 +57,24 @@ function ReactionButtons({
   );
 }
 
+// A quiet "send this card to a friend" action (Phase 10). Same calm register as
+// the reaction buttons — a small paper-plane, never a loud call to share.
+function ShareButton({ onShare }: { onShare: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onShare}
+      aria-label="Send to a friend"
+      title="Send to a friend"
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-line text-ink-soft transition hover:border-accent/40 hover:text-accent-strong"
+    >
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z" />
+      </svg>
+    </button>
+  );
+}
+
 // The mode chip answers "where am I?" — drifting (casual wandering) vs being on a
 // thread (a deliberate direction you pulled). Threads read prominent + sage;
 // drifting reads quiet + neutral.
@@ -152,6 +170,7 @@ export function CardView({
   onExpand,
   reaction,
   onReact,
+  onShare,
 }: {
   card: Card;
   realm: RealmId;
@@ -162,6 +181,7 @@ export function CardView({
   onExpand?: () => void;
   reaction?: Reaction;
   onReact?: (signal: Reaction) => void;
+  onShare?: () => void;
 }) {
   // "Read more" reveals the first several BODY paragraphs (fetched lazily, once).
   // Local state resets per card because the parent re-keys CardView by pageTitle.
@@ -234,7 +254,10 @@ export function CardView({
       <div className="flex min-h-0 flex-1 flex-col gap-4 p-6 sm:p-8 md:p-10 lg:p-12">
         <div className="flex items-center justify-between gap-3">
           <ModeChip via={arrivedVia} />
-          {onReact && <ReactionButtons reaction={reaction} onReact={onReact} />}
+          <div className="flex shrink-0 items-center gap-1.5">
+            {onReact && <ReactionButtons reaction={reaction} onReact={onReact} />}
+            {onShare && <ShareButton onShare={onShare} />}
+          </div>
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">

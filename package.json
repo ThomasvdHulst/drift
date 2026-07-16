@@ -8,9 +8,12 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "verify:supabase": "node --env-file=.env scripts/verify-supabase.mjs",
+    "verify:social": "node --env-file=.env scripts/verify-social.mjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.110.5",
     "html-to-image": "^1.11.13",
     "localforage": "^1.10.0",
     "motion": "^12.42.2",

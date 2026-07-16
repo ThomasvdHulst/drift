@@ -32,11 +32,37 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > classifier (`src/lib/threads.ts`), with direction glyphs on the chips, the mode chip, and the trail-map
 > edges. **127 tests green**, build+lint clean, real-browser verified (Gallery unregressed, zero errors).
 >
-> ▶ **Next: Phase 8 — The Atlas (M19)** — a constellation page of everything you've wandered, clustered by
-> topic (planning now). **Phase 7 (Cross-Realm) is now DEFERRED** with Phase 3 (user is holding off on the
-> AI/Ollama layer for cost/capacity). After the Atlas, a **new v3+ direction is drafted below — Drift as a
-> (calm) social platform** (Phase 9 accounts & cloud sync → 10 sharing → 11 calm feed → 12 mobile app),
-> deliberately reopening the spec's "no accounts/social/app" line while keeping §2 intact.
+> ✅ **Phase 8 — The Atlas (M19) — COMPLETE & verified (2026-07-14).** A `/atlas` page draws every saved
+> trail as one "clustered galaxies" constellation — cards as dot-nodes (sized by visits), threads as edges,
+> grouped into realm-tinted topic islands; drag-pan, zoom, click-to-trail, PNG export. **135 tests green**,
+> build+lint clean, real-browser verified. (M20–M22 parked.) **Phase 7 (Cross-Realm) DEFERRED** with Phase 3
+> (holding off on AI/Ollama for cost/capacity). Also fixed: a browser-extension hydration warning (`<body>`).
+>
+> 🚧 **Phase 9 — Accounts & Cloud Sync — IN PROGRESS (started 2026-07-14).** The **v3+ social-platform**
+> arc begins: Phase 9 (accounts & cloud sync) → 10 (sharing) → 11 (calm feed) → 12 (mobile app), reopening
+> the spec's "no accounts/social/app" line while keeping §2 intact. Backend = **Supabase** (user-provisioned
+> cloud project), auth = **email+password**, sync = **lean custom local-first** over the `storage.ts` seam.
+> Broken into **M23 (foundation+auth) → M24 (sync engine on trails) → M25 (sync the rest) → M26 (hardening+docs)**.
+> **✅ PHASE 9 COMPLETE & verified (M23–M26, 2026-07-14).** Optional Supabase accounts + local-first cloud
+> sync of every store, adoption, soft-delete, offline→online, two-device cross-sync; docs + scaling guide.
+>
+> ✅ **PHASE 10 — Social graph & sharing — COMPLETE & verified (M27–M29, 2026-07-16).** Mutual friends
+> (request→accept), handle-only discovery, friend-inbox sharing of trails + cards, and **"continue theirs"**
+> (a received trail becomes your own synced copy). Friends-only sending enforced in the DB (RLS + `are_friends`).
+> **166 tests, build+lint clean;** two-account browser E2E green (friends 11/11, sharing 10/10) + blank-env
+> degradation 8/8; signed-out/local + Phase 9 sync unaffected. Docs in `docs/backend.md` (+ social scaling).
+> 🚀 **Phase 13 — Go Live — CODE/DOCS COMPLETE & verified (M30–M32, 2026-07-16); one user step remains
+> (the actual Vercel deploy).** Phases **11 (calm feed) & 12 (native app) are DEFERRED** by user decision:
+> polish + ship the core product first. Done this phase: **M30** — a required-account gate when the cloud is
+> configured (logged-out ⇒ a calm sign-in screen, not anonymous drifting) + true per-account isolation
+> (sign-out / account-switch wipes local data; best-effort flush first). **M31** — installable **PWA**
+> (`manifest.ts`, standalone, generated sage/cream icons, iOS meta, safe-area insets; mobile audit clean).
+> **M32** — `docs/deploy.md` go-live checklist + README / `.env.local.example` updates. **166 tests, build +
+> lint clean;** real-browser: gate/isolation **11/11**, blank-env degradation **6/6** (§4 intact), mobile
+> audit **11/11**, zero console errors. **Graceful degradation preserved** (no Supabase env ⇒ the old
+> fully-local app, no gate). **▶ NEXT: the user runs `docs/deploy.md`** (push → Vercel import → env vars →
+> Supabase Site URL → deploy → add-to-home-screen), then the M32 post-deploy check. Plan file:
+> `~/.claude/plans/rustling-squishing-widget.md`.
 > _(Update this line whenever progress changes.)_
 
 ---
@@ -628,7 +654,7 @@ across art, science, and literature that no feed algorithm on earth offers, beca
 
 ---
 
-## Phase 8 — The Atlas: your constellation of curiosity  *(scoped to M19 by user — NEXT to implement)*
+## Phase 8 — The Atlas: your constellation of curiosity ✅ *(M19 DONE 2026-07-14; M20–M22 parked)*
 
 > ▶ **Scoped to M19 only (user, 2026-07-14).** The user wants **the Atlas page** — a constellation view of
 > everything you've wandered, with the topics/clusters/nodes drawn out. M20–M22 are parked (see below).
@@ -638,12 +664,19 @@ across art, science, and literature that no feed algorithm on earth offers, beca
 reward *accumulate*: a single, growing constellation of *all* your saved trails, so you can see the shape of
 your own curiosity. Anti-slot-machine register throughout (reward at the exit, calm, no streaks/metrics).
 
-- [ ] **M19 — The Atlas** (`/atlas`): a page that draws every saved trail as one constellation — cards you've
-      visited as nodes, **clustered by topic** (the M9 interest topics + Gallery buckets are ready-made
-      clusters), with the threads you pulled as edges between them. Node size ~ visit count; clusters gently
-      grouped and labeled; realm-tinted. Pure layout logic in `src/lib/atlas.ts` (unit-tested), SVG paint like
-      `TrailMap`. Read-only, calm, pan/zoom, hover a node → its title + which trails it's in; click → open the
-      card / its trail. Export as PNG. Empty state until there are trails. (Full design → the plan file.)
+- [x] **M19 — The Atlas** (`/atlas`) ✅ *(DONE 2026-07-14)*: draws every saved trail as one **"clustered
+      galaxies"** constellation. `src/lib/atlas.ts` (pure, 8 tests): `buildConstellation(trails)` (nodes deduped
+      by `cardId` + visit counts; thread/drift edges aggregated with Phase-6 `kind`; clusters by **propagating a
+      topic along each trail** — drift topic → meaningful seed → thread-inherit → realm fallback, majority vote)
+      \+ `layoutConstellation` (sunflower/phyllotaxis packing within each island + row-pack of islands,
+      deterministic). `Atlas.tsx` (SVG): realm-tinted cluster halos + labels (`data-realm`), neutral thread/
+      drift edges, **dot nodes** sized by visits, drag-pan + zoom buttons + fit, hover `<title>`, click →
+      most-recent trail, PNG export (fit-all before capture). `/atlas` page with empty state + stat line, linked
+      from home + My Trails. **Verified:** build+lint clean, **135 tests green** (127 + 8); real-browser — empty
+      state before trails; after saving 3 trails (2 Encyclopedia + 1 Gallery) the atlas shows **5 labeled topic
+      islands** across **both realms** (sage + terracotta `data-realm` groups), cluster labels render, zoom
+      grows the canvas (1100→1320), clicking a node opens its trail, **Export produced a PNG download**, zero
+      console errors, §2 intact (read-only, calm).
 
 **Parked (not this phase; revisit later):**
 - [ ] **M20 — "Remember this?"** — spaced resurfacing at a session *beginning* (spec §12), serving "did I
@@ -691,39 +724,243 @@ what you've wondered about, clustered by topic. The meta-reward, at the exit, ne
 **Goal:** optional accounts that persist a user's world (trails, interests, reactions, sessions, seen, kept)
 in the cloud, syncing across devices — while keeping the app fully usable **signed-out/local** (accounts are
 additive, never a gate to drifting). This is the foundation every later social feature builds on.
-- [ ] Stand up Supabase (or chosen stack): Auth (email + 1–2 OAuth), Postgres schema mirroring today's local
-      stores as per-user tables (`trails`, `interests`, `reactions`, `sessions`, `seen`, `settings`, `kept`),
-      all guarded by **Row-Level Security** (`user_id = auth.uid()`).
-- [ ] A **sync layer** over the existing `storage.ts` seam: IndexedDB stays the local cache; a background
-      replicator pushes/pulls to Postgres (server-timestamp source of truth, soft-delete, idempotent). The rest
-      of the app keeps calling `storage.ts` unchanged.
-- [ ] **First-sign-in migration**: adopt the anonymous local data into the new account (don't lose a signed-out
-      user's trails). Sign-out returns to local-only mode.
-- [ ] Env/secrets in `.env.local`; graceful offline (backend down ⇒ local-only, never breaks the core loop, §4).
-- [ ] Keep it **API-first** for the future app (guidance above).
 
-## Phase 10 — Social graph & sharing  *(depends on Phase 9)*
-**Goal:** send a card or a whole trail to someone, and pick up where a friend's curiosity left off — the
-spec's §12 "trail seeds from friends", made real.
-- [ ] Profiles (handle + display name); a **follow/friend** model (start one-way follow, Twitter-style — simplest);
-      per-trail visibility (private / unlisted-link / shared-to-user).
-- [ ] **Share a card or a trail** to another user → their **inbox**; shareable unlisted links (works without an
-      account to view). "**Continue this trail**" from a received trail's last stop (reuses the existing
-      `?continue=` rehydration — now cross-user).
-- [ ] Calm by design: no public like counts, no follower-count vanity metrics surfaced as targets.
+> **Decisions (with user, 2026-07-14):** backend = **Supabase** (user-provisioned cloud free tier, creds in
+> git-ignored `.env`); auth first = **email + password** (magic-link/OAuth structured to drop in later);
+> sync = **lean custom local-first** (no RxDB/PowerSync — overkill for our tiny KV data); schema applied by
+> **pasting `supabase/migrations/0001_phase9_schema.sql` into Studio**, then verified via `npm run
+> verify:supabase`. Direct browser→Supabase (secured by publishable key + RLS) is a sanctioned exception to
+> §4's "proxy everything" (which exists for Wikipedia UA/CORS); the **secret key stays server-only**. Full
+> design: `~/.claude/plans/adaptive-wondering-snail.md`.
 
-## Phase 11 — A calm social feed  *(depends on Phase 10; the soul is most at risk here — guard §2 hard)*
+### M23 — Supabase foundation: client, auth, schema + RLS  *(data sync NOT yet wired)*
+- [x] `@supabase/supabase-js` added; `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` in
+      `.env` (git-ignored); `.env.local.example` documents all vars (secret = server-only).
+- [x] `src/lib/supabase/client.ts` — graceful singleton (null when unconfigured/SSR ⇒ app stays byte-for-byte
+      the old local-only app). `src/components/AuthProvider.tsx` + `useAuth` (no-op when unconfigured).
+- [x] `/account` page (calm email+password sign in / up / out) + quiet global `AccountButton` (hidden when
+      unconfigured, no badges/dots). Wired into `layout.tsx`.
+- [x] `supabase/migrations/0001_phase9_schema.sql` — `trails` (row-level), `reactions` (row-level, PK
+      user_id+card_id), `user_kv` (blob: settings/interests/seen/sessions), all with `updated_at` triggers +
+      RLS `user_id = auth.uid()`. `scripts/verify-supabase.mjs` (`npm run verify:supabase`) asserts tables +
+      RLS isolation + trigger + upsert.
+- [x] **Verified so far (build+lint+135 tests green):** real-browser — signed-out app unchanged + core loop
+      works; `/account` renders; **sign in → session persists across reload → sign out**; account affordance
+      reflects state; **degradation** (blank env) → app runs fully local, affordance hidden, zero errors.
+- [x] **User step done (2026-07-14):** migration SQL pasted + "Confirm email" disabled. `npm run
+      verify:supabase` is **all-green** (tables exist, RLS isolates non-owners, trigger stamps `updated_at`,
+      upserts work). **M23 COMPLETE.**
+
+### M24 — Local-first sync engine, proven end-to-end on Trails ✅ *(DONE 2026-07-14)*
+- [x] `src/lib/sync/merge.ts` (pure, **11 unit tests**: LWW, dirty-wins, soft-delete, cursor advance, no-op
+      detection, input-immutability). `src/lib/sync/replicator.ts` (thin, fully try/caught — never throws into
+      the app). storage.ts got a **sync journal + cursors** (`syncState` key, one serialized chain),
+      change-events (`subscribeStore`), a **recording toggle** (off ⇒ unconfigured app writes nothing extra),
+      **serialized trail writes** (`withTrails`, since the replicator now writes concurrently), and
+      `applyRemoteTrails`. **Trails only** this milestone.
+- [x] Debounced push (1.5 s) of journaled upserts + soft-delete tombstones; pull on **sign-in / focus /
+      visibility / `online`** (all do a full pull+push so a reconnect flushes offline edits); server-timestamp
+      LWW via a `BEFORE INSERT/UPDATE` trigger; **first-sign-in adoption** of the signed-out user's trails;
+      **sign-out keeps all local data** + journal (resumes on next sign-in). AuthProvider wires start/stop +
+      recording. `/account` shows a quiet sync-status dot; the trails list re-reads on `storeUpdated`.
+- [x] **Verified (build+lint+146 tests green):** two-profile real-browser E2E, **11/11 green, zero console
+      errors** — signed-out save → **sign-in adopts it to the cloud**; **device B sees device A's trail**;
+      **rename & delete propagate A→B** (soft-delete); **offline save works client-side and syncs on
+      reconnect**. Degradation (blank env) re-confirmed from M23; Supabase-unreachable path covered by the
+      offline test (errors caught, local unaffected).
+
+### M25 — Sync the rest: reactions, interests, settings, seen, sessions ✅ *(DONE 2026-07-14)*
+- [x] Replicator generalized into **collections** (`trails`, `reactions` — per-record LWW + tombstones) and
+      **blobs** (`user_kv`: `interests`/`settings` whole-value LWW; `seen`/`sessions` **union** so two devices
+      combine, via `pushSeen` / `mergeSessions`). `topicsCache` stays local-only. storage.ts got journaling +
+      `applyRemote*` + serialization for every store; `mergeSessions` added to merge.ts (**+3 tests → 14**).
+- [x] **Adoption correctness fix (caught by the test):** first-sign-in adoption now marks only **non-empty**
+      blobs dirty — a fresh device PULLS the account's settings/interests/seen/sessions instead of clobbering
+      them with local defaults.
+- [x] **Verified (build+lint+149 tests green):** two-profile real-browser, **12/12 green, zero console
+      errors** — device A likes a card (reaction), drifts (seen), ends a session (sessions), boosts a topic
+      (interest), turns personalization off (settings); **all five stores land on the server**; a fresh
+      device B **pulls settings (personalize=off) and the reaction (♥)**. seen/sessions share the verified blob
+      path.
+
+### M26 — Hardening, docs & Phase 9 exit ✅ *(DONE 2026-07-14)*
+- [x] Resilience: focus/online/visibility trigger a coalesced pull+push (`inFlight`+`rerun` guard so a change
+      mid-cycle still flushes); debounced push; sign-out keeps local data + journal. Known limits documented
+      (LWW conflicts, one-account-per-device, seen/sessions union) in `docs/backend.md`.
+- [x] **`docs/backend.md`** — full setup (env, one-time schema paste, `verify:supabase`), data model, how sync
+      works, known limitations, and a **"Scaling Drift" guide** (free-tier limits; custom SMTP for auth email;
+      Pro plan / project-pausing; blob→rows; PowerSync/Electric/RxDB; Realtime; pooling; backups; image CDN;
+      opening signups). Replaced the stock `README.md` with a real Drift intro. Updated CLAUDE.md §3/§4/§7.
+- [x] **Full regression (build+lint+149 tests green):** signed-out comprehensive flow (core loop, thread pull,
+      react, save, reload-persist, continue, interests, atlas) **10/10, zero errors**; blank-env degradation
+      **6/6, zero errors**; two-device + offline verified in M24/M25. §2 register held (quiet sync dot, no
+      badges/streaks; accounts never gate drifting).
+
+**Phase 9 exit:** ✅ Drift has **optional accounts** and **local-first cloud sync**. Sign in and your whole
+world (trails, reactions, interests, settings, seen, sessions) follows you across devices; sign out or lose
+the backend and Drift is exactly the calm local-only app it always was. This is the foundation Phases 10–12
+build on. Backend/scaling docs: `docs/backend.md`.
+
+## Phase 10 — Social graph & sharing  ✅ *(COMPLETE — 2026-07-16)*
+**Goal:** find & add friends, send a card or a whole trail to a friend, and pick up where a friend's
+curiosity left off — the spec's §12 "trail seeds from friends", made real.
+
+> **Decisions (with user, 2026-07-16):** **mutual friends** (request → accept, not one-way follow);
+> **handle-only discovery** (no name directory); **friend-inbox only** this phase (no public links —
+> nothing readable without an account). Social data is **live-fetched** via `src/lib/social/*` (the Phase 9
+> replicator is untouched); a continued/added received trail becomes the recipient's own local trail and
+> syncs via Phase 9. "Continue theirs" reuses the existing `?continue=` path (no drift-page changes). §2
+> holds: finite inbox (feed = Phase 11), quiet indicators, no vanity counts. Plan file:
+> `~/.claude/plans/adaptive-wondering-snail.md`.
+
+### M27 — Identity & the friend graph  🚧
+- [x] `supabase/migrations/0002_phase10_social.sql`: `profiles` (unique handle `^[a-z0-9_]{3,30}$`),
+      `friend_requests` (pending/accepted, request-based mutual model), `are_friends()` helper — all RLS +
+      `set_updated_at` triggers (reuses 0001's function).
+- [x] Pure logic: `src/lib/social/handles.ts` (normalize/validate) + `friends.ts`
+      (`deriveRelationship`/`partition`/`otherPartyId`) — **12 unit tests**. `src/lib/social/client.ts` (graceful:
+      `getMyProfile`/`upsertProfile`/`searchByHandle`/`listFriendData`/`send`+`respond`+`removeFriendship`).
+- [x] Handle/display-name setup on `/account`; `/friends` page (search by handle → request; incoming
+      accept/decline; outgoing cancel; friends list + unfriend); homepage **Friends** link (cloud-gated).
+      `scripts/verify-social.mjs` (`npm run verify:social`).
+- [x] **Verified so far (build+lint+161 tests green):** pre-migration graceful check — `/account` + `/friends`
+      render without crashing, core drift loop unaffected (missing-table 4xx are expected and clear post-migration).
+- [x] **User step done (2026-07-16):** `0002_phase10_social.sql` pasted. `npm run verify:social` **all-green**
+      (profiles upsert + unique handle; request→see→accept; **RLS: unrelated user sees nothing, non-addressee
+      can't accept**; `are_friends` true). Two-account real-browser E2E **11/11, zero console errors** (both set
+      handles, A finds B by handle, request → B accepts → both friends → unfriend reflects on both). **M27 COMPLETE.**
+
+### M28 — Sharing & the inbox ("send things" + "continue theirs")  🚧
+- [x] `supabase/migrations/0003_phase10_shares.sql`: `shares` (snapshot payload) + RLS — **insert only between
+      friends** via `are_friends()` + `set_updated_at` trigger. `src/lib/social/share.ts` (pure, **5 tests**:
+      snapshot/import round-trip). `client.ts` share calls (`sendShare`/`listInbox`/`markShareRead`/
+      `deleteShare`/`socialBadge`).
+- [x] `ShareToFriend` dialog (pick friend + note + send) on the **trail detail** page and the **feed card**
+      (quiet paper-plane in CardView, wired from drift). `/inbox` page: received trail/card, **Continue this
+      trail** (snapshot → new local trail via module-scope `importSnapshot` → `?continue=`), **Add to my
+      trails**, card preview + "View source ↗" + "Drift from here"; delete; mark-read on open. Homepage **Inbox**
+      link; **quiet sage dot** on the account affordance (unread shares + incoming requests; no red/number, no polling).
+- [x] `verify-social.mjs` extended with share tests. **Verified so far (build+lint+166 tests green).**
+- [x] **User step done (2026-07-16):** `0003_phase10_shares.sql` pasted. `npm run verify:social` **all-green**
+      (friend can send; **non-friend BLOCKED by RLS**; non-recipient reads nothing). Two-account real-browser
+      E2E **10/10, zero console errors** — A sends B a trail (+ note) → B sees the quiet unread dot → inbox
+      shows it → **B continues → B's own trail synced to the cloud**; card sharing via the feed paper-plane
+      also lands in B's inbox. **M28 COMPLETE.**
+
+### M29 — Calm guardrails, docs & Phase 10 exit ✅ *(DONE 2026-07-16)*
+- [x] §2 register held throughout: finite newest-first inbox (no feed), single quiet **sage** unread dot
+      (no red/number, focus-checked not polled), deliberate pick-a-friend sharing, handle-only discovery, no
+      vanity counts. All social calls graceful (backend down → calm empty states; core loop untouched).
+- [x] Docs: `docs/backend.md` extended (social tables + RLS + `are_friends` + §5b social layer + social scaling:
+      blocking/abuse, rate-limits, handle indexing, digest-not-bait). `README`/`CLAUDE.md §4` updated.
+- [x] **Full regression (build+lint+166 tests green):** two-account social E2E (M27 friends 11/11 + M28 sharing
+      10/10, zero errors); **blank-env degradation 8/8** (no Friends/Inbox links, no share affordance, `/friends`
+      + `/inbox` degrade to calm prompts, core loop works); **Phase 9 sync unregressed** (proven inside M28 — A's
+      trail synced, B's continued copy synced). **M29 COMPLETE.**
+
+**Phase 10 exit:** ✅ Drift is a **calm social platform**. You set a handle, find friends by handle, send a
+friend request they accept, then **send a trail or card to a friend's inbox** and **continue theirs** (it
+becomes your own synced copy). Friends-only sending is enforced in the DB (RLS + `are_friends`). Nothing about
+signed-out/local Drift changed. The §2 soul held — a finite inbox, quiet awareness, deliberate sharing; the
+doomscroll feed is deliberately deferred to Phase 11. Backend/scaling docs: `docs/backend.md`.
+
+## Phase 11 — A calm social feed  ⏸ *(DEFERRED 2026-07-16 — optimize the core product + ship first)*
+> ⏸ **DEFERRED by user decision (2026-07-16).** The user wants to optimize the main product and get it
+> online/installable (Phase 13) before stepping further into the social-media dimension. Not cancelled — this
+> is still the §2-hardest phase and worth returning to once the core is polished and in daily use.
+
 **Goal:** "what the people I follow have been wandering" — **without** becoming a feed to doomscroll.
 - [ ] A **bounded, digest-style** view (e.g. "this week's trails from people you follow"), explicitly **not**
       an infinite auto-loading feed. Finite, has an end, no "just one more".
 - [ ] **Gentle, batched notifications** (a quiet digest, never per-event bait; opt-in). No red badges, no streaks.
 - [ ] Minimal, non-competitive reactions (if any) — a quiet "loved this trail", never a public score race.
 
-## Phase 12 — Mobile app  *(depends on Phase 9; the eventual "switch to an app")*
+## Phase 12 — Mobile app  ⏸ *(DEFERRED 2026-07-16 — the installable PWA in Phase 13 is the lighter interim)*
+> ⏸ **DEFERRED by user decision (2026-07-16).** Rather than build a native app now, Phase 13 ships an
+> **installable PWA** (add-to-home-screen, standalone) — cheap, no app-store friction — so the user can test
+> Drift as a web-app on their phone right away. A true native Expo/React-Native app stays the eventual step
+> once the PWA has proven the mobile experience.
+
 **Goal:** a real Drift app (iOS/Android) reusing the same backend.
 - [ ] **Expo / React Native** app against the same Supabase backend; extract `src/lib/*` into a shared package
       consumed by both web and app (see architecture guidance). Rebuild the feed/card/trail-map UI natively
       (gestures map cleanly to the drift/thread mechanic). Web stays; the app is an additional client.
+
+---
+
+## Phase 13 — Go Live: deploy online (free) + installable web-app  🚀 *(CURRENT — started 2026-07-16)*
+**Goal:** get Drift **online for free** and **installable on a phone as a web-app**, so it can be used and
+tested in the real world — *before* extending the social dimension (Phases 11–12 deferred). Hosting =
+**Vercel Hobby (free)**; backend = the **existing Supabase** project (no change). Two product changes fall
+out of going multi-user: **accounts become required** when the cloud is configured (no anonymous drifting on
+the public URL), and **each account sees only its own trails** (local data cleared on sign-out).
+
+> **Decisions (with user, 2026-07-16):** host on **Vercel** (project already on the user's GitHub); **require
+> sign-in** when cloud-configured (logged-out ⇒ a calm sign-in/create-account gate — a demo/anon mode is a
+> later idea); **clear local data on sign-out** so no account's trails linger for the next; ship an
+> **installable PWA** (manifest + icons + iOS meta, `display: standalone`) — **no service worker for now**
+> (avoids stale-cache headaches; the app needs the network for content anyway); keep Supabase **"Confirm
+> email" OFF** for now (frictionless friends-only signup). **Graceful degradation preserved:** the gate + all
+> cloud behaviour activate ONLY when `isCloudConfigured()` is true, so a no-env local clone is byte-for-byte
+> the old fully-local app (CLAUDE.md §4). The anti-slot-machine principles (§2) are untouched — this is about
+> identity/hosting, not engagement mechanics. Full design in the Phase 13 plan file.
+
+### M30 — Require an account + true per-account isolation ✅ *(DONE 2026-07-16)*
+- [x] Auth **gate** (`src/components/AuthGate.tsx`, wrapped around `{children}` in `layout.tsx`):
+      `cloudConfigured && !user` ⇒ a calm branded "Drift · sign in to start drifting" screen; `loading` ⇒ a
+      quiet placeholder; `!cloudConfigured` ⇒ app ungated (local-only, §4). Shared `src/components/AuthForm.tsx`
+      extracted from `/account` (used by both the gate and the account page).
+- [x] **Clear all local stores on sign-out** — `clearAllLocalData()` in `storage.ts` (removes every store +
+      sync journal/cursors/lastUserId, emits remote events, leaves `localStorage` theme mirror). `AuthProvider`
+      `signOut()`: best-effort `flushSync()` → Supabase sign-out → `stopSync()` → `clearAllLocalData()`. Account
+      switch: `handleSignIn` (replicator) now `clearAllLocalData()` on a different `lastUserId` (adoption path
+      for first account unchanged).
+- [x] Updated stale "additive / optional / never a gate" copy in `AuthProvider`, `AccountButton`, `/account`
+      intro, and `docs/backend.md` (§1 core principle + the one-account-per-device limitation).
+- [x] **Test M30:** build + lint + **166 unit tests green**. Real-browser (prod build, env set): **11/11** —
+      logged-out shows the gate, `/trails` gated; sign-in reveals the app; an injected trail is **wiped from
+      IndexedDB on sign-out** and the gate returns; re-sign-in loads cleanly; **zero console errors**. Blank
+      Supabase env (dev): **6/6** — no gate, homepage + `/trails` load directly (§4 intact), zero errors.
+
+### M31 — Installable web-app (PWA) + mobile polish ✅ *(DONE 2026-07-16)*
+- [x] `app/manifest.ts` (name/short_name "Drift", `start_url:"/"`, `display:"standalone"`, `background_color`
+      `#f5efe4` + `theme_color` `#6f8f74`, 192/512 + maskable icons). `layout.tsx`: `viewport.themeColor`
+      (light `#f5efe4` / dark `#1b1917`) + `viewportFit:"cover"` + `metadata.appleWebApp` (`capable`, `title`,
+      `statusBarStyle`). Icons auto-linked via file conventions (`app/icon.svg`, `app/apple-icon.png`).
+- [x] `scripts/make-icons.mjs` — renders an on-brand SVG "trail meander" mark (sage thread + nodes on cream)
+      via Playwright → `public/icon-192.png`, `icon-512.png`, `icon-maskable-512.png` (safe-zone scaled),
+      `src/app/apple-icon.png` (180×180 opaque), `src/app/icon.svg`. Removed the stock create-next-app SVGs +
+      the Next-logo `favicon.ico` (icon.svg is the favicon; ICO dropped — Next's ICO decoder needs RGBA PNG).
+- [x] **Mobile pass:** safe-area utilities in `globals.css` (`bottom-safe`/`pb-safe` = `calc(1rem +
+      env(safe-area-inset-bottom))`) applied to the fixed ThemeToggle/AccountButton and the feed card wrapper
+      + hint/nudge overlays (clear the iOS home indicator in standalone; no-ops in a normal tab). iOS
+      `statusBarStyle:"default"` reserves the top status bar, so only the bottom needed handling. Card was
+      already responsive (`md:flex-row`, `h-[34vh]` image band, `sm/lg` type) — audit found no overflow to fix.
+- [x] **Test M31:** build + lint + **166 tests green**. Real-browser (iPhone-13 viewport, 390px): **11/11** —
+      `/manifest.webmanifest` valid (`display:standalone`, 3 icons); **no horizontal overflow** on gate, home,
+      drift, trails, interests, atlas, friends, inbox, account; live probe confirms the card title is visible +
+      Read-more scrolls + threads pinned/reachable; touch taps navigate; **zero console errors**. (Real-device
+      add-to-home-screen install is part of M32's post-deploy check with the user.)
+
+### M32 — Production config + deploy docs (the user's go-live checklist) ✅ *(code/docs DONE 2026-07-16; live deploy = user step)*
+- [x] **`docs/deploy.md`** — a step-by-step, copy-paste checklist for the user: push to GitHub → import the
+      repo on Vercel → set env vars (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and
+      optional `WIKI_USER_AGENT`/`ARTIC_USER_AGENT`; **secret key NOT set in prod**) → set Supabase **Site
+      URL + redirect allow-list** to the Vercel domain → deploy → open on the phone → add to home screen.
+      Free-tier notes (Vercel Hobby caps; Supabase 7-day idle pause) + a rollback/troubleshoot section
+      included. Added a "Deploy it (free)" section + Docs pointer to `README.md`; updated `.env.local.example`.
+- [x] Verified a **production build** (`npm run build` clean + TypeScript clean; `/manifest.webmanifest`,
+      `/icon.svg`, `/apple-icon.png` emitted). The app runs against the **real Supabase project** — sign-in +
+      the sign-out wipe + re-sign-in all verified green in M30 (env configured). Sync/sharing code paths are
+      unchanged from Phases 9–10. No `vercel.json` needed (auto-detected).
+- [ ] **Test M32 (post-deploy, WITH the user):** the live Vercel URL loads; sign-in works; a trail saved on
+      the phone syncs to Supabase and appears on desktop (and vice-versa); friends/inbox work; the app is
+      installed to the phone home screen and runs standalone. _(Awaiting the user's `docs/deploy.md` run.)_
+
+**Phase 13 exit:** Drift is live on a free public URL, installable as a web-app on the phone, gated behind a
+required account (each account private to its own trails), while an unconfigured local clone stays the calm
+fully-local app it always was. The native app (Phase 12) and the calm feed (Phase 11) remain the next steps
+when the user is ready.
 
 ---
 
@@ -754,3 +991,9 @@ thread-affecting personalization remains out of scope.
 > open-access realms) and a little more **algorithm** (Phases 6–7, still transparent + user-steered) —
 > plus several §12 parking-lot ideas (Phase 8). None are committed; they become in-scope only when the
 > user picks one up. The anti-slot-machine principles (§2) remain non-negotiable for all of them.
+
+> **Amendment (2026-07-16):** Phase 13 (Go Live) makes **accounts required in the deployed/multi-user
+> context** — i.e. *only when the cloud is configured*. This reverses the earlier "accounts are additive,
+> never a gate" stance **for the hosted app** (a deliberate user decision, in the same spirit as Phases 9–12
+> reopening the spec's "no accounts" line). A no-env local clone stays ungated and fully local (§4 intact),
+> and §2 is untouched. A future demo/anonymous mode may soften the gate later.

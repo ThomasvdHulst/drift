@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { Trail } from "@/lib/types";
-import { listTrails, deleteTrail, listSessions } from "@/lib/storage";
+import {
+  listTrails,
+  deleteTrail,
+  listSessions,
+  subscribeStore,
+} from "@/lib/storage";
 import { getRealm } from "@/lib/realms";
 import type { RealmId } from "@/lib/realms/types";
 import { TrailSparkline } from "@/components/TrailSparkline";
@@ -38,6 +43,10 @@ export default function MyTrailsPage() {
         sessions: recent.length,
         avgMin: Math.max(1, Math.round(avgMs / 60000)),
       });
+    });
+    // Refresh when the cloud replicator merges in trails from another device.
+    return subscribeStore((e) => {
+      if (e.store === "trails") listTrails().then(setTrails);
     });
   }, []);
 
@@ -78,6 +87,12 @@ export default function MyTrailsPage() {
           )}
         </div>
         <div className="flex items-center gap-3">
+          <Link
+            href="/atlas"
+            className="rounded-full border border-line px-4 py-2.5 text-sm font-medium text-ink transition hover:border-accent/50 hover:text-accent-strong"
+          >
+            Atlas
+          </Link>
           <Link
             href="/interests"
             className="rounded-full border border-line px-4 py-2.5 text-sm font-medium text-ink transition hover:border-accent/50 hover:text-accent-strong"

@@ -28,7 +28,7 @@ export function ThemeToggle() {
       onClick={toggle}
       aria-label="Toggle light or dark mode"
       title="Toggle theme"
-      className="fixed bottom-4 right-4 z-30 flex h-9 w-9 items-center justify-center rounded-full border border-line bg-paper-raised/90 text-ink-soft shadow-sm backdrop-blur transition hover:text-accent-strong"
+      className="fixed bottom-safe right-4 z-30 flex h-9 w-9 items-center justify-center rounded-full border border-line bg-paper-raised/90 text-ink-soft shadow-sm backdrop-blur transition hover:text-accent-strong"
     >
       {/* Moon shows in light mode (→ go dark); sun shows in dark mode (→ go light). */}
       <svg className="theme-icon-light" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

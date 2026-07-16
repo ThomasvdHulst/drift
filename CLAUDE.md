@@ -43,7 +43,11 @@ without them:
   for card transitions / swipe gestures. Built on **Next.js 16** — see the Phase 1 build
   notes in `plan.md` for its breaking-change gotchas.
 - **Persistence: IndexedDB via `localforage`** (key-value: `trails`, `settings`,
-  `seen-pages`, `ai-cache`, `sessions`). No server DB.
+  `seen-pages`, `ai-cache`, `sessions`). Local-first: IndexedDB is always the source of truth
+  for a session. **Phase 9 adds an OPTIONAL Supabase cloud backend** that syncs a signed-in
+  user's stores across devices (Postgres + Auth + RLS); the app stays fully usable
+  signed-out/local, and everything still flows through the `src/lib/storage.ts` seam. See
+  `docs/backend.md`.
 - **Trail map: hand-built SVG in React** (no d3 for v1 — trails are near-linear chains).
 - **Trail export: SVG → PNG client-side** (`html-to-image`).
 - **AI layer (optional): local Ollama** at `http://localhost:11434`, behind feature flags,
@@ -78,6 +82,22 @@ without them:
 - **The AI layer must never break the app.** Ollama unreachable / timeout (>6s) / malformed
   JSON → silently fall back to embedding-only diversity, then to the plain heuristic. The
   app must work fully with Ollama off.
+- **Supabase (Phase 9) is the SANCTIONED exception to "proxy everything."** The "never call
+  external services directly from the browser" rule exists for Wikipedia/Ollama (the
+  `Api-User-Agent` header + junk-filtering + CORS). Supabase is the opposite case: it's
+  *designed* for direct browser access secured by the **publishable key + Row-Level Security**
+  (`user_id = auth.uid()`) — that IS its security model. So Drift calls Supabase directly from
+  the browser. The **`sb_secret_*` key is server-only** (used only by `scripts/verify-supabase.mjs`);
+  never give it a `NEXT_PUBLIC_` prefix. Like Ollama, the backend **must degrade gracefully**:
+  unconfigured/unreachable ⇒ `getSupabase()` returns null / errors are caught ⇒ the app runs
+  fully local and the core loop never breaks. Env: `NEXT_PUBLIC_SUPABASE_URL`,
+  `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`. Migrations live in
+  `supabase/migrations/` (pasted into Studio); `npm run verify:supabase` checks the backend.
+- **Phase 10 social tables** (`profiles`, `friend_requests`, `shares`) are **live-fetched** via
+  `src/lib/social/*` (NOT local-first synced), same graceful-degradation contract. Friendship is
+  mutual (request→accept); discovery is **handle-only**; **sending a share is enforced
+  friends-only in the DB** via the `are_friends()` function in the `shares` insert RLS policy —
+  never rely on the UI alone for that. `npm run verify:social` checks it. See `docs/backend.md`.
 
 ## 5. Content filtering rules (apply to every fetched page)
 
@@ -100,10 +120,11 @@ distinct from the neutral vertical drift swipe. Visual language = the opposite o
 ## 7. Commands
 
 ```bash
-npm run dev        # start dev server → http://localhost:3000
-npm run build      # production build — also the primary type-check gate
-npm run lint       # eslint / next lint
-npm run test       # vitest (unit tests for pure lib logic)
+npm run dev             # start dev server → http://localhost:3000
+npm run build           # production build — also the primary type-check gate
+npm run lint            # eslint / next lint
+npm run test            # vitest (unit tests for pure lib logic)
+npm run verify:supabase # Phase 9: check the cloud backend (tables + RLS + upserts)
 ```
 
 (These are established during Phase 1 scaffolding; keep this section accurate as scripts

@@ -59,6 +59,17 @@
   --font-serif: var(--font-fraunces);
 }
 
+/* Safe-area helpers (Phase 13) — keep fixed controls + feed overlays above the
+   iOS home indicator / Android gesture bar when Drift is launched standalone from
+   the home screen (viewportFit: "cover" exposes env(safe-area-inset-*); the inset
+   is 0 in a normal browser tab, so these are no-ops there). */
+@utility bottom-safe {
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+}
+@utility pb-safe {
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+}
+
 html,
 body {
   height: 100%;
