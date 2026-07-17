@@ -27,6 +27,8 @@ export interface ArticArtwork {
   artist_id?: number;
   date_display?: string;
   medium_display?: string;
+  dimensions?: string | null;
+  credit_line?: string | null;
   place_of_origin?: string;
   classification_title?: string;
   style_title?: string;
@@ -37,13 +39,22 @@ export interface ArticArtwork {
   short_description?: string | null;
   description?: string | null;
   provenance_text?: string | null;
+  // A small object AIC returns alongside the image: a base64 blur placeholder and
+  // real alt text (used for a blur-up load + a11y on the card and zoom lightbox).
+  thumbnail?: {
+    lqip?: string | null;
+    alt_text?: string | null;
+    width?: number;
+    height?: number;
+  } | null;
 }
 
 /** Fields we request from search/detail (keeps payloads small). */
 export const ARTIC_FIELDS = [
   "id", "title", "artist_title", "artist_id", "date_display", "medium_display",
-  "place_of_origin", "classification_title", "style_title", "subject_titles",
-  "department_title", "image_id", "is_public_domain", "short_description",
+  "dimensions", "credit_line", "place_of_origin", "classification_title",
+  "style_title", "subject_titles", "department_title", "image_id",
+  "is_public_domain", "short_description", "thumbnail",
 ].join(",");
 
 /** Usable as a card? public domain + has an image + a title. */
@@ -68,7 +79,32 @@ function artDescription(a: ArticArtwork): string | undefined {
   return d || undefined;
 }
 
+/**
+ * The "museum label": structured metadata rows for an artwork, in reading order,
+ * skipping anything missing. Pure so it's unit-testable; surfaced on the card as a
+ * calm, progressively-disclosed "Details" block (Phase 14 M-G1).
+ */
+export function artFacts(a: ArticArtwork): { label: string; value: string }[] {
+  const rows: { label: string; value: string }[] = [];
+  const push = (label: string, value?: string | null) => {
+    const v = (value ?? "").trim();
+    if (v) rows.push({ label, value: v });
+  };
+  push("Medium", a.medium_display);
+  push("Dimensions", a.dimensions);
+  push("Classification", a.classification_title);
+  push("Department", a.department_title);
+  push("Origin", a.place_of_origin);
+  const subjects = (a.subject_titles ?? [])
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (subjects.length) push("Subjects", subjects.join(", "));
+  push("Credit", a.credit_line);
+  return rows;
+}
+
 export function articToCard(a: ArticArtwork): Card {
+  const facts = artFacts(a);
   return {
     pageTitle: String(a.id),
     displayTitle: (a.title ?? "").trim() || "Untitled",
@@ -77,14 +113,21 @@ export function articToCard(a: ArticArtwork): Card {
     imageUrl: articImageUrl(a.image_id),
     sourceUrl: articPageUrl(a.id),
     source: "artic",
+    ...(facts.length ? { facts } : {}),
+    ...(a.image_id ? { zoomUrl: articImageUrl(a.image_id, 1686) } : {}),
+    ...(a.thumbnail?.lqip ? { blurDataUrl: a.thumbnail.lqip } : {}),
+    ...(a.thumbnail?.alt_text ? { imageAlt: a.thumbnail.alt_text.trim() } : {}),
   };
 }
 
-/** A faceted related candidate ("More by {artist}", etc.). */
+/** A faceted related candidate. `eyebrow` is the short facet word shown above
+ *  the label on the chip ("MORE BY", "THE MOVEMENT", …); `threadLabel` is the
+ *  destination (the artist / movement / place / subject). */
 export function articToCandidate(
   a: ArticArtwork,
   threadLabel: string,
   facet: string,
+  eyebrow?: string,
 ): RelatedCandidate {
   return {
     pageTitle: String(a.id),
@@ -96,5 +139,6 @@ export function articToCandidate(
     sourceUrl: articPageUrl(a.id),
     threadLabel,
     facet,
+    ...(eyebrow ? { eyebrow } : {}),
   };
 }

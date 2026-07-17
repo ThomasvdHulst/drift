@@ -105,6 +105,23 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > left as-is (not rendered). **Verified:** build+lint clean, **197 tests**; browser: all 4 trails rotate and
 > every image loads, **0 dashes** in `document.body.innerText`, demo still works, zero console errors.
 >
+> 🌱 **Three new directions queued (2026-07-17, from a full-app brainstorm)** — added below as **Phases 14–16**.
+> The user wants to deepen what exists (not add realms or a social feed): **two great realms, product before
+> social.** (1) **Phase 14 — Gallery, Deepened** (museum-label metadata, mobile-friendly art deep-zoom,
+> directional art threads, richer browse): **STARTING NOW** (detailed milestone plan built in plan mode). (2)
+> **Phase 15 — Cross-Realm Doorways** (a free, no-AI factual bridge between the two realms; + the user's two
+> asks: horizontal swipe between realms with trails that span both, and a living, sendable Atlas). (3)
+> **Phase 16 — Memory & Reflection** (keep-a-fact shelf, "remember this?" openers, an honest "shape of your
+> week" — the thing a feed can't do; §9 #4). All three bind §2. Cross-realm is verified feasible without the
+> Ollama layer (AIC artist/style/place strings resolve cleanly onto Wikipedia; see Phase 15).
+>
+> 🎨 **Phase 14 (Gallery, Deepened) — ✅ COMPLETE & verified (2026-07-17).** M-G1 museum label + M-G2 deep-zoom
+> lightbox + M-G3 directional art threads + M-G4 richer discovery all shipped (M-G5 personalization optionally
+> deferred). **203 unit tests, build+lint clean**; per-milestone + an integrated 390px browser pass, zero
+> console errors; Encyclopedia unregressed. New dep `react-zoom-pan-pinch`. Plan file:
+> `~/.claude/plans/lexical-beaming-clarke.md`. **▶ NEXT (when the user is ready): Phase 15 (Cross-Realm
+> Doorways) or Phase 16 (Memory & Reflection).**
+>
 > _(Update this line whenever progress changes.)_
 
 ---
@@ -1008,6 +1025,175 @@ when the user is ready.
 
 ---
 
+# 🌱 THREE NEW DIRECTIONS (2026-07-17) — deepen what exists
+
+> From a full-app brainstorm. The user's steer: **make the current app better/stronger/more interactive**,
+> **keep two great realms** (no 3rd), and **product before social** (the calm feed / native app stay deferred).
+> These are the committed next directions. **Phase 14 (Gallery) is being built first** (its detailed milestone
+> plan is produced separately in plan mode); Phases 15–16 are captured here at idea-phase depth so they can be
+> picked up whenever. All three bind the anti-slot-machine principles (§2). Nothing below is started; boxes are
+> unticked on purpose. Mobile-first is a hard constraint for all of them (Drift is used mostly as a phone PWA).
+
+---
+
+## Phase 14 — Gallery, Deepened  *(make the second realm as strong as the first — STARTING 2026-07-17)*
+
+**Goal:** the Gallery is currently ~half the Encyclopedia's richness — good AIC metadata is *fetched and
+thrown away*, "Read more" is usually empty, the art is a flat 843px image with no zoom, threads are flat
+"More by X" chips with no direction, and there's no personalization. Close that gap so the two realms feel
+equally cared-for. Nothing here needs a new source or AI — it's craft over data we already pull. **Mobile is
+the primary target**, so every addition must be small-screen-safe (labels that don't eat the viewport, a
+zoom that feels native to a phone).
+
+**Verified research (mobile-first, done 2026-07-17):**
+- **Deep-zoom the art — lightweight, NOT OpenSeadragon.** AIC source images are huge (e.g. *The Great Wave*
+  is `10169×7036`), so there's real detail to explore. The card keeps AIC's cached standard
+  `…/full/843,/0/default.jpg`; **zoom lazily loads the sanctioned public-domain larger size
+  `…/full/1686,/0/default.jpg`** (AIC docs: "you may use `1686` for larger images … unless there's a clear
+  need"; zoom *is* that need) inside a **tap-to-open fullscreen lightbox with lightweight pinch-zoom-pan**.
+  This avoids OpenSeadragon + IIIF tiling (too heavy for a calm PWA; the `info.json` is bot/paywalled anyway),
+  respects AIC's "hit the cached sizes, one image at a time" etiquette, and keeps zoom in its **own mode** so
+  pinch never fights the feed's vertical advance / horizontal realm-swipe gestures. OpenSeadragon stays a
+  future option only if 1686 ever proves too small. Free calm touches from the API: `thumbnail.lqip` is a
+  base64 blur placeholder (**blur-up load, no layout shift**) and `thumbnail.alt_text` gives real **a11y alt
+  text**.
+- **Museum label on mobile = progressive disclosure.** Keep the essentials inline (artist · date · title, as
+  now); put the full label (medium, dimensions, credit line, department, place of origin, classification,
+  subjects) behind an expandable **"Details"** section so it never eats a small screen. Because the mobile
+  card already scrolls (image is a scroll-away hero), the simplest safe pattern is the label as **scroll
+  content below the extract**; a bottom-sheet is the richer alternative if wanted. (NN/g: bottom sheets are
+  progressive disclosure; museums are the canonical progressive-disclosure example.)
+- **Metadata already fetched but unused:** `medium_display`, `dimensions`, `classification_title`,
+  `department_title`, `style_title`, `subject_titles`, `place_of_origin`, `credit_line`, `color` (dominant
+  HSL) — all present on the artwork record, none surfaced today.
+
+**Sub-directions (exact milestone breakdown to come from the plan-mode plan file):**
+- [x] **Museum-label panel — DONE & verified (2026-07-17).** Surfaces the already-fetched AIC fields as a calm,
+      tap-to-open **"Details"** label (Medium / Dimensions / Classification / Department / Origin / Subjects /
+      Credit; skips empties). Generic `Card.facts` + `zoomUrl`/`blurDataUrl`/`imageAlt` added to `types.ts` (all
+      optional, back-compat); pure `artFacts()` in `realms/artic.ts` (+`ARTIC_FIELDS` gained `dimensions,
+      credit_line,thumbnail`); `CardView` renders the disclosure as inline scroll content (never an overlay →
+      mobile-safe) + a blur-up (`lqip`) load + real `alt_text`. **Verified:** build+lint clean, **201 tests**
+      (+4), real-browser 390px **12/12** (label discloses, 0 horizontal overflow, alt present, Encyclopedia
+      unregressed, zero console errors). _Headless caveat: AIC image pixels are bot-blocked in headless Chromium
+      (inherited-working in real browsers); the 34dvh hero band + blur placeholder render correctly._
+- [x] **Deep-zoom lightbox — DONE & verified (2026-07-17).** Tap the artwork → a fullscreen `ArtZoom`
+      (`react-zoom-pan-pinch` 4.0.3) pinch-zoom-pan on the 1686px image, `lqip` blur-up, `alt_text` for a11y,
+      calm (opt-in, no autoplay). **Rendered via a portal to `<body>`** so its touch/wheel never reaches the
+      feed's gesture handlers (own mode); body-scroll lock; close via ✕ / Esc (capture-phase, so the library
+      can't swallow the first Escape) / backdrop-tap; focus moves into the dialog on open (a11y). Gated to
+      `source==="artic" && zoomUrl`. **Verified:** build+lint clean, 201 tests, real-browser 390px **11/11**
+      (opens, body-locks, pan surface, close paths, feed does NOT advance during zoom, Encyclopedia not
+      zoomable, zero console errors). Same headless AIC-image caveat (chrome + blur render; artwork pixels load
+      in a real browser).
+- [x] **Directional / legible art threads — DONE & verified (2026-07-17).** Facet chips now have *character*
+      like the Encyclopedia's directions: a two-line chip with an **eyebrow** + entity — **MORE BY** {artist}
+      (deeper into an oeuvre), **THE MOVEMENT** {style} (broader), **THE SUBJECT** {subject} (a lateral tangent
+      via `subject_titles`, newly used), **ALSO FROM** {place} (fallback). `Thread.eyebrow`/`RelatedCandidate.eyebrow`
+      added; `articRelated` builds the 4 facets (best-effort, so a single-work artist yields no dead chip) and
+      `selectFacetThreads` now shows **distinct directions only** (no duplicate-facet padding). `ThreadChips`
+      renders the eyebrow chip (mirrors the `kind` chip). **Verified:** build+lint clean, **202 tests**, live
+      related API returns all 4 eyebrows + the subject facet, browser shows the ideal trio (Cassatt → MORE BY /
+      THE MOVEMENT / THE SUBJECT) and a 2-direction card shows 2 distinct chips (no dup), zero console errors.
+- [x] **Richer, structured discovery — DONE & verified (2026-07-17).** Buckets gained an optional structured
+      `filter` (a `match` on `style_title` / `classification_title` / `subject_titles`), used where verified
+      cleaner than full-text (impressionism → style: **241 focused vs 61k noisy**; textiles/landscape/portrait/
+      mythology); noisy cases (still-life, botanical, ukiyo-e, ancient, birds) keep full-text. `articDiscover`
+      also samples **deeper for variety** (page ≤ 30, with a total_pages-aware fallback so it never overshoots
+      to empty). Injection guard unchanged (unknown bucket → 400/[]). **Verified:** build+lint clean, **203
+      tests**, live discover shows on-theme impressionist works varying across offsets (Bedroom → Equestrienne →
+      Water Lily Pond) and full-text buckets still work.
+- [ ] **(Optional, DEFERRED) light Gallery personalization** — a facet-based taste model (favorite
+      artists/movements) mirroring the Encyclopedia interest model, kept transparent + editable (§2.1). Left
+      deferred (the locked default is "Gallery drift = interesting-random by facet"); a clean follow-up if wanted.
+
+**Anti-slot-machine notes:** zoom and details are opt-in and calm; discovery stays bounded (no infinite art
+firehose); no autoplay/Ken-Burns pans (§2.2); any personalization stays transparent + user-controlled (§2.1).
+
+**Phase 14 exit:** ✅ **COMPLETE & verified (2026-07-17), M-G1–M-G4 (M-G5 optional/deferred).** An art card now
+reads like a real museum object you can lean into: a progressively-disclosed museum label, art you can
+pinch-zoom on your phone, threads with direction (MORE BY / THE MOVEMENT / THE SUBJECT / ALSO FROM), and
+cleaner, more varied discovery. The Gallery now matches the Encyclopedia's care. **203 unit tests, build+lint
+clean; real-browser 390px verified per milestone (M-G1 12/12, M-G2 11/11, M-G3 chips+distinctness, M-G4 live
+discover) + an integrated end-to-end pass 11/11, zero console errors.** New dep: `react-zoom-pan-pinch`. §2
+held throughout (opt-in, calm, bounded, no autoplay). Encyclopedia fully unregressed. _(Headless caveat: AIC
+image pixels are bot-blocked in headless Chromium; chrome/label/blur render correctly, and images load in a
+real browser as always.)_
+
+---
+
+## Phase 15 — Cross-Realm Doorways: one connected world  *(the "magic" — no AI needed)*
+
+**Goal:** today a Gallery trail and an Encyclopedia trail never touch, and the deferred Phase 7 "constellation"
+idea was gated on the AI/embedding layer. **It isn't anymore.** Verified 2026-07-17: every art card carries
+clean strings — `artist_title` ("Katsushika Hokusai"), `style_title` ("Ukiyo-e"), `place_of_origin`,
+`subject_titles` — and **all of them resolve cleanly onto the Wikipedia article via the summary endpoint Drift
+already proxies** (live: Hokusai → *Hokusai*, "Ukiyo-e" → *Ukiyo-e*, "Claude Monet" → *Claude Monet*,
+"Impressionism" → *Impressionism*, redirects and all). So a **factual, transparent, no-Ollama bridge** exists
+in both directions. This is the app's most "you are the algorithm across all of human knowledge" feature,
+finally cheap.
+
+- [ ] **Doorway threads (the core, ships first + small).** On a Gallery card, one quiet cross-realm chip:
+      **"The artist, in the Encyclopedia →"** / **"{Movement}, the idea →"** (resolve the AIC string to its
+      Wikipedia page). On an Encyclopedia article about an artist/movement/place, **"See it in the Gallery →"**
+      (AIC search on the title). **At most one** doorway alongside the in-realm threads so a session doesn't
+      dissolve; clearly marked as a realm-crossing; the reason is **honest** — the shared entity, never invented
+      (§2.1/§2.5). A door, never an auto-walk-through.
+- [ ] **User idea 1 — horizontal swipe between realms + trails that span both.** Reframe realms from "pick one
+      per session" to **one connected world you move through**: **horizontally swipe to switch the active realm
+      at any time**, and let a **single trail contain cards from both realms** (start in either, cross via
+      doorways *or* a swipe). This **reverses the locked "one trail = one realm" decision** — the trail's realm
+      becomes **per-card** (cards already carry `source`; `Trail.realm` becomes a primary/derived hint), and the
+      trail map + Atlas must render **mixed-realm edges and tints**. **Mobile-gesture caution (researched):**
+      horizontal-swipe-vs-vertical-scroll is a well-known conflict; Drift already solved read-vs-advance in
+      `src/lib/gesture.ts`, so add **axis-lock intent detection** (commit to the dominant axis from the initial
+      drag angle) and keep **zoom in its own fullscreen mode** so three gesture axes never compete. Decide
+      precisely what a horizontal swipe *means* (switch realm vs. follow the nearest doorway) before building.
+- [ ] **User idea 2 — a living, sendable Atlas.** Make the Atlas *explorable and alive*, not static dots.
+      **Tap a node → a calm detail card** (thumbnail, title, one-line, "Revisit" / "Drift from here") — a
+      bottom-sheet on mobile, a popover on desktop. **Research caution:** star-map libs (d3-celestial) note that
+      *gesture-zoom clashes with UI on mobile* → prefer **tap-to-select + tap-based zoom controls + a
+      bottom-sheet**, not hover. Give it **art-piece quality** — realm-tinted nebulae/halos, constellation
+      lines, gentle motion **only on interaction** (stay calm; no looping twinkle/autoplay — §2.2). Make it **the
+      ultimate thing to share**: a beautiful **titled + dated PNG** now (reuse `export-image.ts`), and later a
+      shareable Atlas snapshot to a friend's inbox (ties into the existing social layer). Fold in the Atlas
+      fixes from the audit: **cross-realm edges/tints**, better clustering (today it collapses to one realm-blob
+      for heavy single-realm users), node labels + an edge legend, filters (realm / time / liked), and honest
+      handling of branches (history is a flat array today).
+- [ ] **Test Phase 15:** doorways land somewhere genuinely related and say why; a trail can weave realms and its
+      map/Atlas render the crossing; horizontal swipe switches realms without fighting read/advance/zoom;
+      tapping an Atlas node opens its detail; export produces a shareable image. §2 intact throughout.
+
+**Notes / dependencies:** independent of AI. Biggest of the three — it touches the **trail data model**
+(per-card realm), the **gesture layer** (third axis), and the **Atlas**. Sequence it so the **doorway chip
+ships first and small**; horizontal-swipe + trails-span-both is the structural change; the living-Atlas can be
+built alongside or after. This **deliberately reverses the "one trail = one realm" decision** (a user call, in
+the spirit of the earlier scope reopenings) — §2 stays non-negotiable.
+
+---
+
+## Phase 16 — Memory & Reflection: the thing a feed can't do  *(serves §9 #4 directly)*
+
+**Goal:** Drift's actual experiment (§9 #4) is "did I learn things I remember two days later?" A feed can never
+help with that; Drift can. These are the parked M20–M22 ideas — **none are social or a new realm**, the
+smallest surface area of the three but the deepest differentiator. Sessions are already instrumented; most of
+it just never comes back to the user (dwell is captured but unused; `readMores` is computed then dropped).
+
+- [ ] **M22 — Keep a fact / keep a card.** A quiet "keep" of a card (or a highlighted sentence) to a personal
+      shelf — the *generation effect*: the act of keeping is what makes it stick. Feeds the Atlas; synced via
+      the `storage.ts` seam. No counts, no badges.
+- [ ] **M20 — "Remember this?"** Gentle spaced resurfacing at a session *beginning* (a card from a past trail
+      as an opener: "A while ago you wandered into X"). Reward + reinforcement at the entrance, calm and opt-in;
+      pairs with the "session beginnings feel alive" grab-bag item.
+- [ ] **M21 — "Shape of your week."** A descriptive, opt-in reflection (topics visited, longest wander,
+      thread-vs-drift ratio, dwell) built from the session stats already stored — **never gamified, no streaks**
+      (§2.4). Also: persist `readMores` into `SessionStats` (currently dropped) so it can be reflected back.
+
+**Phase 16 exit:** Drift doesn't just help you wander — it helps you *keep* what you found and quietly remember
+it later, which is the whole point of the experiment.
+
+---
+
 ## Cross-cutting smaller polish (grab-bag — do anytime, not a phase)
 
 - [x] **Mobile reading-scroll fix (2026-07-17):** the feed's advance gesture is now scroll-aware — the card
@@ -1071,6 +1257,10 @@ when the user is ready.
       classifier + Phase 7's embeddings both improve this; note the interaction.
 - [ ] **Ambient reading polish:** a subtle reading-progress cue on long "read more", optional focus/full-bleed
       mode. Stay calm — no Ken Burns pans (that flirts with autoplay, §2.2).
+- [ ] **Encyclopedia "quick facts"** (from the 2026-07-17 brainstorm, "richer reading" direction): surface a
+      few structured Wikipedia facts (dates / taxonomy / coordinates via the Action API or Wikidata) as a small
+      calm strip on the card, so an Encyclopedia card shows more than a one-line description. Cheap richness;
+      factual only (§2.5). Not a full phase — a polish item.
 - [ ] **Session "beginning" variety:** rotate the homepage seeds / add a "pick up where curiosity left off"
       entry, so the *beginning* feels alive (pairs with Phase 8 M20 and the Today realm).
 

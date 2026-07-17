@@ -2,12 +2,12 @@
 
 import type { Thread, ThreadKind } from "@/lib/types";
 
-function ThreadIcon() {
+function ThreadIcon({ size = 14 }: { size?: number }) {
   // A small "thread being pulled" mark: a knot with a trailing curve.
   return (
     <svg
-      width="14"
-      height="14"
+      width={size}
+      height={size}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -118,6 +118,10 @@ export function ThreadChips({
     <div className="flex flex-wrap gap-2.5">
       {threads.map((thread) => {
         const kind = thread.kind;
+        const eyebrow = thread.eyebrow;
+        // Directional (Encyclopedia `kind`) and facet (Gallery `eyebrow`) chips
+        // both use the two-line layout: a small character word over the label.
+        const twoLine = !!kind || !!eyebrow;
         return (
           <button
             key={thread.candidate.pageTitle}
@@ -126,19 +130,23 @@ export function ThreadChips({
             onClick={() => onThread(thread)}
             title={thread.candidate.description || thread.candidate.displayTitle}
             aria-label={
-              kind ? `${KIND_META[kind].word}: ${thread.label}` : thread.label
+              kind
+                ? `${KIND_META[kind].word}: ${thread.label}`
+                : eyebrow
+                  ? `${eyebrow}: ${thread.label}`
+                  : thread.label
             }
             className={
-              kind
+              twoLine
                 ? "group inline-flex max-w-full flex-col items-start gap-0.5 rounded-2xl border border-accent/35 bg-accent/10 px-3.5 py-1.5 text-left text-sm font-medium text-accent-strong transition-colors hover:border-accent/60 hover:bg-accent/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-default disabled:opacity-40"
                 : "group inline-flex max-w-full items-center gap-2 rounded-full border border-accent/35 bg-accent/10 px-4 py-2 text-left text-sm font-medium text-accent-strong transition-colors hover:border-accent/60 hover:bg-accent/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-default disabled:opacity-40"
             }
           >
-            {kind ? (
+            {kind || eyebrow ? (
               <>
                 <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-accent-strong/80">
-                  <KindIcon kind={kind} size={11} />
-                  {KIND_META[kind].word}
+                  {kind ? <KindIcon kind={kind} size={11} /> : <ThreadIcon size={11} />}
+                  {kind ? KIND_META[kind].word : eyebrow}
                 </span>
                 <span className="max-w-[42vw] truncate sm:max-w-[16rem]">
                   {thread.label}

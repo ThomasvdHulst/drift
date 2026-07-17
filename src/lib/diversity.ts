@@ -95,14 +95,12 @@ export function selectFacetThreads(
     usedFacets.add(f);
     chosen.push(c);
   }
-  if (chosen.length < count) {
-    for (const c of pool) {
-      if (chosen.length >= count) break;
-      if (!chosen.includes(c)) chosen.push(c);
-    }
-  }
+  // We deliberately do NOT pad with more of an already-used facet: a card with
+  // only two real directions shows two distinct chips, never a duplicate one
+  // (each chip is a genuinely different direction — the point of facet threads).
   return chosen.map((c) => ({
     candidate: c,
     label: c.threadLabel || c.displayTitle || c.pageTitle,
+    ...(c.eyebrow ? { eyebrow: c.eyebrow } : {}),
   }));
 }

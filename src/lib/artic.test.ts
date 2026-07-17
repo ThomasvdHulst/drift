@@ -4,6 +4,7 @@ import {
   articPageUrl,
   articToCard,
   articToCandidate,
+  artFacts,
   isUsableArtwork,
   type ArticArtwork,
 } from "./realms/artic";
@@ -46,10 +47,11 @@ describe("artic mappers", () => {
     expect(c.sourceUrl).toBe("https://www.artic.edu/artworks/16568");
   });
 
-  it("maps a faceted candidate carrying its label + facet", () => {
-    const cand = articToCandidate(monet, "More by Claude Monet", "artist:35809");
-    expect(cand.threadLabel).toBe("More by Claude Monet");
+  it("maps a faceted candidate carrying its label + facet + eyebrow", () => {
+    const cand = articToCandidate(monet, "Claude Monet", "artist:35809", "More by");
+    expect(cand.threadLabel).toBe("Claude Monet");
     expect(cand.facet).toBe("artist:35809");
+    expect(cand.eyebrow).toBe("More by");
     expect(cand.source).toBe("artic");
   });
 
@@ -61,11 +63,83 @@ describe("artic mappers", () => {
   });
 });
 
+describe("artFacts (museum label)", () => {
+  const wave: ArticArtwork = {
+    id: 77333,
+    title: "The Great Wave",
+    artist_title: "Katsushika Hokusai",
+    date_display: "1830/33",
+    medium_display: "Color woodblock print",
+    dimensions: "25.4 × 37.6 cm",
+    credit_line: "Clarence Buckingham Collection",
+    place_of_origin: "Japan",
+    classification_title: "woodblock print",
+    department_title: "Arts of Asia",
+    subject_titles: ["water", "waves"],
+    image_id: "abc",
+    is_public_domain: true,
+    thumbnail: { lqip: "data:image/gif;base64,ZZZ", alt_text: "A woodblock print of a wave." },
+  };
+
+  it("builds ordered label rows, skipping empties", () => {
+    const rows = artFacts(wave);
+    const byLabel = Object.fromEntries(rows.map((r) => [r.label, r.value]));
+    expect(byLabel.Medium).toBe("Color woodblock print");
+    expect(byLabel.Dimensions).toBe("25.4 × 37.6 cm");
+    expect(byLabel.Classification).toBe("woodblock print");
+    expect(byLabel.Department).toBe("Arts of Asia");
+    expect(byLabel.Origin).toBe("Japan");
+    expect(byLabel.Subjects).toBe("water, waves");
+    expect(byLabel.Credit).toBe("Clarence Buckingham Collection");
+    // Medium leads, Credit trails (reading order).
+    expect(rows[0].label).toBe("Medium");
+    expect(rows[rows.length - 1].label).toBe("Credit");
+  });
+
+  it("returns no rows when nothing is present", () => {
+    expect(artFacts({ id: 1, is_public_domain: true, image_id: "x" })).toEqual([]);
+  });
+
+  it("surfaces facts + zoom + blur + alt on the Card", () => {
+    const c = articToCard(wave);
+    expect(c.facts?.length).toBeGreaterThan(0);
+    expect(c.zoomUrl).toBe("https://www.artic.edu/iiif/2/abc/full/1686,/0/default.jpg");
+    expect(c.blurDataUrl).toBe("data:image/gif;base64,ZZZ");
+    expect(c.imageAlt).toBe("A woodblock print of a wave.");
+  });
+
+  it("omits the optional Card fields when the source lacks them", () => {
+    const c = articToCard(monet); // no thumbnail / dimensions / credit
+    expect(c.blurDataUrl).toBeUndefined();
+    expect(c.imageAlt).toBeUndefined();
+    expect(c.zoomUrl).toBeDefined(); // has an image_id
+  });
+});
+
 describe("artic buckets", () => {
   it("resolves a known bucket and rejects unknown", () => {
     expect(articBucketById("impressionism")?.label).toBe("Impressionism");
     expect(articBucketById("not-a-bucket")).toBeUndefined();
     expect(ARTIC_BUCKETS.length).toBeGreaterThanOrEqual(8);
+  });
+
+  it("structured-filter buckets name a valid field + keep a full-text fallback", () => {
+    const allowed = new Set([
+      "style_title",
+      "classification_title",
+      "subject_titles",
+      "department_title",
+    ]);
+    const filtered = ARTIC_BUCKETS.filter((b) => b.filter);
+    expect(filtered.length).toBeGreaterThan(0);
+    for (const b of filtered) {
+      expect(allowed.has(b.filter!.field)).toBe(true);
+      expect(b.filter!.value.length).toBeGreaterThan(0);
+      expect(b.q.length).toBeGreaterThan(0); // full-text fallback always present
+    }
+    // Impressionism uses the movement field; some buckets stay full-text-only.
+    expect(articBucketById("impressionism")?.filter?.field).toBe("style_title");
+    expect(articBucketById("ukiyo-e")?.filter).toBeUndefined();
   });
 });
 
@@ -99,5 +173,20 @@ describe("selectFacetThreads", () => {
       { seen: new Set(["artic:1"]) },
     );
     expect(threads.map((t) => t.candidate.pageTitle)).toEqual(["2"]);
+  });
+
+  it("carries the eyebrow through to the thread", () => {
+    const threads = selectFacetThreads([
+      {
+        pageTitle: "1",
+        displayTitle: "Water Lilies",
+        source: "artic",
+        threadLabel: "Claude Monet",
+        facet: "artist:1",
+        eyebrow: "More by",
+      },
+    ]);
+    expect(threads[0].label).toBe("Claude Monet");
+    expect(threads[0].eyebrow).toBe("More by");
   });
 });

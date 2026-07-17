@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import type { ArrivedVia, Card, Thread } from "@/lib/types";
 import type { Reaction } from "@/lib/interest";
 import type { RealmId } from "@/lib/realms/types";
 import { summaryUrl } from "@/lib/realms";
 import { ThreadChips, KindIcon, KIND_META } from "./ThreadChips";
+import { ArtZoom } from "./ArtZoom";
 
 // Quiet ♥ / ✕ that teach the interest model (M9). Sage when active, neutral
 // otherwise — deliberately calm, never a red badge (§6, the opposite of a
@@ -118,7 +119,11 @@ function ModeChip({ via }: { via: ArrivedVia }) {
   );
 }
 
-function ImagePanel({ card }: { card: Card }) {
+function ImagePanel({ card, onZoom }: { card: Card; onZoom?: () => void }) {
+  // Blur-up: a tiny base64 placeholder (art: AIC `lqip`) sits behind the real
+  // image and fades out once it loads — no layout shift, a calm reveal.
+  const [loaded, setLoaded] = useState(false);
+  const alt = card.imageAlt || card.displayTitle;
   if (!card.imageUrl) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-accent/10">
@@ -128,28 +133,76 @@ function ImagePanel({ card }: { card: Card }) {
       </div>
     );
   }
+  const blur = card.blurDataUrl;
   // Art gets shown whole (never cropped) on a soft ground — a gallery wall, not a
   // full-bleed hero. Everything else fills the panel.
   const isArt = card.source === "artic";
   if (isArt) {
-    return (
-      <div className="flex h-full w-full items-center justify-center bg-ink/[0.04] p-4 sm:p-6">
+    const artInner = (
+      <>
+        {blur && (
+          <img
+            src={blur}
+            alt=""
+            aria-hidden="true"
+            className={`pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover blur-2xl transition-opacity duration-700 ${loaded ? "opacity-0" : "opacity-60"}`}
+            draggable={false}
+          />
+        )}
         <img
           src={card.imageUrl}
-          alt={card.displayTitle}
-          className="max-h-full max-w-full object-contain shadow-md"
+          alt={alt}
+          onLoad={() => setLoaded(true)}
+          className="relative max-h-full max-w-full object-contain shadow-md"
           draggable={false}
         />
-      </div>
+      </>
     );
+    const groundCls =
+      "relative flex h-full w-full items-center justify-center overflow-hidden bg-ink/[0.04] p-4 sm:p-6";
+    // Tappable to open the deep-zoom lightbox (M-G2), with a quiet corner cue.
+    if (onZoom) {
+      return (
+        <button
+          type="button"
+          onClick={onZoom}
+          aria-label="Zoom into the artwork"
+          className={`group cursor-zoom-in ${groundCls}`}
+        >
+          {artInner}
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute bottom-3 right-3 flex h-8 w-8 items-center justify-center rounded-full bg-paper/85 text-ink opacity-75 shadow ring-1 ring-line transition group-hover:opacity-100"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="10" cy="10" r="6" />
+              <path d="M14.5 14.5 20 20M10 7.5v5M7.5 10h5" />
+            </svg>
+          </span>
+        </button>
+      );
+    }
+    return <div className={groundCls}>{artInner}</div>;
   }
   return (
-    <img
-      src={card.imageUrl}
-      alt={card.displayTitle}
-      className="h-full w-full object-cover"
-      draggable={false}
-    />
+    <div className="relative h-full w-full overflow-hidden">
+      {blur && (
+        <img
+          src={blur}
+          alt=""
+          aria-hidden="true"
+          className={`pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover blur-2xl transition-opacity duration-700 ${loaded ? "opacity-0" : "opacity-100"}`}
+          draggable={false}
+        />
+      )}
+      <img
+        src={card.imageUrl}
+        alt={alt}
+        onLoad={() => setLoaded(true)}
+        className="relative h-full w-full object-cover"
+        draggable={false}
+      />
+    </div>
   );
 }
 
@@ -189,6 +242,13 @@ export function CardView({
   const [longText, setLongText] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  // The "museum label" (Phase 14): structured metadata, disclosed on tap so it
+  // never eats a small screen. Only art carries `card.facts`.
+  const [showDetails, setShowDetails] = useState(false);
+  // Deep-zoom lightbox (M-G2): only art with a hi-res `zoomUrl` is zoomable.
+  const [zoomOpen, setZoomOpen] = useState(false);
+  const canZoom = card.source === "artic" && !!card.zoomUrl;
+  const onZoom = canZoom ? () => setZoomOpen(true) : undefined;
 
   async function toggleReadMore() {
     if (open) {
@@ -248,7 +308,7 @@ export function CardView({
           image instead lives inside the scroll flow below (so it scrolls away
           and the text gets the full height). */}
       <div className="relative hidden shrink-0 md:block md:h-full md:w-1/2 lg:w-[55%]">
-        <ImagePanel card={card} />
+        <ImagePanel card={card} onZoom={onZoom} />
       </div>
 
       {/* Reading side: one scroll region + a pinned threads bar. The whole
@@ -263,7 +323,7 @@ export function CardView({
           {/* Phone-only hero, full-bleed to the card's rounded top; it scrolls
               up out of the way as you read. */}
           <div className="relative -mx-6 -mt-6 h-[34dvh] shrink-0 overflow-hidden sm:-mx-8 sm:-mt-8 md:hidden">
-            <ImagePanel card={card} />
+            <ImagePanel card={card} onZoom={onZoom} />
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-paper-raised/70 to-transparent" />
           </div>
 
@@ -303,6 +363,47 @@ export function CardView({
           {open && loadingMore && (
             <p className="text-sm italic text-ink-soft">Fetching the rest…</p>
           )}
+          {/* The museum label — a calm, tap-to-open "Details" block (art only).
+              Inline scroll content, so it never overlays or eats the viewport on
+              a phone; the two-column list wraps long values instead of overflowing. */}
+          {card.facts && card.facts.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => setShowDetails((v) => !v)}
+                aria-expanded={showDetails}
+                className="flex w-fit items-center gap-1.5 text-xs font-medium uppercase tracking-widest text-ink-soft transition hover:text-accent-strong"
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                  className={`transition-transform ${showDetails ? "rotate-90" : ""}`}
+                >
+                  <path d="m9 6 6 6-6 6" />
+                </svg>
+                Details
+              </button>
+              {showDetails && (
+                <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
+                  {card.facts.map((f) => (
+                    <Fragment key={f.label}>
+                      <dt className="pt-0.5 text-xs font-medium uppercase tracking-wide text-ink-soft">
+                        {f.label}
+                      </dt>
+                      <dd className="text-sm text-ink/85">{f.value}</dd>
+                    </Fragment>
+                  ))}
+                </dl>
+              )}
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-4">
             <button
               type="button"
@@ -341,6 +442,15 @@ export function CardView({
           />
         </div>
       </div>
+
+      {zoomOpen && card.zoomUrl && (
+        <ArtZoom
+          src={card.zoomUrl}
+          alt={card.imageAlt || card.displayTitle}
+          blurDataUrl={card.blurDataUrl}
+          onClose={() => setZoomOpen(false)}
+        />
+      )}
     </div>
   );
 }

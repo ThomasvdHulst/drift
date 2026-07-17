@@ -18,6 +18,12 @@ export type Card = {
   // Where the content comes from. Absent ⇒ "wikipedia" (back-compat with trails
   // saved before Phase 5's realms).
   source?: SourceId;
+  // Optional richer card fields (Phase 14 — Gallery, Deepened). All optional and
+  // back-compatible: absent on Wikipedia cards and on trails saved before Phase 14.
+  facts?: { label: string; value: string }[]; // structured "museum label" rows
+  zoomUrl?: string; // hi-res image for the deep-zoom lightbox (art: IIIF 1686px)
+  blurDataUrl?: string; // tiny base64 placeholder for a blur-up load (art: lqip)
+  imageAlt?: string; // real alt text when the source provides one (art: alt_text)
 };
 
 // A related page returned by a realm's "related" endpoint — already carries
@@ -35,6 +41,10 @@ export type RelatedCandidate = {
   sourceUrl?: string; // set by non-Wikipedia realms (Wikipedia synthesizes it)
   threadLabel?: string;
   facet?: string;
+  // A short uppercase facet word shown above the label on a facet-realm chip
+  // (Gallery: "MORE BY" / "THE MOVEMENT" / "THE SUBJECT" …). The facet-realm
+  // parallel to the Encyclopedia's directional `kind` (Phase 14 M-G3).
+  eyebrow?: string;
 };
 
 // The "direction" a thread takes you (Phase 6). Encyclopedia threads are
@@ -46,6 +56,9 @@ export type Thread = {
   candidate: RelatedCandidate;
   label: string;
   kind?: ThreadKind;
+  // Facet-realm eyebrow (Gallery). Distinct from `kind` (Encyclopedia). At most
+  // one of `kind` / `eyebrow` is set.
+  eyebrow?: string;
 };
 
 export type ArrivedVia =
