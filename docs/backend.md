@@ -195,19 +195,28 @@ When you outgrow "a few friends", look at these, roughly in order:
 
 ---
 
-## 7. Adding auth methods later (magic link / OAuth)
+## 7. Auth methods (email+password, OAuth, verification, reset)
 
-Email + password is wired now. To add more, the code already routes all auth through
-`AuthProvider` (`useAuth`), so the UI change is small; the setup is in Supabase:
+All auth routes through `AuthProvider` (`useAuth`), secured by **PKCE** (`flowType: "pkce"` in
+`client.ts`); `detectSessionInUrl` does the code→session exchange client-side, so there's no server
+callback route. What's wired:
 
-- **Magic link (passwordless):** enable in Auth → Providers → Email; requires custom SMTP for
-  real volume (§6.1). Add a `signInWithOtp` call in `AuthProvider`.
-- **Google / GitHub OAuth:** create OAuth credentials in the provider's console, paste the
-  client id/secret into Supabase → Auth → Providers, set the redirect URL. Add a
-  `signInWithOAuth({ provider })` button.
-- **Opening signups to others:** Auth → keep **"Confirm email" ON**, consider **invite-only**
-  or an allowed-email-domain check, and re-audit every RLS policy (`user_id = auth.uid()`)
-  before anyone else's data lives in the project.
+- **Email + password** — `signUp` (with `emailRedirectTo`) / `signInWithPassword`.
+- **Email verification** — turn **Auth → Providers → Email → "Confirm email" ON**; sign-up then
+  returns no session and the app shows a "check your email" panel (with a Resend action). Needs
+  custom SMTP (§6.1) to reach non-team users.
+- **Google / Apple OAuth** — `signInWithProvider` → `signInWithOAuth({ provider, options: { redirectTo }})`.
+  Enable the provider in Auth → Providers (Google: OAuth Client ID + secret from Google Cloud
+  Console, Authorized redirect URI = the Supabase callback URL; Apple: needs a paid Apple Developer
+  account + Services ID/key). Buttons render **only** for providers listed in
+  **`NEXT_PUBLIC_OAUTH_PROVIDERS`** (comma list, e.g. `google` or `google,apple`) — so you never
+  show a button for a provider that isn't set up.
+- **Password reset** — `requestPasswordReset` → `resetPasswordForEmail(email, { redirectTo: "…/account/reset" })`;
+  the `/account/reset` page sets the new password via `updatePassword` → `updateUser({ password })`.
+- **Change password (signed in)** — the "Change password" section on `/account` (same `updatePassword`);
+  enable Auth → **"Secure password change"** for a re-authentication step.
+- **Opening signups to others:** keep **"Confirm email" ON**, configure **custom SMTP** (§6.1),
+  consider invite-only / allowed-domain gating, and re-audit every RLS policy (`user_id = auth.uid()`).
 
 ## 8. Files
 

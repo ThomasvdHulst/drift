@@ -51,6 +51,7 @@ export default function AccountPage() {
       ) : user ? (
         <div className="space-y-4">
           <SignedIn email={user.email ?? "your account"} onSignOut={signOut} />
+          <ChangePassword />
           <ProfileSection />
         </div>
       ) : (
@@ -199,6 +200,111 @@ function ProfileSection() {
   );
 }
 
+// Set / change the account password (works for password accounts and adds one
+// to an OAuth-only account). No current-password prompt — enable Supabase's
+// "Secure password change" (reauth) later if you want that extra step.
+function ChangePassword() {
+  const { updatePassword } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  async function save() {
+    setError(null);
+    if (password.length < 6) return setError("Use at least 6 characters.");
+    if (password !== confirm) return setError("The two passwords don't match.");
+    setBusy(true);
+    const res = await updatePassword(password);
+    setBusy(false);
+    if (res.error) return setError(res.error);
+    setPassword("");
+    setConfirm("");
+    setOpen(false);
+    setSaved(true);
+  }
+
+  return (
+    <div className="rounded-2xl border border-line bg-paper-raised p-6">
+      <div className="flex items-center justify-between gap-4">
+        <p className="text-xs font-medium uppercase tracking-wide text-ink-soft">
+          Password
+        </p>
+        {!open && (
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(true);
+              setSaved(false);
+            }}
+            className="shrink-0 rounded-full border border-line px-4 py-2 text-sm text-ink transition hover:border-accent/50 hover:text-accent-strong"
+          >
+            Change password
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="mt-4 space-y-3">
+          <label className="block text-xs font-medium uppercase tracking-wide text-ink-soft">
+            New password
+            <input
+              type="password"
+              minLength={6}
+              autoComplete="new-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+            />
+          </label>
+          <label className="block text-xs font-medium uppercase tracking-wide text-ink-soft">
+            Confirm new password
+            <input
+              type="password"
+              minLength={6}
+              autoComplete="new-password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+            />
+          </label>
+          {error && (
+            <p className="text-sm text-ink" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="flex gap-3">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={save}
+              className="rounded-full bg-accent px-6 py-2.5 text-sm font-semibold text-paper-raised shadow-sm transition hover:bg-accent-strong disabled:opacity-60"
+            >
+              {busy ? "Updating…" : "Update password"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                setError(null);
+              }}
+              className="rounded-full border border-line px-5 py-2.5 text-sm text-ink transition hover:border-accent/50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      {saved && !open && (
+        <p className="mt-3 text-sm text-accent-strong" role="status">
+          Password updated.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function SignedIn({
   email,
   onSignOut,
@@ -215,8 +321,9 @@ function SignedIn({
       <p className="mt-1 font-serif text-xl text-ink">{email}</p>
       <SyncStatusLine />
       <p className="mt-4 text-sm leading-relaxed text-ink-soft">
-        Your trails sync quietly in the background. Signing out returns Drift to
-        local-only mode — nothing on this device is erased.
+        Your trails sync quietly in the background. Signing out clears this
+        device — your world stays safe in the cloud and returns when you sign
+        back in.
       </p>
       <button
         type="button"

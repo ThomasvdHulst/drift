@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { getSupabase, isCloudConfigured } from "@/lib/supabase/client";
+import type { OAuthProvider } from "@/lib/auth";
 import { setSyncRecording, clearAllLocalData } from "@/lib/storage";
 import { startSync, stopSync, flushSync } from "@/lib/sync/replicator";
 
@@ -31,6 +32,10 @@ interface AuthContextValue {
   cloudConfigured: boolean;
   signUp: (email: string, password: string) => Promise<AuthResult>;
   signIn: (email: string, password: string) => Promise<AuthResult>;
+  signInWithProvider: (provider: OAuthProvider) => Promise<AuthResult>;
+  requestPasswordReset: (email: string) => Promise<AuthResult>;
+  updatePassword: (newPassword: string) => Promise<AuthResult>;
+  resendConfirmation: (email: string) => Promise<AuthResult>;
   signOut: () => Promise<void>;
 }
 
@@ -101,15 +106,85 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const sb = getSupabase();
       if (!sb) return NOT_CONFIGURED;
       try {
-        const { data, error } = await sb.auth.signUp({ email, password });
+        const { data, error } = await sb.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: window.location.origin },
+        });
         if (error) return { error: error.message };
-        // With "Confirm email" enabled, no session comes back until the link is
-        // clicked. We ask the user to disable it for personal use; surface a
-        // clear hint otherwise.
+        // With "Confirm email" enabled, no session comes back until the link in
+        // the confirmation email is clicked — surface the "check your email"
+        // state so the user knows to verify before signing in.
         if (!data.session) return { error: null, needsConfirm: true };
         return { error: null };
       } catch {
         return { error: "Couldn't reach the cloud. You're still drifting locally." };
+      }
+    }
+
+    // OAuth (Google/Apple). signInWithOAuth navigates the whole page to the
+    // provider; on return, detectSessionInUrl (client.ts) exchanges the code and
+    // onAuthStateChange fires SIGNED_IN. No session is returned here.
+    async function signInWithProvider(
+      provider: OAuthProvider,
+    ): Promise<AuthResult> {
+      const sb = getSupabase();
+      if (!sb) return NOT_CONFIGURED;
+      try {
+        const { error } = await sb.auth.signInWithOAuth({
+          provider,
+          options: { redirectTo: window.location.origin },
+        });
+        if (error) return { error: error.message };
+        return { error: null };
+      } catch {
+        return { error: "Couldn't start sign-in. Please try again." };
+      }
+    }
+
+    // Send a password-reset email; the link lands on /account/reset where the
+    // user sets a new password (via updatePassword).
+    async function requestPasswordReset(email: string): Promise<AuthResult> {
+      const sb = getSupabase();
+      if (!sb) return NOT_CONFIGURED;
+      try {
+        const { error } = await sb.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/account/reset`,
+        });
+        if (error) return { error: error.message };
+        return { error: null };
+      } catch {
+        return { error: "Couldn't send the reset email. Please try again." };
+      }
+    }
+
+    // Set a new password for the currently-signed-in (or recovery) session.
+    async function updatePassword(newPassword: string): Promise<AuthResult> {
+      const sb = getSupabase();
+      if (!sb) return NOT_CONFIGURED;
+      try {
+        const { error } = await sb.auth.updateUser({ password: newPassword });
+        if (error) return { error: error.message };
+        return { error: null };
+      } catch {
+        return { error: "Couldn't update your password. Please try again." };
+      }
+    }
+
+    // Re-send the sign-up confirmation email (rate-limited by Supabase).
+    async function resendConfirmation(email: string): Promise<AuthResult> {
+      const sb = getSupabase();
+      if (!sb) return NOT_CONFIGURED;
+      try {
+        const { error } = await sb.auth.resend({
+          type: "signup",
+          email,
+          options: { emailRedirectTo: window.location.origin },
+        });
+        if (error) return { error: error.message };
+        return { error: null };
+      } catch {
+        return { error: "Couldn't resend the email. Please try again." };
       }
     }
 
@@ -150,6 +225,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cloudConfigured,
       signUp,
       signIn,
+      signInWithProvider,
+      requestPasswordReset,
+      updatePassword,
+      resendConfirmation,
       signOut,
     };
   }, [user, session, loading, cloudConfigured]);
@@ -169,6 +248,10 @@ export function useAuth(): AuthContextValue {
       cloudConfigured: false,
       signUp: async () => NOT_CONFIGURED,
       signIn: async () => NOT_CONFIGURED,
+      signInWithProvider: async () => NOT_CONFIGURED,
+      requestPasswordReset: async () => NOT_CONFIGURED,
+      updatePassword: async () => NOT_CONFIGURED,
+      resendConfirmation: async () => NOT_CONFIGURED,
       signOut: async () => {},
     };
   }

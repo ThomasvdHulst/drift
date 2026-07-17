@@ -38,6 +38,10 @@ export function getSupabase(): SupabaseClient | null {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
+        // PKCE: the secure flow for OAuth + email links (confirm / recovery).
+        // detectSessionInUrl performs the code→session exchange client-side, so
+        // no server callback route is needed for this client-only app.
+        flowType: "pkce",
         storageKey: "drift-auth",
       },
     });

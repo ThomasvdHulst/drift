@@ -68,25 +68,36 @@ After the first deploy you'll have a URL like `https://drift-xxxx.vercel.app` (u
 stable production alias). In the Supabase dashboard → **Authentication → URL Configuration**:
 
 1. Set **Site URL** to your Vercel production URL (exactly one, no wildcards).
-2. **Redirect URLs — you can leave this empty for now.** Drift signs in with **email + password**
-   (which returns a session directly, no redirect) and email confirmation is off, so nothing in
-   the current flow uses a redirect URL. You'd only need to add entries here **later** if you add
-   OAuth (Google/GitHub), magic links, or turn on email confirmation — in which case click
-   **Add URL** (it accepts several, and wildcards work) and add
-   `https://drift-xxxx.vercel.app/**` plus `https://*-<your-vercel-scope>.vercel.app/**` (preview
-   deploys).
-3. Leave **Authentication → Providers → Email → "Confirm email" OFF** for now — this keeps
-   sign-up frictionless for you and a few friends. (With it off, anyone with the link can create
-   an account, but RLS keeps every account's data private; revisit before sharing widely — see
-   `docs/backend.md` §6–7 for invite-gating / confirmation + custom SMTP.)
+2. **Redirect URLs** — click **Add URL** (wildcards allowed) and add:
+   `http://localhost:3000/**`, `https://drift-xxxx.vercel.app/**`, and
+   `https://*-<your-vercel-scope>.vercel.app/**` (preview deploys). These cover OAuth returns,
+   email-confirmation links, and the password-reset page (`/account/reset`).
+3. **Authentication → Providers → Email → turn "Confirm email" ON.** New sign-ups must then verify
+   their address before signing in (your own existing account is already confirmed). The app shows
+   a "check your email" step after sign-up automatically.
+4. **Custom SMTP (required before others sign up).** The built-in sender only does ~2 emails/hour
+   and only to your own team address, so confirmation / reset emails won't reach real users without
+   it. Auth → **Emails → SMTP Settings**: create a free **Resend** account (or SendGrid/SES),
+   verify a sending domain, then paste the SMTP host/port/user/password + a From address. (For your
+   *own* testing the built-in sender is fine.)
+5. **Google sign-in (optional).** Auth → Providers → **Google** → enable. In **Google Cloud
+   Console** create an **OAuth Client ID (Web)** whose *Authorized redirect URI* is the **Callback
+   URL** shown in that Google panel (`https://<ref>.supabase.co/auth/v1/callback`); paste the
+   **Client ID + Secret** back into Supabase. Then set **`NEXT_PUBLIC_OAUTH_PROVIDERS=google`** in
+   Vercel (and `.env` locally) and **redeploy** — the "Continue with Google" button only appears for
+   providers in that list. (Apple: same shape but needs a paid Apple Developer account + a Services
+   ID/key; add `apple` to the list once it's configured.)
 
 ## Step 5 — Deploy & smoke-test
 
 1. **Deploy** (Vercel → Deployments → Redeploy, or it auto-deploys on push).
 2. Open the `*.vercel.app` URL in a desktop browser → you should see the **sign-in gate**.
-3. **Create your account** → you should land in Drift. Pick a seed, pull a thread, **End & view
-   trail → Save**. Reload → the trail persists (it synced to Supabase).
-4. Optional: set a **handle** on `/account` if you want to use Friends/Inbox.
+3. **Create your account** → with "Confirm email" ON you'll see a "check your email" step; click the
+   link in the email, then sign in. (Or **Continue with Google** if you enabled it.) You should land
+   in Drift. Pick a seed, pull a thread, **End & view trail → Save**. Reload → the trail persists.
+4. Try **Forgot your password?** → the reset link lands on `/account/reset` to set a new one; and
+   **Change password** on `/account` while signed in.
+5. Optional: set a **handle** on `/account` if you want to use Friends/Inbox.
 
 ## Step 6 — Install on your phone
 
