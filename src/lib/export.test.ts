@@ -47,7 +47,7 @@ describe("trailToText", () => {
   });
 
   it("ends with the Drift signature", () => {
-    expect(text.trim().endsWith("— mapped with Drift")).toBe(true);
+    expect(text.trim().endsWith("Mapped with Drift")).toBe(true);
   });
 
   it("uses the singular 'stop' for a one-step trail", () => {

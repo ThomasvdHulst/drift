@@ -68,7 +68,7 @@ export default function InterestsPage() {
           <h1 className="mt-1 font-serif text-4xl text-ink">Your interests</h1>
           <p className="mt-1 max-w-md text-sm text-ink-soft">
             ♥ / ✕ on <span className="font-medium text-ink">Encyclopedia</span>{" "}
-            cards gently shape which topics surface while you drift there — never
+            cards gently shape which topics surface while you drift there, never
             which threads you can pull. (Gallery isn&apos;t personalized.)
             Here&apos;s the whole picture, and you can edit it.
           </p>
@@ -86,8 +86,8 @@ export default function InterestsPage() {
           <p className="text-sm font-medium text-ink">Personalize my drift</p>
           <p className="text-xs text-ink-soft">
             {personalize
-              ? "On — ~30% of drifts still wander freely, and no topic is ever excluded."
-              : "Off — drifting picks topics at random (still interesting, not personalized)."}
+              ? "On. ~30% of drifts still wander freely, and no topic is ever excluded."
+              : "Off. Drifting picks topics at random (still interesting, not personalized)."}
           </p>
         </div>
         <button

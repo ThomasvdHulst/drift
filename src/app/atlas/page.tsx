@@ -47,7 +47,7 @@ export default function AtlasPage() {
           </Link>
           <h1 className="mt-1 font-serif text-4xl text-ink">Your Atlas</h1>
           <p className="mt-1 max-w-lg text-sm text-ink-soft">
-            Every trail you&apos;ve saved, drawn as one constellation — the places
+            Every trail you&apos;ve saved, drawn as one constellation: the places
             you&apos;ve wandered, clustered by topic. The shape of your curiosity.
           </p>
           {built && (
@@ -86,7 +86,7 @@ export default function AtlasPage() {
           <p className="max-w-sm text-ink-soft">
             Your atlas fills in as you save trails. Wander a while, tap{" "}
             <span className="font-medium text-ink">End &amp; view trail</span>,
-            and save one — then come back to see your constellation grow.
+            and save one, then come back to see your constellation grow.
           </p>
           <Link
             href="/drift"

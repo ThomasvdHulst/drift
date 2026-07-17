@@ -109,7 +109,7 @@ export function ThreadChips({
   if (threads.length === 0) {
     return (
       <p className="text-sm italic text-ink-soft">
-        No threads here — drift onward ↓
+        No threads here. Drift onward ↓
       </p>
     );
   }

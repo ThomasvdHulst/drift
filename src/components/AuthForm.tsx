@@ -72,7 +72,7 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: Mode } = {}
     if (!sent) return;
     setResendMsg(null);
     const res = await resendConfirmation(sent.email);
-    setResendMsg(res.error ?? "Sent — check your inbox again.");
+    setResendMsg(res.error ?? "Sent. Check your inbox again.");
   }
 
   // ----- "check your email" panel (confirmation or reset) -----

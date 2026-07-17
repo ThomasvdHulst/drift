@@ -73,8 +73,8 @@ export default function Home() {
           Pull a thread. See where it goes.
         </p>
         <p className="mt-4 max-w-md text-base leading-relaxed text-ink/75">
-          A calm feed of knowledge cards where <em>you</em> are the algorithm —
-          no autoplay, no hidden ranking. Pick a realm, pick a direction, or let
+          A calm feed of knowledge cards where <em>you</em> are the algorithm.
+          No autoplay, no hidden ranking. Pick a realm, pick a direction, or let
           curiosity surprise you.
         </p>
 
@@ -128,7 +128,7 @@ export default function Home() {
           <p className="max-w-xs text-center text-xs leading-snug text-ink/55">
             {keepTrail
               ? "Your wander is mapped into a trail you can save and share."
-              : "Just drift — read freely, nothing saved. You can still send single cards, or keep a trail anytime."}
+              : "Just drift. Read freely, nothing saved. You can still send single cards, or keep a trail anytime."}
           </p>
         </div>
 

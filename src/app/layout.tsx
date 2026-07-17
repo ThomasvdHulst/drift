@@ -26,7 +26,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Drift — pull a thread, see where it goes",
+  title: "Drift: pull a thread, see where it goes",
   description:
     "A calm feed of Wikipedia knowledge cards where you are the algorithm. Pull threads to steer your own rabbit hole.",
   applicationName: "Drift",

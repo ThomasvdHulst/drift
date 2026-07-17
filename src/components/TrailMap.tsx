@@ -57,7 +57,7 @@ export function TrailMap({
   if (steps.length === 0) {
     return (
       <p className="py-8 text-center text-sm italic text-ink-soft">
-        No stops yet — start drifting.
+        No stops yet. Start drifting.
       </p>
     );
   }

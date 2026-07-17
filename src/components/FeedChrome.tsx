@@ -82,7 +82,7 @@ export function FeedTopBar({
       <div className="flex shrink-0 items-center gap-2">
         <Link
           href="/"
-          aria-label="Drift — home"
+          aria-label="Drift home"
           className="opacity-90 transition hover:opacity-100"
         >
           <Monogram className="h-7" />

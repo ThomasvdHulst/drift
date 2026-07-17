@@ -44,7 +44,7 @@ export default function AccountPage() {
         <div className="rounded-2xl border border-line bg-paper-raised p-6">
           <p className="text-sm leading-relaxed text-ink">
             Cloud sync isn&apos;t set up on this device, so Drift is running
-            fully locally. That&apos;s a perfectly good way to use it — nothing
+            fully locally. That&apos;s a perfectly good way to use it. Nothing
             is missing from the drifting itself.
           </p>
         </div>
@@ -64,7 +64,7 @@ export default function AccountPage() {
 const SYNC_COPY: Record<SyncStatus, { dot: string; text: string }> = {
   idle: { dot: "bg-accent", text: "Synced" },
   syncing: { dot: "bg-accent/60", text: "Syncing…" },
-  offline: { dot: "bg-ink-soft/50", text: "Offline — saved here, will sync later" },
+  offline: { dot: "bg-ink-soft/50", text: "Offline: saved here, will sync later" },
   disabled: { dot: "bg-ink-soft/40", text: "Connecting…" },
 };
 
@@ -151,7 +151,7 @@ function ProfileSection() {
         <div className="mt-2">
           <p className="mb-3 text-sm leading-relaxed text-ink-soft">
             Pick a handle so friends can find you. Lowercase letters, numbers, and
-            underscores — 3 to 30 characters.
+            underscores, 3 to 30 characters.
           </p>
           <label className="block text-xs font-medium uppercase tracking-wide text-ink-soft">
             Handle
@@ -322,7 +322,7 @@ function SignedIn({
       <SyncStatusLine />
       <p className="mt-4 text-sm leading-relaxed text-ink-soft">
         Your trails sync quietly in the background. Signing out clears this
-        device — your world stays safe in the cloud and returns when you sign
+        device. Your world stays safe in the cloud and returns when you sign
         back in.
       </p>
       <button

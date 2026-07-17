@@ -40,7 +40,7 @@ interface AuthContextValue {
 }
 
 const NOT_CONFIGURED: AuthResult = {
-  error: "Cloud sync isn't set up on this device — Drift is running locally.",
+  error: "Cloud sync isn't set up on this device. Drift is running locally.",
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);

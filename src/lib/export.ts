@@ -19,5 +19,5 @@ export function trailToText(trail: Trail): string {
           : "";
     return `${i + 1}. ${s.card.displayTitle}${via}\n   ${s.card.sourceUrl}`;
   });
-  return [header, "", ...lines, "", "— mapped with Drift"].join("\n");
+  return [header, "", ...lines, "", "Mapped with Drift"].join("\n");
 }

@@ -77,7 +77,7 @@ export default function FriendsPage() {
       <Shell>
         <div className="rounded-2xl border border-line bg-paper-raised p-6">
           <p className="text-sm leading-relaxed text-ink">
-            Friends need an account. Drift works fully on its own — but to add
+            Friends need an account. Drift works fully on its own, but to add
             friends and share trails,{" "}
             <Link href="/account" className="text-accent-strong hover:underline">
               sign in
@@ -93,7 +93,7 @@ export default function FriendsPage() {
       <Shell>
         <div className="rounded-2xl border border-line bg-paper-raised p-6">
           <p className="text-sm leading-relaxed text-ink">
-            Pick a handle first so friends can find you —{" "}
+            Pick a handle first so friends can find you:{" "}
             <Link href="/account" className="text-accent-strong hover:underline">
               set your handle
             </Link>

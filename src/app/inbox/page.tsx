@@ -56,7 +56,7 @@ export default function InboxPage() {
       <Shell>
         <div className="rounded-2xl border border-line bg-paper-raised p-6">
           <p className="text-sm leading-relaxed text-ink">
-            Your inbox needs an account —{" "}
+            Your inbox needs an account:{" "}
             <Link href="/account" className="text-accent-strong hover:underline">
               sign in
             </Link>{" "}

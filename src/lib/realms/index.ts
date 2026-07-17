@@ -30,7 +30,7 @@ const encyclopedia: RealmClient = {
   contentSource: "wikipedia",
   label: "Encyclopedia",
   glyph: "✦",
-  blurb: "Wander all of Wikipedia — pull a thread on anything.",
+  blurb: "Wander all of Wikipedia. Pull a thread on anything.",
   hasInterestModel: true,
   threadMode: "diverse",
   seeds: (encyclopediaSeedData as EncSeed[]).map((s) => ({

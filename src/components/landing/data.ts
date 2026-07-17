@@ -7,7 +7,7 @@
 // card is illustrated by a CC0 public-domain artwork from the Art Institute of
 // Chicago (the Gallery realm's own source), so there's no attribution baggage.
 
-import type { Card, ThreadKind, TrailStep } from "@/lib/types";
+import type { ThreadKind, TrailStep } from "@/lib/types";
 
 export type DemoThread = {
   kind: ThreadKind;
@@ -19,7 +19,7 @@ export type DemoCard = {
   id: string;
   title: string;
   description: string; // short subtitle, like a card's `description`
-  extract: string; // a 1–2 sentence hook
+  extract: string; // a one or two sentence hook
   image: string; // bundled under /public/landing
   threads: DemoThread[];
 };
@@ -45,7 +45,7 @@ export const DEMO_CARDS: DemoCard[] = [
     title: "Mount Fuji",
     description: "Volcano · Honshū, Japan",
     extract:
-      "Japan's highest peak — a sacred, active volcano painted and printed for centuries.",
+      "Japan's highest peak, a sacred and active volcano painted and printed for centuries.",
     image: "/landing/fuji.jpg",
     threads: [
       { kind: "nearby", label: "The Great Wave", to: "great-wave" },
@@ -55,9 +55,9 @@ export const DEMO_CARDS: DemoCard[] = [
   {
     id: "ukiyo-e",
     title: "Ukiyo-e",
-    description: "Japanese art · 17th–19th century",
+    description: "Japanese art · 17th to 19th century",
     extract:
-      "Woodblock prints of 'the floating world' — actors, courtesans, and the landscapes of Edo-era Japan.",
+      "Woodblock prints of 'the floating world': actors, courtesans, and the landscapes of Edo Japan.",
     image: "/landing/ukiyo-e.jpg",
     threads: [
       { kind: "deeper", label: "The Great Wave", to: "great-wave" },
@@ -69,7 +69,7 @@ export const DEMO_CARDS: DemoCard[] = [
     title: "Impressionism",
     description: "Art movement · Paris, 1870s",
     extract:
-      "Loose brushwork chasing light and the fleeting moment — and it borrowed boldly from Japanese prints.",
+      "Loose brushwork chasing light and the fleeting moment. It borrowed boldly from Japanese prints.",
     image: "/landing/impressionism.jpg",
     threads: [
       { kind: "deeper", label: "Claude Monet", to: "monet" },
@@ -80,7 +80,7 @@ export const DEMO_CARDS: DemoCard[] = [
   {
     id: "monet",
     title: "Claude Monet",
-    description: "Painter · 1840–1926",
+    description: "Painter · 1840 to 1926",
     extract:
       "The founder of Impressionism, who painted haystacks and water lilies over and over to catch the shifting light.",
     image: "/landing/monet.jpg",
@@ -125,66 +125,84 @@ export function nextCard(id: string): DemoCard | undefined {
 // dotted grey). Images reuse the same CC0 artworks, so titles + thumbnails match.
 // ---------------------------------------------------------------------------
 
-function demoToCard(d: DemoCard): Card {
-  return {
-    pageTitle: d.id,
-    displayTitle: d.title,
-    description: d.description,
-    extract: d.extract,
-    imageUrl: d.image,
-    sourceUrl: "#",
-    source: "artic",
-  };
-}
+// ---------------------------------------------------------------------------
+// Example trails for the "reward" section. Each is a short, hand-authored wander
+// the real <TrailMap/> renders. The landing shows a RANDOM one per visit, so the
+// page feels a little fresh each time. To add or edit a trail: drop a matching
+// CC0/public-domain image in public/landing/, then add a `trail([...])` below.
+//
+// A stop is `[title, image, via]`. `via` is one of: seed() for the first stop,
+// thread(label, kind) for a pulled thread (kind = deeper | zoomout | tangent |
+// nearby → sets the edge glyph), or drift() for a wander (a dotted grey edge).
+// Only the title + image are drawn, so the rest is kept minimal.
+//
+// Imagery credits (all publish-safe): art + ancient = the Art Institute of
+// Chicago (CC0); nature = Ernst Haeckel plates (public domain); cosmos =
+// NASA/ESA/Hubble (public domain).
+// ---------------------------------------------------------------------------
 
-// A fixed base time so the example is deterministic (no Date.now()). The exact
-// value is irrelevant — the trail map doesn't render timestamps.
+type Via = TrailStep["arrivedVia"];
+const seed = (title: string): Via => ({ type: "seed", seedName: title });
+const thread = (label: string, kind: ThreadKind): Via => ({
+  type: "thread",
+  label,
+  kind,
+  fromTitle: "",
+});
+const drift = (): Via => ({ type: "drift" });
+
+type Stop = [title: string, image: string, via: Via];
+
+// A fixed base time so the examples are deterministic (no Date.now()). The value
+// is irrelevant: the trail map never renders timestamps.
 const T0 = 1_700_000_000_000;
 
-export const EXAMPLE_TRAIL: TrailStep[] = [
-  {
-    card: demoToCard(DEMO_CARDS[0]), // The Great Wave
-    arrivedVia: { type: "seed", seedName: "The Great Wave off Kanagawa" },
-    timestamp: T0,
-    expanded: false,
-  },
-  {
-    card: demoToCard(DEMO_CARDS[2]), // Ukiyo-e
-    arrivedVia: {
-      type: "thread",
-      label: "Ukiyo-e",
-      fromTitle: "great-wave",
-      kind: "zoomout",
+function trail(stops: Stop[]): TrailStep[] {
+  return stops.map(([title, image, via], i) => ({
+    card: {
+      pageTitle: `${title}#${i}`,
+      displayTitle: title,
+      extract: "",
+      imageUrl: image,
+      sourceUrl: "#",
     },
-    timestamp: T0 + 60_000,
-    expanded: true,
-  },
-  {
-    card: demoToCard(DEMO_CARDS[3]), // Impressionism
-    arrivedVia: {
-      type: "thread",
-      label: "Impressionism",
-      fromTitle: "ukiyo-e",
-      kind: "tangent",
-    },
-    timestamp: T0 + 120_000,
+    arrivedVia: via,
+    timestamp: T0 + i * 60_000,
     expanded: false,
-  },
-  {
-    card: demoToCard(DEMO_CARDS[4]), // Claude Monet
-    arrivedVia: {
-      type: "thread",
-      label: "Claude Monet",
-      fromTitle: "impressionism",
-      kind: "deeper",
-    },
-    timestamp: T0 + 180_000,
-    expanded: false,
-  },
-  {
-    card: demoToCard(DEMO_CARDS[5]), // Paris Street; Rainy Day (a drift)
-    arrivedVia: { type: "drift", topic: { id: "art", label: "Art & design" } },
-    timestamp: T0 + 240_000,
-    expanded: false,
-  },
+  }));
+}
+
+export const EXAMPLE_TRAILS: TrailStep[][] = [
+  // Japanese prints and the Impressionists they inspired.
+  trail([
+    ["The Great Wave off Kanagawa", "/landing/great-wave.jpg", seed("The Great Wave off Kanagawa")],
+    ["Ukiyo-e", "/landing/ukiyo-e.jpg", thread("Ukiyo-e", "zoomout")],
+    ["Impressionism", "/landing/impressionism.jpg", thread("Impressionism", "tangent")],
+    ["Claude Monet", "/landing/monet.jpg", thread("Claude Monet", "deeper")],
+    ["Paris Street; Rainy Day", "/landing/rainy-day.jpg", drift()],
+  ]),
+  // From a stellar nursery out to a galaxy, then home again.
+  trail([
+    ["Pillars of Creation", "/landing/cosmos-nebula.jpg", seed("Pillars of Creation")],
+    ["The Whirlpool Galaxy", "/landing/cosmos-galaxy.jpg", thread("The Whirlpool Galaxy", "zoomout")],
+    ["Saturn", "/landing/cosmos-saturn.jpg", drift()],
+    ["Jupiter", "/landing/cosmos-jupiter.jpg", thread("Jupiter", "nearby")],
+    ["Earthrise", "/landing/cosmos-earth.jpg", thread("Earthrise", "tangent")],
+  ]),
+  // A wander through the soft-bodied creatures of the sea (Haeckel plates).
+  trail([
+    ["Octopus", "/landing/nature-octopus.jpg", seed("Octopus")],
+    ["Jellyfish", "/landing/nature-jellyfish.jpg", thread("Jellyfish", "tangent")],
+    ["Siphonophores", "/landing/nature-siphonophore.jpg", thread("Siphonophores", "nearby")],
+    ["Sea anemones", "/landing/nature-anemone.jpg", drift()],
+    ["Nudibranchs", "/landing/nature-slug.jpg", thread("Nudibranchs", "deeper")],
+  ]),
+  // Across the ancient world, from Greek pottery to imperial Rome.
+  trail([
+    ["Greek amphora", "/landing/ancient-amphora.jpg", seed("Greek amphora")],
+    ["Greek kylix", "/landing/ancient-kylix.jpg", thread("Greek kylix", "deeper")],
+    ["Statue of Horus", "/landing/ancient-horus.jpg", thread("Statue of Horus", "tangent")],
+    ["Emperor Hadrian", "/landing/ancient-hadrian.jpg", drift()],
+    ["Greek funerary stele", "/landing/ancient-stele.jpg", thread("Greek funerary stele", "nearby")],
+  ]),
 ];

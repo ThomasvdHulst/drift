@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { Wordmark, Monogram } from "@/components/BrandLogo";
 import { AuthForm } from "@/components/AuthForm";
@@ -8,7 +9,7 @@ import { KindIcon, KIND_META } from "@/components/ThreadChips";
 import type { ThreadKind } from "@/lib/types";
 import { ThreadDemo } from "./ThreadDemo";
 import { Reveal } from "./Reveal";
-import { DEMO_CARDS, EXAMPLE_TRAIL } from "./data";
+import { DEMO_CARDS, EXAMPLE_TRAILS } from "./data";
 
 // The logged-out landing page. This IS the AuthGate's signed-out view when the
 // cloud is configured (the hosted app) — so the app stays fully login-gated, and
@@ -17,11 +18,24 @@ import { DEMO_CARDS, EXAMPLE_TRAIL } from "./data";
 // shape of a session, and why Drift is the opposite of a slot machine — then
 // invite people in. Everything honors §2 even here: no autoplay, honest copy.
 
-const HERO = DEMO_CARDS[3]; // Impressionism (Monet, Stacks of Wheat) — a warm
+const HERO = DEMO_CARDS[3]; // Impressionism (Monet, Stacks of Wheat), a warm
 // counterpoint to the demo below, which starts on The Great Wave.
 
 export function Landing() {
   const reduce = useReducedMotion();
+
+  // Show a random example trail in the "reward" section on each visit, so the
+  // page feels a little fresh. Chosen after mount (the landing never renders on
+  // the server — the gate resolves client-side), so there's no hydration
+  // mismatch, and the reward section sits below the fold so there's no flash.
+  const [trailIdx, setTrailIdx] = useState(0);
+  useEffect(() => {
+    // Defer off the synchronous effect path (React 19 forbids sync setState in
+    // an effect body — same pattern as AuthProvider).
+    queueMicrotask(() =>
+      setTrailIdx(Math.floor(Math.random() * EXAMPLE_TRAILS.length)),
+    );
+  }, []);
 
   function goToJoin(e: React.MouseEvent) {
     e.preventDefault();
@@ -57,10 +71,10 @@ export function Landing() {
               Pull a thread. See where it goes.
             </p>
             <p className="mx-auto mt-5 max-w-md text-base leading-relaxed text-ink/80 lg:mx-0">
-              A calm feed of knowledge cards where <em>you</em> are the algorithm
-              — no autoplay, no hidden ranking. Every card shows visible threads
-              you can pull to steer your own rabbit hole, and every session ends
-              with a map of where your curiosity wandered.
+              A calm feed of knowledge cards where <em>you</em> are the
+              algorithm. No autoplay, no hidden ranking. Every card shows visible
+              threads you can pull to steer your own rabbit hole, and every
+              session ends with a map of where your curiosity wandered.
             </p>
             <div className="mt-7 flex flex-col items-center gap-3 sm:flex-row lg:justify-start">
               <a
@@ -90,12 +104,12 @@ export function Landing() {
         {/* --- Interactive demo (the centerpiece) --- */}
         <Reveal as="section" className="py-14 sm:py-20">
           <SectionHeading
-            eyebrow="Try it — you steer"
+            eyebrow="Try it. You steer"
             title="Pull a thread, and the feed follows you"
           />
           <p className="mx-auto mb-8 max-w-xl text-center text-base leading-relaxed text-ink/75">
             Here&apos;s a little rabbit hole you can actually wander. Pull a
-            thread and watch where it leads. Nothing moves until you do — that&apos;s
+            thread and watch where it leads. Nothing moves until you do. That&apos;s
             the whole idea.
           </p>
           <ThreadDemo />
@@ -116,7 +130,7 @@ export function Landing() {
             <Step
               n={2}
               title="Steer"
-              body="Pull the visible threads to choose your own direction. You always see why the next card appeared — the thread you chose, or an honest 'drift.'"
+              body="Pull the visible threads to choose your own direction. You always see why the next card appeared: the thread you chose, or an honest 'drift.'"
             >
               <DirectionGlyphs />
             </Step>
@@ -135,11 +149,11 @@ export function Landing() {
             title="Where your curiosity actually went"
           />
           <p className="mx-auto mb-8 max-w-xl text-center text-base leading-relaxed text-ink/75">
-            No streaks, no counters to feed. Just a quiet map of your rabbit hole
-            — the stops you made and the threads that took you there.
+            No streaks, no counters to feed. Just a quiet map of your rabbit
+            hole: the stops you made and the threads that took you there.
           </p>
           <div className="mx-auto max-w-xl rounded-2xl border border-line bg-paper-raised/60 p-4 sm:p-6">
-            <TrailMap steps={EXAMPLE_TRAIL} />
+            <TrailMap steps={EXAMPLE_TRAILS[trailIdx]} />
           </div>
         </Reveal>
 
@@ -162,7 +176,7 @@ export function Landing() {
             />
             <Principle
               title="Agency over autoplay"
-              body="Nothing advances on its own. At most one card is ever loaded ahead — no bottomless feed teasing 'just one more.'"
+              body="Nothing advances on its own. At most one card is ever loaded ahead. No bottomless feed teasing 'just one more.'"
               icon={
                 <>
                   <path d="M8 5v14l11-7z" />
@@ -202,14 +216,14 @@ export function Landing() {
           />
           <p className="mx-auto mb-8 max-w-xl text-center text-base leading-relaxed text-ink/75">
             Everything comes from sources curated by people, never scraped. AI is
-            never in the driver&apos;s seat — you are.
+            never in the driver&apos;s seat. You are.
           </p>
           <div className="grid gap-6 sm:grid-cols-2">
             <RealmPanel
               image="/landing/realm-encyclopedia.jpg"
               glyph="✦"
               label="Encyclopedia"
-              body="All of Wikipedia, as full-screen cards. Threads become real directions — go deeper, zoom out, or take a tangent."
+              body="All of Wikipedia, as full-screen cards. Threads become real directions: go deeper, zoom out, or take a tangent."
             />
             <RealmPanel
               realm="gallery"
@@ -250,7 +264,7 @@ export function Landing() {
             </p>
             <p className="max-w-md text-xs leading-relaxed text-ink-soft/80">
               Content from Wikipedia (CC BY-SA) and the Art Institute of Chicago
-              (public domain, CC0). Drift only reshapes it — it never invents
+              (public domain, CC0). Drift only reshapes it. It never invents
               facts.
             </p>
           </div>

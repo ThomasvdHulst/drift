@@ -93,6 +93,18 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > zero console errors) + blank-env degradation 6/6. _(Live sign-in not exercised — the `.env` test creds are
 > stale: Supabase returns "Invalid login credentials" for a direct API call, unrelated to this change.)_
 >
+> ✅ **Landing follow-up (2026-07-17).** (1) The reward section now rotates a **random example trail per
+> visit** from `EXAMPLE_TRAILS` in `landing/data.ts` (a clean, easy-to-edit array; kept **static in code**,
+> not a DB table, so the landing keeps its zero-runtime-fetch design and needs no fallback/RLS). Four themed
+> trails: art (AIC CC0), cosmos (NASA/Hubble PD), deep sea (Haeckel PD), ancient world (AIC CC0), with 15 new
+> license-verified images in `public/landing/`. The random index is chosen in a `queueMicrotask` effect (no
+> hydration mismatch; reward sits below the fold so no flash). (2) **Removed em/en dashes from all rendered
+> copy** across the app (landing + `page`/`drift`/`account`/`friends`/`atlas`/`inbox`/`interests`,
+> `AuthForm`/`AuthProvider`/`TrailMap`/`ThreadChips`/`FeedChrome`, `export.ts`, realm blurb, `layout`/
+> `manifest` titles); rephrased with periods, colons, and commas. Compound-word hyphens kept; code comments
+> left as-is (not rendered). **Verified:** build+lint clean, **197 tests**; browser: all 4 trails rotate and
+> every image loads, **0 dashes** in `document.body.innerText`, demo still works, zero console errors.
+>
 > _(Update this line whenever progress changes.)_
 
 ---

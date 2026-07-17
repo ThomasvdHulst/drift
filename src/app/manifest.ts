@@ -5,7 +5,7 @@ import type { MetadataRoute } from "next";
 // and auto-links it. Colors mirror the "quiet reading room" palette in globals.css.
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Drift — pull a thread, see where it goes",
+    name: "Drift: pull a thread, see where it goes",
     short_name: "Drift",
     description:
       "A calm feed of knowledge cards where you are the algorithm. Pull threads to steer your own rabbit hole.",

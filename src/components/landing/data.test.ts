@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   DEMO_CARDS,
   DEMO_START_ID,
-  EXAMPLE_TRAIL,
+  EXAMPLE_TRAILS,
   demoCardById,
   nextCard,
 } from "./data";
@@ -53,12 +53,31 @@ describe("landing demo graph", () => {
     expect(nextCard("not-a-real-card")).toBeUndefined();
   });
 
-  it("example trail is a non-trivial multi-stop wander", () => {
-    expect(EXAMPLE_TRAIL.length).toBeGreaterThanOrEqual(4);
-    // first stop is the seed, and at least one drift edge exists (for the
-    // dotted-vs-solid edge styling the reward section shows off)
-    expect(EXAMPLE_TRAIL[0].arrivedVia.type).toBe("seed");
-    expect(EXAMPLE_TRAIL.some((s) => s.arrivedVia.type === "drift")).toBe(true);
-    expect(EXAMPLE_TRAIL.some((s) => s.arrivedVia.type === "thread")).toBe(true);
+  it("offers several example trails to rotate through", () => {
+    expect(EXAMPLE_TRAILS.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("every example trail is a non-trivial, well-formed wander", () => {
+    for (const t of EXAMPLE_TRAILS) {
+      expect(t.length).toBeGreaterThanOrEqual(4);
+      // first stop is the seed; the rest show both edge styles (solid thread +
+      // dotted drift) the reward section shows off
+      expect(t[0].arrivedVia.type).toBe("seed");
+      expect(t.some((s) => s.arrivedVia.type === "drift")).toBe(true);
+      expect(t.some((s) => s.arrivedVia.type === "thread")).toBe(true);
+      // every stop has a title + a bundled image
+      for (const s of t) {
+        expect(s.card.displayTitle.length).toBeGreaterThan(0);
+        expect(s.card.imageUrl).toMatch(/^\/landing\/.+\.jpg$/);
+      }
+    }
+  });
+
+  it("uses no em/en dashes in any trail title", () => {
+    for (const t of EXAMPLE_TRAILS) {
+      for (const s of t) {
+        expect(s.card.displayTitle).not.toMatch(/[—–]/);
+      }
+    }
   });
 });

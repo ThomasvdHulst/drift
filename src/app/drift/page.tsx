@@ -501,7 +501,7 @@ export default function DriftPage() {
       if (t) {
         pushStep(candidateToCard(t.candidate), { type: "drift" }, "drift");
       } else {
-        showHint("The source is catching its breath — try drifting again in a moment.");
+        showHint("The source is catching its breath. Try drifting again in a moment.");
       }
     }
   }
@@ -882,8 +882,8 @@ export default function DriftPage() {
               <div className="flex items-center gap-3 rounded-2xl bg-paper-raised px-4 py-3 shadow-lg ring-1 ring-line">
                 <p className="text-sm text-ink-soft">
                   {endless
-                    ? "You've wandered far — a nice place to pause?"
-                    : "You've wandered far — want to see your trail?"}
+                    ? "You've wandered far. A nice place to pause?"
+                    : "You've wandered far. Want to see your trail?"}
                 </p>
                 {endless ? (
                   <Link

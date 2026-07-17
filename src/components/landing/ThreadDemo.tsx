@@ -179,10 +179,10 @@ export function ThreadDemo() {
         {/* Gentle guidance, never a countdown or a tease (§2). */}
         <p className="h-5 text-center text-xs text-ink-soft" aria-live="polite">
           {pulls === 0
-            ? "Tap a thread above — you choose every turn."
+            ? "Tap a thread above. You choose every turn."
             : pulls < 3
               ? `${pulls} ${pulls === 1 ? "stop" : "stops"} so far.`
-              : `${pulls} stops — this little wander is becoming a trail.`}
+              : `${pulls} stops, and this little wander is becoming a trail.`}
         </p>
       </div>
     </div>
