@@ -15,6 +15,7 @@ import { cardId } from "@/lib/card";
 import { selectDiverseThreads, selectFacetThreads } from "@/lib/diversity";
 import { classifyThreads } from "@/lib/threads";
 import { pickDriftNext, pickRandomThread } from "@/lib/drift";
+import { edgesOf, resolveSwipe, isWheelReadingScroll } from "@/lib/gesture";
 import { randomOffset, interleave } from "@/lib/discover";
 import { applyFeedback, type Interest, type Reaction } from "@/lib/interest";
 import { getRealm, discoverUrl, relatedUrl, summaryUrl } from "@/lib/realms";
@@ -95,6 +96,16 @@ const NUDGE_AT = 25;
 const REFILL_TOPICS = 3;
 const DISCOVER_LIMIT = 4;
 
+// The card's inner scroll region under a wheel/touch event target, or null if the
+// gesture began outside it (the threads bar, the desktop image panel, gaps). The
+// element carries [data-drift-scroll] (see CardView). Used to tell "scroll to
+// read" from "overscroll to drift on".
+function scrollRegionFrom(target: EventTarget | null): HTMLElement | null {
+  return target instanceof Element
+    ? (target.closest("[data-drift-scroll]") as HTMLElement | null)
+    : null;
+}
+
 export default function DriftPage() {
   const { user, cloudConfigured } = useAuth();
   const [shareCard, setShareCard] = useState<Card | null>(null);
@@ -131,7 +142,15 @@ export default function DriftPage() {
   const wheelAccumRef = useRef(0);
   const wheelTsRef = useRef(0);
   const fireTsRef = useRef(0);
-  const touchStartYRef = useRef(0);
+  // The vertical start of a touch + the card scroll region's edge state at that
+  // moment (measured at start so iOS momentum after touchend can't cause a false
+  // advance). Read by onTouchEnd via resolveSwipe.
+  const touchStartRef = useRef<{
+    y: number;
+    insideRegion: boolean;
+    atTop: boolean;
+    atBottom: boolean;
+  }>({ y: 0, insideRegion: false, atTop: true, atBottom: true });
   // How many drifts in a row have followed a related thread. Feeds the run-cap
   // in pickDriftNext so passive drifting can't get stuck circling one subject.
   const themeRunRef = useRef(0);
@@ -683,10 +702,31 @@ export default function DriftPage() {
 
   // Accumulate wheel delta so a normal scroll reliably triggers exactly one move
   // (fixes "scrolling sometimes does nothing"), with a small gap between fires.
+  // But first let the card text scroll natively while there's room to read — only
+  // at the region's edge (or when the wheel is outside it) does a wheel tick count
+  // toward advancing/back (overscroll-to-advance).
   function onWheel(e: React.WheelEvent) {
     const now = Date.now();
     if (now - wheelTsRef.current > 200) wheelAccumRef.current = 0;
     wheelTsRef.current = now;
+
+    const region = scrollRegionFrom(e.target);
+    if (region) {
+      const { scrollable, atTop, atBottom } = edgesOf(region);
+      if (
+        isWheelReadingScroll({
+          deltaY: e.deltaY,
+          insideRegion: true,
+          scrollable,
+          atTop,
+          atBottom,
+        })
+      ) {
+        wheelAccumRef.current = 0; // reading — don't let it bleed into an advance
+        return;
+      }
+    }
+
     wheelAccumRef.current += e.deltaY;
     if (busyRef.current || now - fireTsRef.current < 280) return;
     if (wheelAccumRef.current > 55) {
@@ -699,13 +739,30 @@ export default function DriftPage() {
       goBack();
     }
   }
+  // Record the touch's start Y + the scroll region's edge state, so touchEnd can
+  // tell a reading scroll from an overscroll-to-advance (see lib/gesture).
   function onTouchStart(e: React.TouchEvent) {
-    touchStartYRef.current = e.changedTouches[0].clientY;
+    const region = scrollRegionFrom(e.target);
+    const edges = region
+      ? edgesOf(region)
+      : { scrollable: false, atTop: true, atBottom: true };
+    touchStartRef.current = {
+      y: e.changedTouches[0].clientY,
+      insideRegion: !!region,
+      atTop: edges.atTop,
+      atBottom: edges.atBottom,
+    };
   }
   function onTouchEnd(e: React.TouchEvent) {
-    const delta = touchStartYRef.current - e.changedTouches[0].clientY;
-    if (delta > 50) advance();
-    else if (delta < -50) goBack();
+    const start = touchStartRef.current;
+    const action = resolveSwipe({
+      deltaY: start.y - e.changedTouches[0].clientY,
+      insideRegion: start.insideRegion,
+      atTopStart: start.atTop,
+      atBottomStart: start.atBottom,
+    });
+    if (action === "advance") advance();
+    else if (action === "back") goBack();
   }
 
   return (

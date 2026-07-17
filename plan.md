@@ -63,6 +63,14 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > fully-local app, no gate). **▶ NEXT: the user runs `docs/deploy.md`** (push → Vercel import → env vars →
 > Supabase Site URL → deploy → add-to-home-screen), then the M32 post-deploy check. Plan file:
 > `~/.claude/plans/rustling-squishing-widget.md`.
+> ✅ **Mobile reading-scroll fix (2026-07-17).** Resolved the read-vs-drift gesture conflict: the feed's
+> advance gesture is now scroll-aware — **scroll to read, overscroll past the end to advance** (back =
+> overscroll past the top); on phones the **whole card scrolls** (image scrolls away) with threads pinned
+> as a bottom bar. Pure logic in `src/lib/gesture.ts` (+17 tests → **183**); handlers in `drift/page.tsx`;
+> layout in `CardView.tsx`. Build+lint clean; ad-hoc mobile+desktop Playwright E2E **16/16** (light+dark).
+> A **news/"happy news" realm was researched and parked** (no openly-licensed positive-news source exists;
+> the only publish-safe realms are Encyclopedia = CC BY-SA and Gallery = CC0). See grab-bag note below.
+>
 > _(Update this line whenever progress changes.)_
 
 ---
@@ -968,6 +976,17 @@ when the user is ready.
 
 ## Cross-cutting smaller polish (grab-bag — do anytime, not a phase)
 
+- [x] **Mobile reading-scroll fix (2026-07-17):** the feed's advance gesture is now scroll-aware — the card
+      text scrolls to read and only an *overscroll past the end* advances (back = overscroll past the top).
+      On phones the **whole card scrolls** (image scrolls away) with threads pinned as a bottom bar; desktop
+      keeps its split-panel. Chosen over a CSS scroll-snap rewrite (fragile nested-snap + iOS momentum bugs;
+      fights Drift's generate-next-on-demand model). Pure decision logic in `src/lib/gesture.ts`
+      (`edgesOf`/`resolveSwipe`/`isWheelReadingScroll`, 17 unit tests); scroll-aware `onWheel`/`onTouch*`
+      handlers in `drift/page.tsx` (locate the region via `[data-drift-scroll]` + `overscroll-y-contain`);
+      layout in `CardView.tsx`. **Verified:** 183 unit tests, build+lint clean, ad-hoc mobile(390px)+desktop
+      Playwright E2E **16/16** — mid-content swipe scrolls without advancing, overscroll advances, back at
+      top, desktop wheel/arrows — light+dark screenshots, zero console errors. _Real-device iOS pass still
+      recommended (Chromium touch emulation ≠ Safari momentum/rubber-band/dynamic toolbar)._
 - [ ] **Replace the boilerplate `README.md`** — it's still stock `create-next-app`. It's the front door for
       any future contributor (or future you); it should say what Drift is, how to run it, and point at the
       spec/plan.

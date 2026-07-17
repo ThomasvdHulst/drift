@@ -244,23 +244,37 @@ export function CardView({
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl bg-paper-raised shadow-[0_10px_40px_-12px_rgba(43,39,35,0.25)] ring-1 ring-line md:flex-row">
-      {/* Image panel — left on wide screens, top on narrow. */}
-      <div className="relative h-[34vh] w-full shrink-0 md:h-full md:w-1/2 lg:w-[55%]">
+      {/* Desktop: a fixed image panel on the left. Hidden on phones, where the
+          image instead lives inside the scroll flow below (so it scrolls away
+          and the text gets the full height). */}
+      <div className="relative hidden shrink-0 md:block md:h-full md:w-1/2 lg:w-[55%]">
         <ImagePanel card={card} />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-paper-raised/70 to-transparent md:hidden" />
       </div>
 
-      {/* Reading column. */}
-      <div className="flex min-h-0 flex-1 flex-col gap-4 p-6 sm:p-8 md:p-10 lg:p-12">
-        <div className="flex items-center justify-between gap-3">
-          <ModeChip via={arrivedVia} />
-          <div className="flex shrink-0 items-center gap-1.5">
-            {onReact && <ReactionButtons reaction={reaction} onReact={onReact} />}
-            {onShare && <ShareButton onShare={onShare} />}
+      {/* Reading side: one scroll region + a pinned threads bar. The whole
+          reading side scrolls (image included on phones), and the feed's gesture
+          handler reads this region's edges (via [data-drift-scroll]) to tell
+          "scroll to read" from "overscroll to drift on" — see lib/gesture. */}
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div
+          data-drift-scroll
+          className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-y-contain px-6 pb-4 pt-6 sm:px-8 sm:pt-8 md:px-10 md:pt-10 lg:px-12 lg:pt-12"
+        >
+          {/* Phone-only hero, full-bleed to the card's rounded top; it scrolls
+              up out of the way as you read. */}
+          <div className="relative -mx-6 -mt-6 h-[34dvh] shrink-0 overflow-hidden sm:-mx-8 sm:-mt-8 md:hidden">
+            <ImagePanel card={card} />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-paper-raised/70 to-transparent" />
           </div>
-        </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+          <div className="flex items-center justify-between gap-3">
+            <ModeChip via={arrivedVia} />
+            <div className="flex shrink-0 items-center gap-1.5">
+              {onReact && <ReactionButtons reaction={reaction} onReact={onReact} />}
+              {onShare && <ShareButton onShare={onShare} />}
+            </div>
+          </div>
+
           {card.description && (
             <p className="text-sm font-medium uppercase tracking-wide text-ink-soft">
               {card.description}
@@ -280,8 +294,8 @@ export function CardView({
                 </p>
               ),
             )}
-            {/* Soft fade at the truncation point — a quiet "there's more on
-                Wikipedia" cue, not a tease to keep scrolling in-app. */}
+            {/* Soft fade at the truncation point — a quiet "there's more at the
+                source" cue, not a tease to keep scrolling in-app. */}
             {open && hasMore && !loadingMore && (
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-paper-raised to-transparent" />
             )}
@@ -306,10 +320,17 @@ export function CardView({
               {sourceLinkLabel(card.source)}
             </a>
           </div>
+          {/* A quiet, static wayfinding cue for the overscroll-to-advance
+              gesture — not a tease (no autoplay/countdown); the bottom-nav
+              Advance button stays the explicit control (§2.2). */}
+          <p className="pt-1 text-center text-xs text-ink-soft/70">
+            ⌄ keep scrolling to drift onward
+          </p>
         </div>
 
-        {/* Threads pinned to the bottom of the reading column. */}
-        <div className="mt-auto flex flex-col gap-3 border-t border-line pt-5">
+        {/* Threads pinned below the scroll region — always reachable, and they
+            don't eat into the reading height. */}
+        <div className="flex shrink-0 flex-col gap-3 border-t border-line px-6 py-4 sm:px-8 md:px-10 lg:px-12">
           <p className="text-xs font-medium uppercase tracking-widest text-ink-soft">
             Pull a thread
           </p>
