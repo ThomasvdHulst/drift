@@ -71,6 +71,28 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > A **news/"happy news" realm was researched and parked** (no openly-licensed positive-news source exists;
 > the only publish-safe realms are Encyclopedia = CC BY-SA and Gallery = CC0). See grab-bag note below.
 >
+> ✅ **Auth overhaul (2026-07-17).** Google/Apple OAuth buttons (env-gated via `NEXT_PUBLIC_OAUTH_PROVIDERS`,
+> Apple built but not enabled), email verification UX ("check your email" + resend), password **reset**
+> (`/account/reset`) and **change password** (`/account`); client set to PKCE. All graceful (unconfigured ⇒
+> no gate/OAuth). Committed (`2a17486`). **Email is the open thread:** the built-in Supabase sender is
+> ~2/hr + can't edit templates on new free-tier projects, so the user turned **Confirm-email OFF** for now
+> and plans to get a **domain + Resend (custom SMTP)** in the background. Once SMTP is live: turn Confirm-email
+> back on, and hand over branded HTML email templates (Confirm signup + Reset password). See grab-bag + the
+> auth plan file `~/.claude/plans/zippy-pondering-cook.md`.
+>
+> ✅ **Logged-out landing page (2026-07-17).** Replaced the bare sign-in gate with a calm, concept-first
+> landing page (`src/components/landing/*`), rendered from `AuthGate`'s configured-but-signed-out branch —
+> so the app stays fully login-gated and a backend-less clone is unchanged (git diff: only the signed-out
+> branch changed). Sections: sticky bar → hero (Monet) → an **interactive "pull a thread" demo** (tap a
+> real thread chip → the card slides in diagonally, mirroring `/drift` `cardVariants`+spring, with a growing
+> trail breadcrumb; reduced-motion aware) → "every session has a shape" → the reused `<TrailMap/>` reward →
+> the four §2 anti-slot-machine principles → the two realms → an inline "Ready to wander?" join section with
+> the existing `AuthForm` (new optional `initialMode="signup"`). All imagery is **CC0 art from the AIC** in
+> `public/landing/` (no runtime fetch; footer credits). **Verified:** build+lint clean, **195 tests** (+7),
+> real-browser signed-out 26/26 (demo interactive, CTAs→form, light+dark, mobile no-overflow, reduced-motion,
+> zero console errors) + blank-env degradation 6/6. _(Live sign-in not exercised — the `.env` test creds are
+> stale: Supabase returns "Invalid login credentials" for a direct API call, unrelated to this change.)_
+>
 > _(Update this line whenever progress changes.)_
 
 ---
@@ -997,6 +1019,39 @@ when the user is ready.
       (rail/button), `storage.ts` (`sessionMode`). **Verified:** 183 unit tests, build+lint clean, ad-hoc
       Playwright E2E **16/16** (toggle default/persist/wiring; endless hides rail + shows "Keep this trail" +
       escape-hatch opens the save overlay; trail mode unchanged), zero console errors.
+- [x] **Auth overhaul (2026-07-17):** Google + Apple OAuth (`signInWithProvider` → `signInWithOAuth`;
+      buttons in `OAuthButtons.tsx`, shown only for providers in `NEXT_PUBLIC_OAUTH_PROVIDERS`, so no dead
+      buttons — Apple built but not enabled yet); **email verification** UX (a "check your email" panel +
+      resend, `emailRedirectTo` on sign-up); **password reset** (`requestPasswordReset` → `/account/reset`
+      page → `updatePassword`) with a "Forgot your password?" link; **change password** on `/account`; client
+      switched to `flowType:"pkce"` (client-side code exchange via `detectSessionInUrl`, no server route). Pure
+      `parseOAuthProviders` (`src/lib/auth.ts`, +5 tests). Files: `AuthProvider.tsx`, `AuthForm.tsx`,
+      `OAuthButtons.tsx`, `app/account/reset/page.tsx`, `app/account/page.tsx`, `supabase/client.ts`; docs
+      (`deploy.md` Step 4, `backend.md` §7) + `.env.local.example` updated. **Verified:** 188 tests, build+lint
+      clean, real-browser 8/8 configured (Google button → `/auth/v1/authorize`, forgot-password panel, sign-in,
+      change-pw validation, reset page) + 6/6 ungated degradation, zero console errors. **Committed `2a17486`.**
+      **OPEN:** email delivery — built-in sender is ~2/hr + template-locked on new free-tier, so Confirm-email
+      is OFF; when the user sets up **custom SMTP (Resend) + a domain**, turn Confirm-email back on and deliver
+      branded HTML templates for Confirm-signup + Reset-password (paste into Supabase → Email Templates, which
+      unlock under custom SMTP). Apple: enable in Supabase + add `apple` to the env list when there's a paid
+      Apple Developer account.
+- [x] **Logged-out landing page (2026-07-17):** turned the minimal sign-in gate into a proper marketing/onboarding
+      page for signed-out visitors of the hosted (cloud-configured) app. New `src/components/landing/`:
+      `Landing.tsx` (composition: sticky bar, hero, sections, inline `#join` with `AuthForm`, footer + content
+      credits), `ThreadDemo.tsx` (the interactive centerpiece — maps demo threads onto the real `Thread` shape so
+      it reuses `<ThreadChips/>`; diagonal "pull" via the app's `cardVariants`+`spring`; growing breadcrumb;
+      `useReducedMotion` fallback), `Reveal.tsx` (scroll-reveal, reduced-motion aware), `data.ts` (+`data.test.ts`,
+      7 tests: a fully-connected demo card graph + `EXAMPLE_TRAIL` for the reused `<TrailMap/>`). `AuthGate.tsx`
+      now returns `<Landing/>` in the configured+signed-out branch (loading + `user`→children branches unchanged →
+      app still fully gated; no-cloud clone still ungated). `AuthForm` gained an optional `initialMode` (default
+      `"signin"`; landing passes `"signup"`). Imagery = 8 CC0 AIC artworks in `public/landing/` (Hokusai, Hiroshige,
+      Monet, Caillebotte, Van Gogh, Dürer), fetched via IIIF + optimized with `sips`; **no runtime fetch** (respects
+      §2 + rate limits). Anti-slot-machine kept even in marketing: interaction-driven (no autoplay), honest copy.
+      **Verified:** build+lint clean, **195 tests** (+7); ad-hoc Playwright signed-out **26/26** (renders, demo
+      advance/drift/reset, CTA→join form scroll, create-account default, light+dark, mobile 0px overflow,
+      reduced-motion, zero console errors), Gallery terracotta scope confirmed, blank-env degradation **6/6**.
+      _Not exercised:_ a live sign-in (the `.env` `SUPABASE_EMAIL/PASSWORD` are stale — "Invalid login credentials"
+      from a direct Supabase call, unrelated to this change; the `user`→app branch is byte-identical per git diff).
 - [ ] **Replace the boilerplate `README.md`** — it's still stock `create-next-app`. It's the front door for
       any future contributor (or future you); it should say what Drift is, how to run it, and point at the
       spec/plan.

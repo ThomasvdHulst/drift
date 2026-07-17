@@ -2,8 +2,8 @@
 
 import type { ReactNode } from "react";
 import { useAuth } from "@/components/AuthProvider";
-import { AuthForm } from "@/components/AuthForm";
-import { Wordmark, Monogram } from "@/components/BrandLogo";
+import { Monogram } from "@/components/BrandLogo";
+import { Landing } from "@/components/landing/Landing";
 
 // Phase 13: when the cloud IS configured (i.e. the hosted app), Drift requires an
 // account — a logged-out visitor sees a calm sign-in / create-account screen
@@ -29,22 +29,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
   // Signed in ⇒ the app.
   if (user) return <>{children}</>;
 
-  // Configured but signed out ⇒ the welcome gate.
-  return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-6 py-12">
-      <header className="mb-8 flex flex-col items-center text-center">
-        <h1>
-          <Wordmark className="h-20 sm:h-24" />
-        </h1>
-        <p className="-mt-1 text-lg text-ink-soft">
-          Pull a thread. See where it goes.
-        </p>
-        <p className="mx-auto mt-4 max-w-sm text-sm leading-relaxed text-ink/75">
-          Sign in to start drifting. Your trails, interests, and reactions stay
-          private to your account and follow you across devices.
-        </p>
-      </header>
-      <AuthForm />
-    </main>
-  );
+  // Configured but signed out ⇒ the landing page (which embeds the sign-in /
+  // create-account form in its "join" section). The app itself never renders
+  // until `user` is set, so it stays fully login-gated.
+  return <Landing />;
 }
