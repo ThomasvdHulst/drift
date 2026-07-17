@@ -117,6 +117,10 @@ export default function DriftPage() {
   const [hint, setHint] = useState<string | null>(null);
   const [ended, setEnded] = useState(false);
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
+  // "Just drift" mode (?mode=endless): the trail framing is removed (no rail, no
+  // save prompt, a gentle pause nudge instead). History still accrues in memory,
+  // so the quiet "Keep this trail" escape hatch can save it if you decide to.
+  const [endless, setEndless] = useState(false);
   // Snapshot of this session's saved-trail meta, captured (from a ref) when the
   // end screen opens — reading the ref here rather than during render.
   const [endExisting, setEndExisting] = useState<SessionTrail | null>(null);
@@ -200,6 +204,9 @@ export default function DriftPage() {
       const continueId = params.get("continue");
       const realmParam = params.get("realm");
       const bucketParam = params.get("bucket");
+      // "Just drift" (endless) comes from the homepage toggle; a continued trail
+      // always keeps its trail (that branch returns before we set endless).
+      const wantEndless = params.get("mode") === "endless";
       if (!sessionIdRef.current) {
         sessionIdRef.current = crypto.randomUUID();
         sessionStartRef.current = Date.now();
@@ -310,6 +317,7 @@ export default function DriftPage() {
         if (cancelled || !card) return;
         seenRef.current.add(cardId(card));
         persistSeen([cardId(card)]);
+        if (wantEndless) setEndless(true);
         const via: ArrivedVia = {
           type: "seed",
           seedName: seed ?? title ?? "Surprise me",
@@ -778,6 +786,7 @@ export default function DriftPage() {
         pos={pos}
         stops={history.length}
         realm={{ label: realmMeta.label, glyph: realmMeta.glyph }}
+        endless={endless}
         onJump={jumpTo}
         onEnd={endSession}
       />
@@ -872,15 +881,26 @@ export default function DriftPage() {
             <div className="absolute inset-x-0 bottom-safe z-10 flex justify-center px-4">
               <div className="flex items-center gap-3 rounded-2xl bg-paper-raised px-4 py-3 shadow-lg ring-1 ring-line">
                 <p className="text-sm text-ink-soft">
-                  You&apos;ve wandered far — want to see your trail?
+                  {endless
+                    ? "You've wandered far — a nice place to pause?"
+                    : "You've wandered far — want to see your trail?"}
                 </p>
-                <button
-                  type="button"
-                  onClick={endSession}
-                  className="rounded-full bg-accent px-3.5 py-1.5 text-sm font-semibold text-paper-raised transition hover:bg-accent-strong"
-                >
-                  View trail
-                </button>
+                {endless ? (
+                  <Link
+                    href="/"
+                    className="rounded-full bg-accent px-3.5 py-1.5 text-sm font-semibold text-paper-raised transition hover:bg-accent-strong"
+                  >
+                    Head home
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={endSession}
+                    className="rounded-full bg-accent px-3.5 py-1.5 text-sm font-semibold text-paper-raised transition hover:bg-accent-strong"
+                  >
+                    View trail
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setNudgeDismissed(true)}

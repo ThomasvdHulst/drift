@@ -63,6 +63,7 @@ export function FeedTopBar({
   pos,
   stops,
   realm,
+  endless,
   onJump,
   onEnd,
 }: {
@@ -70,6 +71,9 @@ export function FeedTopBar({
   pos: number;
   stops: number;
   realm: { label: string; glyph: string };
+  // "Just drift" mode (no trail framing): hide the breadcrumb rail and soften
+  // the end action to a quiet, optional "Keep this trail" escape hatch.
+  endless?: boolean;
   onJump: (index: number) => void;
   onEnd: () => void;
 }) {
@@ -92,7 +96,7 @@ export function FeedTopBar({
         </span>
       </div>
 
-      <TrailRail steps={steps} pos={pos} onJump={onJump} />
+      {!endless && <TrailRail steps={steps} pos={pos} onJump={onJump} />}
 
       <div className="flex shrink-0 items-center gap-4">
         <span className="text-sm tabular-nums text-ink-soft">
@@ -103,7 +107,7 @@ export function FeedTopBar({
           onClick={onEnd}
           className="rounded-full border border-line bg-paper-raised px-3.5 py-1.5 text-sm font-medium text-ink transition hover:border-accent/50 hover:text-accent-strong"
         >
-          End &amp; view trail
+          {endless ? "Keep this trail" : "End & view trail"}
         </button>
       </div>
     </header>

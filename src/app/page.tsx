@@ -18,6 +18,10 @@ export default function Home() {
     null,
   );
   const [active, setActive] = useState<RealmId>("encyclopedia");
+  // Whether new drift sessions build a saveable trail (default) or are a
+  // lightweight "just drift" with the trail framing removed. Remembered in
+  // settings; toggled below the "Surprise me" button.
+  const [keepTrail, setKeepTrail] = useState(true);
 
   const realms = useMemo(() => listRealms(), []);
   const realm = getRealm(active);
@@ -33,12 +37,19 @@ export default function Home() {
     getSettings().then((s) => {
       if (s.lastRealm && getRealm(s.lastRealm).id === s.lastRealm)
         setActive(s.lastRealm);
+      setKeepTrail(s.sessionMode !== "endless");
     });
   }, []);
 
   function selectRealm(id: RealmId) {
     setActive(id);
     setSettings({ lastRealm: id });
+  }
+
+  function toggleKeepTrail() {
+    const next = !keepTrail;
+    setKeepTrail(next);
+    setSettings({ sessionMode: next ? "trail" : "endless" });
   }
 
   function openSeed(tile: SeedTile) {
@@ -48,6 +59,7 @@ export default function Home() {
     } else if (tile.bucket) {
       params.set("bucket", tile.bucket);
     }
+    if (!keepTrail) params.set("mode", "endless");
     router.push(`/drift?${params.toString()}`);
   }
 
@@ -78,12 +90,46 @@ export default function Home() {
         <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
           <button
             type="button"
-            onClick={() => router.push(`/drift?realm=${active}`)}
+            onClick={() =>
+              router.push(
+                `/drift?realm=${active}${keepTrail ? "" : "&mode=endless"}`,
+              )
+            }
             className="inline-flex items-center gap-2 rounded-full bg-accent px-7 py-3 text-base font-semibold text-paper-raised shadow-sm transition hover:bg-accent-strong"
           >
             Surprise me in {realm.label}
             <span aria-hidden="true">→</span>
           </button>
+        </div>
+
+        {/* Session mode: a calm toggle. On = build a saveable trail (Drift's
+            default shape); off = "just drift" — read freely, nothing saved. */}
+        <div className="mt-5 flex flex-col items-center gap-1.5">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={keepTrail}
+            onClick={toggleKeepTrail}
+            className="inline-flex items-center gap-2.5 text-sm text-ink-soft transition hover:text-ink"
+          >
+            <span
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                keepTrail ? "bg-accent" : "bg-ink/15"
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-paper-raised shadow transition-all ${
+                  keepTrail ? "left-[1.375rem]" : "left-0.5"
+                }`}
+              />
+            </span>
+            <span className="font-medium">Keep a trail of this session</span>
+          </button>
+          <p className="max-w-xs text-center text-xs leading-snug text-ink/55">
+            {keepTrail
+              ? "Your wander is mapped into a trail you can save and share."
+              : "Just drift — read freely, nothing saved. You can still send single cards, or keep a trail anytime."}
+          </p>
         </div>
 
         <h2 className="mb-4 mt-10 text-center text-xs font-medium uppercase tracking-widest text-ink-soft">

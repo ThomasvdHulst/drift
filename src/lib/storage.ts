@@ -355,6 +355,10 @@ export interface Settings {
   // The realm tab the user last used on the homepage (Phase 5). Undefined =
   // Encyclopedia.
   lastRealm?: RealmId;
+  // Whether a drift session builds a saveable trail ("trail", the default) or is
+  // a lightweight "just drift" session with the trail framing removed ("endless").
+  // Set from the homepage toggle; remembered + synced. Undefined = "trail".
+  sessionMode?: "trail" | "endless";
 }
 
 export async function getSettings(): Promise<Settings> {

@@ -987,6 +987,16 @@ when the user is ready.
       Playwright E2E **16/16** — mid-content swipe scrolls without advancing, overscroll advances, back at
       top, desktop wheel/arrows — light+dark screenshots, zero console errors. _Real-device iOS pass still
       recommended (Chromium touch emulation ≠ Safari momentum/rubber-band/dynamic toolbar)._
+- [x] **Session modes — Trail vs "Just drift" (2026-07-17):** a calm homepage toggle ("Keep a trail of this
+      session", default ON, remembered in `settings.sessionMode` + synced). Trail mode is unchanged; **Just
+      drift** (`?mode=endless`) strips the trail framing — no breadcrumb rail, the end action becomes a quiet
+      optional **"Keep this trail"** escape hatch (opens the same save overlay), and the ~25-card nudge softens
+      to a trail-free "a nice place to pause?" (→ Head home) — while keeping the gentle stops counter (§2.4) and
+      individual card sharing. History still accrues in memory so the escape hatch can save it. Files:
+      `src/app/page.tsx` (toggle + `?mode=`), `drift/page.tsx` (endless state + softened nudge), `FeedChrome.tsx`
+      (rail/button), `storage.ts` (`sessionMode`). **Verified:** 183 unit tests, build+lint clean, ad-hoc
+      Playwright E2E **16/16** (toggle default/persist/wiring; endless hides rail + shows "Keep this trail" +
+      escape-hatch opens the save overlay; trail mode unchanged), zero console errors.
 - [ ] **Replace the boilerplate `README.md`** — it's still stock `create-next-app`. It's the front door for
       any future contributor (or future you); it should say what Drift is, how to run it, and point at the
       spec/plan.
