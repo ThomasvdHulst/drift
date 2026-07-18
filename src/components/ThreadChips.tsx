@@ -2,6 +2,29 @@
 
 import type { Thread, ThreadKind } from "@/lib/types";
 
+// A cross-realm "doorway" mark (Phase 15): an arrow leaving a frame — you step
+// through into the other realm.
+export function DoorwayIcon({ size = 12 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      <path d="M14 4h6v6" />
+      <path d="M20 4 11 13" />
+      <path d="M9 5H5a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h13a1 1 0 0 0 1-1v-4" />
+    </svg>
+  );
+}
+
 function ThreadIcon({ size = 14 }: { size?: number }) {
   // A small "thread being pulled" mark: a knot with a trailing curve.
   return (
@@ -119,8 +142,11 @@ export function ThreadChips({
       {threads.map((thread) => {
         const kind = thread.kind;
         const eyebrow = thread.eyebrow;
-        // Directional (Encyclopedia `kind`) and facet (Gallery `eyebrow`) chips
-        // both use the two-line layout: a small character word over the label.
+        const doorway = thread.doorway;
+        // Directional (Encyclopedia `kind`), facet (Gallery `eyebrow`), and
+        // cross-realm doorway chips all use the two-line layout: a small character
+        // word over the label. A doorway is tinted by its DESTINATION realm (via
+        // data-realm) + a dashed border, so it visibly "leads elsewhere".
         const twoLine = !!kind || !!eyebrow;
         return (
           <button
@@ -128,6 +154,7 @@ export function ThreadChips({
             type="button"
             disabled={disabled}
             onClick={() => onThread(thread)}
+            data-realm={doorway}
             title={thread.candidate.description || thread.candidate.displayTitle}
             aria-label={
               kind
@@ -138,14 +165,20 @@ export function ThreadChips({
             }
             className={
               twoLine
-                ? "group inline-flex max-w-full flex-col items-start gap-0.5 rounded-2xl border border-accent/35 bg-accent/10 px-3.5 py-1.5 text-left text-sm font-medium text-accent-strong transition-colors hover:border-accent/60 hover:bg-accent/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-default disabled:opacity-40"
+                ? `group inline-flex max-w-full flex-col items-start gap-0.5 rounded-2xl border bg-accent/10 px-3.5 py-1.5 text-left text-sm font-medium text-accent-strong transition-colors hover:border-accent/60 hover:bg-accent/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-default disabled:opacity-40 ${doorway ? "border-dashed border-accent/60" : "border-accent/35"}`
                 : "group inline-flex max-w-full items-center gap-2 rounded-full border border-accent/35 bg-accent/10 px-4 py-2 text-left text-sm font-medium text-accent-strong transition-colors hover:border-accent/60 hover:bg-accent/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-default disabled:opacity-40"
             }
           >
             {kind || eyebrow ? (
               <>
                 <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-accent-strong/80">
-                  {kind ? <KindIcon kind={kind} size={11} /> : <ThreadIcon size={11} />}
+                  {kind ? (
+                    <KindIcon kind={kind} size={11} />
+                  ) : doorway ? (
+                    <DoorwayIcon size={11} />
+                  ) : (
+                    <ThreadIcon size={11} />
+                  )}
                   {kind ? KIND_META[kind].word : eyebrow}
                 </span>
                 <span className="max-w-[42vw] truncate sm:max-w-[16rem]">

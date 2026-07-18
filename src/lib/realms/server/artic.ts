@@ -16,7 +16,7 @@ import { articBucketById } from "../artic.buckets";
 const API = "https://api.artic.edu/api/v1";
 const UA =
   process.env.ARTIC_USER_AGENT ||
-  "Drift/0.1 (local hobby project; thomas@onspect.nl)";
+  "Drift/0.1 (local hobby project; thomasvdhulst03@gmail.com)";
 const articGate = makeGate(250);
 
 function headers() {
@@ -171,6 +171,45 @@ export async function articRelated(id: string): Promise<RelatedCandidate[]> {
 export async function articSummary(id: string): Promise<Card | null> {
   const art = await detail(id);
   return isUsableArtwork(art) ? articToCard(art) : null;
+}
+
+// ----- cross-realm doorway helpers (Phase 15) -----
+
+/** The bridge fields for a Gallery→Encyclopedia doorway (artist / movement /
+ *  place, to resolve onto Wikipedia). null if the artwork is missing. */
+export async function articArtworkMeta(id: string): Promise<{
+  artist_title?: string;
+  style_title?: string;
+  place_of_origin?: string;
+} | null> {
+  const art = await detail(id);
+  if (!art) return null;
+  return {
+    artist_title: art.artist_title,
+    style_title: art.style_title,
+    place_of_origin: art.place_of_origin,
+  };
+}
+
+/** The top usable public-domain artwork for a free-text term, plus the fields the
+ *  reverse-doorway gate needs (title / subject tags / score). null if none. */
+export async function articTopMatch(term: string): Promise<{
+  card: Card;
+  title?: string;
+  term_titles?: string[];
+  score?: number;
+} | null> {
+  const arts = await search(
+    pdText(term, 5, { fields: `${ARTIC_FIELDS},term_titles` }),
+  );
+  const art = arts.find(isUsableArtwork);
+  if (!art) return null;
+  return {
+    card: articToCard(art),
+    title: art.title,
+    term_titles: art.term_titles,
+    score: art._score,
+  };
 }
 
 export async function articExtended(

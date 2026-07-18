@@ -11,6 +11,7 @@ import {
   type AtlasLayoutNode,
 } from "@/lib/atlas";
 import { Atlas, type AtlasHandle } from "@/components/Atlas";
+import { realmOfSource } from "@/lib/crossrealm";
 
 export default function AtlasPage() {
   const router = useRouter();
@@ -27,12 +28,20 @@ export default function AtlasPage() {
     return { graph, layout: layoutConstellation(graph) };
   }, [trails]);
 
-  function onNodeClick(node: AtlasLayoutNode) {
+  function onRevisit(node: AtlasLayoutNode) {
     if (!trails) return;
     const containing = trails
       .filter((t) => node.trailIds.includes(t.id))
       .sort((a, b) => b.createdAt - a.createdAt);
     if (containing[0]) router.push(`/trails/${containing[0].id}`);
+  }
+
+  function onDriftFrom(node: AtlasLayoutNode) {
+    const realm = realmOfSource(node.source);
+    // node.id is a cardId ("source:pageTitle"); the native title is everything
+    // after the first colon.
+    const native = node.id.slice(node.id.indexOf(":") + 1);
+    router.push(`/drift?realm=${realm}&title=${encodeURIComponent(native)}`);
   }
 
   return (
@@ -97,10 +106,38 @@ export default function AtlasPage() {
         </div>
       ) : (
         <div className="mt-6">
-          <Atlas ref={atlasRef} layout={built.layout} onNodeClick={onNodeClick} />
-          <p className="mt-3 text-center text-xs text-ink-soft">
-            Drag to pan · scroll or use +/− to zoom · hover a star for its title ·
-            click to revisit that trail
+          <Atlas
+            ref={atlasRef}
+            layout={built.layout}
+            onRevisit={onRevisit}
+            onDriftFrom={onDriftFrom}
+          />
+          {/* Legend — quiet key to the constellation's language. */}
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-ink-soft">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block h-2.5 w-2.5 rounded-full bg-accent" data-realm="encyclopedia" />
+              Encyclopedia
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block h-2.5 w-2.5 rounded-full bg-accent" data-realm="gallery" />
+              Gallery
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <svg width="20" height="8" aria-hidden="true"><line x1="0" y1="4" x2="20" y2="4" stroke="currentColor" strokeWidth="1.4" /></svg>
+              thread
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <svg width="20" height="8" aria-hidden="true"><line x1="0" y1="4" x2="20" y2="4" stroke="currentColor" strokeWidth="1" strokeDasharray="2 3" /></svg>
+              drift
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <svg width="20" height="8" aria-hidden="true"><line x1="0" y1="4" x2="20" y2="4" stroke="currentColor" strokeWidth="1.4" strokeDasharray="1 3" /></svg>
+              realm crossing
+            </span>
+          </div>
+          <p className="mt-2 text-center text-xs text-ink-soft">
+            Drag to pan · scroll or use +/− to zoom · tap a star to revisit it or
+            drift from there
           </p>
         </div>
       )}

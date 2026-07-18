@@ -51,6 +51,26 @@ export function resolveSwipe(opts: {
   return "none";
 }
 
+/** Decide whether a finished swipe was a HORIZONTAL realm-cross (Phase 15) rather
+ *  than a vertical read/advance. Axis-locked: it only counts as a cross when the
+ *  horizontal movement clearly dominates the vertical one AND clears the
+ *  threshold, so it never competes with the vertical gesture. `deltaX` = endX −
+ *  startX (sign is irrelevant — either direction crosses). */
+export function resolveHorizontalSwipe(opts: {
+  deltaX: number;
+  deltaY: number;
+  threshold?: number;
+  dominance?: number;
+}): "cross" | "none" {
+  const threshold = opts.threshold ?? 60;
+  const dominance = opts.dominance ?? 1.5;
+  const ax = Math.abs(opts.deltaX);
+  const ay = Math.abs(opts.deltaY);
+  if (ax < threshold) return "none";
+  if (ax < ay * dominance) return "none"; // too vertical — leave it to resolveSwipe
+  return "cross";
+}
+
 /** True when a wheel tick inside the scroll region should scroll the text
  *  (reading) rather than count toward advancing — i.e. the region can still move
  *  in the wheel's direction. At the edge (or outside a scrollable region) this is

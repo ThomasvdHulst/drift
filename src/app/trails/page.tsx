@@ -11,6 +11,7 @@ import {
 } from "@/lib/storage";
 import { getRealm } from "@/lib/realms";
 import type { RealmId } from "@/lib/realms/types";
+import { trailRealms } from "@/lib/crossrealm";
 import { TrailSparkline } from "@/components/TrailSparkline";
 
 type Filter = "all" | "liked";
@@ -59,12 +60,14 @@ export default function MyTrailsPage() {
     trails?.filter(
       (t) =>
         (filter === "liked" ? t.liked : true) &&
-        (realmFilter === "all" ? true : getRealm(t.realm).id === realmFilter),
+        // A trail can span both realms (Phase 15): it matches a realm filter if
+        // ANY of its cards are in that realm.
+        (realmFilter === "all" ? true : trailRealms(t).includes(realmFilter)),
     ) ?? [];
   const likedCount = trails?.filter((t) => t.liked).length ?? 0;
-  // Realms that actually have saved trails (drives the optional realm chips).
+  // Realms that actually appear across saved trails (drives the optional chips).
   const realmsPresent = Array.from(
-    new Set((trails ?? []).map((t) => getRealm(t.realm).id)),
+    new Set((trails ?? []).flatMap((t) => trailRealms(t))),
   ).map((id) => getRealm(id));
 
   return (
@@ -176,7 +179,8 @@ export default function MyTrailsPage() {
       ) : (
         <ul className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {shown.map((t) => {
-            const realm = getRealm(t.realm);
+            const realms = trailRealms(t).map((id) => getRealm(id));
+            const realm = realms[0];
             return (
             <li
               key={t.id}
@@ -186,8 +190,8 @@ export default function MyTrailsPage() {
               <Link href={`/trails/${t.id}`} className="flex flex-1 flex-col">
                 <TrailSparkline steps={t.steps} className="h-11 w-full" />
                 <span className="mt-3 inline-flex w-fit items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-accent-strong">
-                  <span aria-hidden="true">{realm.glyph}</span>
-                  {realm.label}
+                  <span aria-hidden="true">{realms.map((r) => r.glyph).join(" ")}</span>
+                  {realms.map((r) => r.label).join(" + ")}
                 </span>
                 <h2 className="mt-1.5 line-clamp-2 font-serif text-lg leading-snug text-ink">
                   {t.name}

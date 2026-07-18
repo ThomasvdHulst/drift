@@ -4,8 +4,8 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import type { ArrivedVia, Card, Thread } from "@/lib/types";
 import type { Reaction } from "@/lib/interest";
 import type { RealmId } from "@/lib/realms/types";
-import { summaryUrl } from "@/lib/realms";
-import { ThreadChips, KindIcon, KIND_META } from "./ThreadChips";
+import { summaryUrl, getRealm } from "@/lib/realms";
+import { ThreadChips, KindIcon, KIND_META, DoorwayIcon } from "./ThreadChips";
 import { ArtZoom } from "./ArtZoom";
 
 // Quiet ♥ / ✕ that teach the interest model (M9). Sage when active, neutral
@@ -79,13 +79,17 @@ function ShareButton({ onShare }: { onShare: () => void }) {
 // The mode chip answers "where am I?" — drifting (casual wandering) vs being on a
 // thread (a deliberate direction you pulled). Threads read prominent + sage;
 // drifting reads quiet + neutral.
-function ModeChip({ via }: { via: ArrivedVia }) {
+function ModeChip({ via, realmLabel }: { via: ArrivedVia; realmLabel: string }) {
   if (via.type === "thread") {
-    // A directional thread (Phase 6) names its move ("Go deeper · Octopus");
-    // a plain/legacy thread reads "On a thread · …".
+    // A cross-realm doorway (Phase 15) reads "Crossed to {realm} · …"; a
+    // directional thread (Phase 6) names its move ("Go deeper · Octopus"); a
+    // plain/legacy thread reads "On a thread · …".
+    const crossed = via.crossedFrom !== undefined;
     return (
       <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-accent/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-accent-strong ring-1 ring-accent/30">
-        {via.kind ? (
+        {crossed ? (
+          <DoorwayIcon size={12} />
+        ) : via.kind ? (
           <KindIcon kind={via.kind} size={12} />
         ) : (
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -93,16 +97,23 @@ function ModeChip({ via }: { via: ArrivedVia }) {
             <path d="M9.2 9.2C13 13 15 15 21 21" />
           </svg>
         )}
-        {via.kind ? `${KIND_META[via.kind].word} · ${via.label}` : `On a thread · ${via.label}`}
+        {crossed
+          ? `Crossed to ${realmLabel} · ${via.label}`
+          : via.kind
+            ? `${KIND_META[via.kind].word} · ${via.label}`
+            : `On a thread · ${via.label}`}
       </span>
     );
   }
   // Drift wording answers "why this card?" (transparency, §2.1): a personalized
   // pick names the interest; a serendipity pick is flagged as a wildcard; a
-  // plain/legacy drift just reads "Drifting".
+  // realm-crossing wander reads "Crossed to …"; a plain drift reads "Drifting".
+  const crossedDrift = via.type === "drift" && via.crossedFrom !== undefined;
   let label = "Drifting";
   if (via.type === "seed") {
     label = "Starting point";
+  } else if (via.type === "drift" && crossedDrift) {
+    label = via.topic ? `Crossed to ${realmLabel} · ${via.topic.label}` : `Crossed to ${realmLabel}`;
   } else if (via.type === "drift" && via.topic) {
     label =
       via.reason === "interest"
@@ -111,9 +122,13 @@ function ModeChip({ via }: { via: ArrivedVia }) {
   }
   return (
     <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-ink/5 px-3 py-1 text-xs font-medium uppercase tracking-wide text-ink-soft">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M2 12c2.5-4 5.5-4 8 0s5.5 4 8 0" />
-      </svg>
+      {crossedDrift ? (
+        <DoorwayIcon size={12} />
+      ) : (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M2 12c2.5-4 5.5-4 8 0s5.5 4 8 0" />
+        </svg>
+      )}
       {label}
     </span>
   );
@@ -328,7 +343,7 @@ export function CardView({
           </div>
 
           <div className="flex items-center justify-between gap-3">
-            <ModeChip via={arrivedVia} />
+            <ModeChip via={arrivedVia} realmLabel={getRealm(realm).label} />
             <div className="flex shrink-0 items-center gap-1.5">
               {onReact && <ReactionButtons reaction={reaction} onReact={onReact} />}
               {onShare && <ShareButton onShare={onShare} />}

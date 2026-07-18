@@ -119,3 +119,17 @@ describe("layoutConstellation", () => {
     expect(hub.r).toBeGreaterThan(leaf.r); // Hub visited in 2 trails, Leaf in 1
   });
 });
+
+describe("Atlas cross-realm nodes (Phase 15)", () => {
+  it("keeps each node's own source + image, so the paint can tint per-realm", () => {
+    const mixed = trail("m1", "encyclopedia", [
+      { ...step("Octopus", { type: "seed", seedName: "Octopus" }), card: { pageTitle: "Octopus", displayTitle: "Octopus", extract: "x", sourceUrl: "u", source: "wikipedia", imageUrl: "octo.jpg" } },
+      { ...step("123", { type: "thread", label: "Octopus and Shell", fromTitle: "Octopus", crossedFrom: "encyclopedia" }, "artic"), card: { pageTitle: "123", displayTitle: "Octopus and Shell", extract: "x", sourceUrl: "u2", source: "artic", imageUrl: "art.jpg" } },
+    ]);
+    const { nodes } = buildConstellation([mixed]);
+    expect(nodes.find((n) => n.id === "wikipedia:Octopus")?.source).toBe("wikipedia");
+    expect(nodes.find((n) => n.id === "wikipedia:Octopus")?.imageUrl).toBe("octo.jpg");
+    expect(nodes.find((n) => n.id === "artic:123")?.source).toBe("artic");
+    expect(nodes.find((n) => n.id === "artic:123")?.imageUrl).toBe("art.jpg");
+  });
+});

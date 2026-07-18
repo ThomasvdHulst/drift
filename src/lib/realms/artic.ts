@@ -39,6 +39,8 @@ export interface ArticArtwork {
   short_description?: string | null;
   description?: string | null;
   provenance_text?: string | null;
+  term_titles?: string[]; // subject/keyword tags (used for the cross-realm gate)
+  _score?: number; // AIC relevance score (present on search results)
   // A small object AIC returns alongside the image: a base64 blur placeholder and
   // real alt text (used for a blur-up load + a11y on the card and zoom lightbox).
   thumbnail?: {
@@ -103,8 +105,19 @@ export function artFacts(a: ArticArtwork): { label: string; value: string }[] {
   return rows;
 }
 
-export function articToCard(a: ArticArtwork): Card {
+/** The Phase-14 rich fields (museum label / zoom / blur / alt) an artwork carries,
+ *  shared by cards AND candidates so a pulled thread lands on a full art card. */
+function articRichFields(a: ArticArtwork) {
   const facts = artFacts(a);
+  return {
+    ...(facts.length ? { facts } : {}),
+    ...(a.image_id ? { zoomUrl: articImageUrl(a.image_id, 1686) } : {}),
+    ...(a.thumbnail?.lqip ? { blurDataUrl: a.thumbnail.lqip } : {}),
+    ...(a.thumbnail?.alt_text ? { imageAlt: a.thumbnail.alt_text.trim() } : {}),
+  };
+}
+
+export function articToCard(a: ArticArtwork): Card {
   return {
     pageTitle: String(a.id),
     displayTitle: (a.title ?? "").trim() || "Untitled",
@@ -113,10 +126,7 @@ export function articToCard(a: ArticArtwork): Card {
     imageUrl: articImageUrl(a.image_id),
     sourceUrl: articPageUrl(a.id),
     source: "artic",
-    ...(facts.length ? { facts } : {}),
-    ...(a.image_id ? { zoomUrl: articImageUrl(a.image_id, 1686) } : {}),
-    ...(a.thumbnail?.lqip ? { blurDataUrl: a.thumbnail.lqip } : {}),
-    ...(a.thumbnail?.alt_text ? { imageAlt: a.thumbnail.alt_text.trim() } : {}),
+    ...articRichFields(a),
   };
 }
 
@@ -140,5 +150,6 @@ export function articToCandidate(
     threadLabel,
     facet,
     ...(eyebrow ? { eyebrow } : {}),
+    ...articRichFields(a),
   };
 }

@@ -116,11 +116,19 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > Ollama layer (AIC artist/style/place strings resolve cleanly onto Wikipedia; see Phase 15).
 >
 > 🎨 **Phase 14 (Gallery, Deepened) — ✅ COMPLETE & verified (2026-07-17).** M-G1 museum label + M-G2 deep-zoom
-> lightbox + M-G3 directional art threads + M-G4 richer discovery all shipped (M-G5 personalization optionally
-> deferred). **203 unit tests, build+lint clean**; per-milestone + an integrated 390px browser pass, zero
-> console errors; Encyclopedia unregressed. New dep `react-zoom-pan-pinch`. Plan file:
-> `~/.claude/plans/lexical-beaming-clarke.md`. **▶ NEXT (when the user is ready): Phase 15 (Cross-Realm
-> Doorways) or Phase 16 (Memory & Reflection).**
+> lightbox + M-G3 directional art threads + M-G4 richer discovery (M-G5 personalization optionally deferred).
+> New dep `react-zoom-pan-pinch`.
+>
+> 🌉 **Phase 15 (Cross-Realm Doorways) — ✅ COMPLETE & verified (2026-07-18).** **M-CR1** doorway threads
+> (factual, gated, no-AI; realm follows the card) + **M-CR2** horizontal swipe between realms + trails that
+> span both (axis-locked smart-cross, per-node trail-map tints + bridge edges, "Encyclopedia + Gallery" badges)
+> + **M-CR3** a living, vibrant, cross-realm Atlas (per-node realm tints, glow/nebula halos, tap-a-star detail
+> card with Revisit / Drift-from-here, titled PNG export, legend). **217 unit tests, build+lint clean**;
+> per-milestone 390px browser passes, zero code-level errors (only external AIC-CORS thumbnail warnings, handled
+> with a letter fallback). §2 held throughout. No new dependency. Plan file:
+> `~/.claude/plans/lexical-beaming-clarke.md`. **▶ NEXT (when the user is ready): Phase 16 (Memory &
+> Reflection)** — the last of the three brainstorm directions. _(Deferred: in-app friend-share of the Atlas;
+> a real-iOS momentum pass on the swipe.)_
 >
 > _(Update this line whenever progress changes.)_
 
@@ -1133,36 +1141,47 @@ already proxies** (live: Hokusai → *Hokusai*, "Ukiyo-e" → *Ukiyo-e*, "Claude
 in both directions. This is the app's most "you are the algorithm across all of human knowledge" feature,
 finally cheap.
 
-- [ ] **Doorway threads (the core, ships first + small).** On a Gallery card, one quiet cross-realm chip:
-      **"The artist, in the Encyclopedia →"** / **"{Movement}, the idea →"** (resolve the AIC string to its
-      Wikipedia page). On an Encyclopedia article about an artist/movement/place, **"See it in the Gallery →"**
-      (AIC search on the title). **At most one** doorway alongside the in-realm threads so a session doesn't
-      dissolve; clearly marked as a realm-crossing; the reason is **honest** — the shared entity, never invented
-      (§2.1/§2.5). A door, never an auto-walk-through.
-- [ ] **User idea 1 — horizontal swipe between realms + trails that span both.** Reframe realms from "pick one
-      per session" to **one connected world you move through**: **horizontally swipe to switch the active realm
-      at any time**, and let a **single trail contain cards from both realms** (start in either, cross via
-      doorways *or* a swipe). This **reverses the locked "one trail = one realm" decision** — the trail's realm
-      becomes **per-card** (cards already carry `source`; `Trail.realm` becomes a primary/derived hint), and the
-      trail map + Atlas must render **mixed-realm edges and tints**. **Mobile-gesture caution (researched):**
-      horizontal-swipe-vs-vertical-scroll is a well-known conflict; Drift already solved read-vs-advance in
-      `src/lib/gesture.ts`, so add **axis-lock intent detection** (commit to the dominant axis from the initial
-      drag angle) and keep **zoom in its own fullscreen mode** so three gesture axes never compete. Decide
-      precisely what a horizontal swipe *means* (switch realm vs. follow the nearest doorway) before building.
-- [ ] **User idea 2 — a living, sendable Atlas.** Make the Atlas *explorable and alive*, not static dots.
-      **Tap a node → a calm detail card** (thumbnail, title, one-line, "Revisit" / "Drift from here") — a
-      bottom-sheet on mobile, a popover on desktop. **Research caution:** star-map libs (d3-celestial) note that
-      *gesture-zoom clashes with UI on mobile* → prefer **tap-to-select + tap-based zoom controls + a
-      bottom-sheet**, not hover. Give it **art-piece quality** — realm-tinted nebulae/halos, constellation
-      lines, gentle motion **only on interaction** (stay calm; no looping twinkle/autoplay — §2.2). Make it **the
-      ultimate thing to share**: a beautiful **titled + dated PNG** now (reuse `export-image.ts`), and later a
-      shareable Atlas snapshot to a friend's inbox (ties into the existing social layer). Fold in the Atlas
-      fixes from the audit: **cross-realm edges/tints**, better clustering (today it collapses to one realm-blob
-      for heavy single-realm users), node labels + an edge legend, filters (realm / time / liked), and honest
-      handling of branches (history is a flat array today).
-- [ ] **Test Phase 15:** doorways land somewhere genuinely related and say why; a trail can weave realms and its
-      map/Atlas render the crossing; horizontal swipe switches realms without fighting read/advance/zoom;
-      tapping an Atlas node opens its detail; export produces a shareable image. §2 intact throughout.
+- [x] **Doorway threads (M-CR1) — DONE & verified (2026-07-17).** One quiet cross-realm chip, factual + no AI:
+      Gallery→Encyclopedia resolves the artwork's artist (then movement) onto Wikipedia (`wikiSummary`, redirect-
+      normalized: Great Wave → **Hokusai**); Encyclopedia→Gallery searches AIC on the title, **gated** by
+      `passesReverseGate` (Octopus → "Octopus and Shell", **abstract topics stay silent**). New `/api/doorway`
+      route + pure `src/lib/crossrealm.ts` (gate + `realmOfSource` + `forwardEntities`, 8 tests) +
+      `realms/server/doorway.ts`. Distinct **dashed doorway chip** with a portal glyph, **tinted by the
+      destination realm** (added explicit `[data-realm="encyclopedia"]` CSS). Pulling it crosses realms: the
+      **realm now follows the displayed card** (`realm = realmOfSource(current.card.source)`), so chrome/threads/
+      reactions + back-nav are all correct; ModeChip reads "Crossed to {realm} · {label}". **Also fixed a Phase
+      14 gap:** rich art fields (zoom / museum label / blur / alt) now ride through `RelatedCandidate` →
+      `candidateToCard`, so a pulled facet/doorway thread lands on a **full** art card. **Verified:** build+lint
+      clean, **211 tests** (+8), doorway API both ways + gate, real-browser 390px (forward→Hokusai with ♥,
+      reverse→zoomable art with label, abstract→none, honest "why"), zero console errors, graceful ({}⇒no
+      doorway).
+- [x] **User idea 1 — horizontal swipe + trails that span both (M-CR2) — DONE & verified (2026-07-18).** A
+      **horizontal swipe** (or a quiet **top-bar "Cross to {realm}" control** for desktop) does a **smart cross**:
+      land on the current card's doorway if one exists, else a fresh discover card in the other realm.
+      **Axis-locked** via pure `resolveHorizontalSwipe` (`gesture.ts`) so it never competes with the vertical
+      read/advance; a distinct sideways `cardVariants` "cross" transition; zoom stays its own portal mode.
+      **Reverses "one trail = one realm":** realm now follows the displayed card, a single trail weaves both;
+      `TrailMap` tints **per node by `card.source`** + draws a **dashed doorway "bridge" edge** at a crossing
+      (`trailmap.ts` `crossRealm`); My Trails + trail detail show **all realms a trail spans** (`trailRealms` in
+      `crossrealm.ts`, +1 test). Also a graceful `onError` letter fallback for the rare AIC thumbnail that lacks
+      CORS headers. **Verified:** build+lint clean, **216 tests** (+5: axis-lock, crossRealm, trailRealms),
+      real-browser 390px **swipe crosses / vertical does NOT cross / top-bar control crosses / mixed trail saves
+      with per-node tints + crossing edge + "Encyclopedia + Gallery" badge**; only external AIC-CORS thumbnail
+      warnings (handled visually), zero code-level errors. _(Real-iOS momentum pass still recommended.)_
+- [x] **User idea 2 — a living, vibrant, cross-realm Atlas (M-CR3) — DONE & verified (2026-07-18).** Stars are
+      now **tinted per-node by their own realm** (sage Encyclopedia / terracotta Gallery), with **soft glow +
+      nebula halos** and **dashed "bridge" edges** at realm-crossings (calm; motion only on interaction, §2.2).
+      **Tapping a star opens a calm detail card** (bottom-sheet on phones, centred card on desktop): thumbnail,
+      realm, "in N trails", **Revisit trail** + **Drift from here** (→ `/drift?realm=…&title=…`) + Source; it
+      replaced the straight-to-trail click. A **titled + dated PNG export** (bakes "Your Atlas · {date}" into
+      the image), plus a **legend** (realm tints, thread / drift / crossing). `atlas.ts` carries per-node
+      `source` + `imageUrl` (+1 test). _(In-app friend-share of the Atlas stays a follow-up, per the phase
+      decision.)_ **Verified:** build+lint clean, **217 tests**, real-browser 390px **7/7** (both realm tints,
+      legend, tap→detail card, Drift-from-here routes, export present), zero code-level errors.
+- [x] **Test Phase 15 — PASSED.** Doorways land somewhere genuinely related and say why; a trail weaves realms
+      and its map + Atlas render the crossing (per-node tints + bridge edges); horizontal swipe crosses without
+      fighting read/advance/zoom (axis-locked); tapping an Atlas star opens its detail; export produces a titled
+      image. §2 intact throughout (transparent "why", a door you choose, calm Atlas).
 
 **Notes / dependencies:** independent of AI. Biggest of the three — it touches the **trail data model**
 (per-card realm), the **gesture layer** (third axis), and the **Atlas**. Sequence it so the **doorway chip

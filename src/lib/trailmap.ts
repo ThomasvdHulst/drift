@@ -1,4 +1,5 @@
 import type { TrailStep, ThreadKind } from "./types";
+import { cardSource } from "./card";
 
 // ---------------------------------------------------------------------------
 // Pure geometry for the trail map — a gently meandering vertical spine. Nodes
@@ -23,6 +24,7 @@ export interface MeanderSegment {
   kind: "seed" | "thread" | "drift";
   label?: string; // thread label, when kind === "thread"
   threadKind?: ThreadKind; // the thread's direction (Phase 6), for the edge glyph
+  crossRealm?: boolean; // this hop crossed realms (Phase 15) — a "bridge" edge
 }
 
 export interface MeanderLayout {
@@ -75,6 +77,7 @@ export function layoutMeander(
       kind: via.type,
       label: via.type === "thread" ? via.label : undefined,
       threadKind: via.type === "thread" ? via.kind : undefined,
+      crossRealm: cardSource(steps[i - 1].card) !== cardSource(steps[i].card),
     });
   }
 

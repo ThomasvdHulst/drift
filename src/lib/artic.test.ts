@@ -47,12 +47,15 @@ describe("artic mappers", () => {
     expect(c.sourceUrl).toBe("https://www.artic.edu/artworks/16568");
   });
 
-  it("maps a faceted candidate carrying its label + facet + eyebrow", () => {
+  it("maps a faceted candidate carrying its label + facet + eyebrow + rich fields", () => {
     const cand = articToCandidate(monet, "Claude Monet", "artist:35809", "More by");
     expect(cand.threadLabel).toBe("Claude Monet");
     expect(cand.facet).toBe("artist:35809");
     expect(cand.eyebrow).toBe("More by");
     expect(cand.source).toBe("artic");
+    // Rich fields ride along so pulling the thread lands on a full art card.
+    expect(cand.zoomUrl).toContain("/full/1686,/");
+    expect(cand.facts?.length).toBeGreaterThan(0);
   });
 
   it("rejects non-public-domain / imageless / untitled artworks", () => {

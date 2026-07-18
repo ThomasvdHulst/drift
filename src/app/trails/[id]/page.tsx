@@ -14,6 +14,7 @@ import { computeTrailStats, formatDuration } from "@/lib/stats";
 import { trailToText } from "@/lib/export";
 import { exportTrailPng } from "@/lib/export-image";
 import { getRealm } from "@/lib/realms";
+import { trailRealms } from "@/lib/crossrealm";
 import { TrailMap } from "@/components/TrailMap";
 import { useAuth } from "@/components/AuthProvider";
 import { ShareToFriend } from "@/components/ShareToFriend";
@@ -105,7 +106,10 @@ export default function TrailDetailPage() {
   }
 
   const stats = computeTrailStats(trail.steps);
-  const realm = getRealm(trail.realm);
+  // A trail can span both realms (Phase 15); the page tints by its starting realm
+  // (the map itself tints per-node), and the label names every realm it weaves.
+  const realms = trailRealms(trail).map((id) => getRealm(id));
+  const realm = realms[0];
   const statLine = [
     `${stats.stops} ${stats.stops === 1 ? "stop" : "stops"}`,
     formatDuration(stats.durationMs),
@@ -129,8 +133,8 @@ export default function TrailDetailPage() {
       <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <span className="mb-1 inline-flex w-fit items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-accent-strong">
-            <span aria-hidden="true">{realm.glyph}</span>
-            {realm.label}
+            <span aria-hidden="true">{realms.map((r) => r.glyph).join(" ")}</span>
+            {realms.map((r) => r.label).join(" + ")}
           </span>
           <input
             value={name}

@@ -15,11 +15,17 @@ import { cardId } from "@/lib/card";
 import { selectDiverseThreads, selectFacetThreads } from "@/lib/diversity";
 import { classifyThreads } from "@/lib/threads";
 import { pickDriftNext, pickRandomThread } from "@/lib/drift";
-import { edgesOf, resolveSwipe, isWheelReadingScroll } from "@/lib/gesture";
+import {
+  edgesOf,
+  resolveSwipe,
+  resolveHorizontalSwipe,
+  isWheelReadingScroll,
+} from "@/lib/gesture";
 import { randomOffset, interleave } from "@/lib/discover";
 import { applyFeedback, type Interest, type Reaction } from "@/lib/interest";
-import { getRealm, discoverUrl, relatedUrl, summaryUrl } from "@/lib/realms";
+import { getRealm, discoverUrl, relatedUrl, doorwayUrl, summaryUrl } from "@/lib/realms";
 import type { RealmId } from "@/lib/realms/types";
+import { realmOfSource } from "@/lib/crossrealm";
 import { autoTrailName } from "@/lib/naming";
 import { computeTrailStats, formatDuration } from "@/lib/stats";
 import { trailToText } from "@/lib/export";
@@ -47,7 +53,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { ShareToFriend } from "@/components/ShareToFriend";
 import { cardToSharePayload } from "@/lib/social/share";
 
-type Dir = "drift" | "thread" | "back";
+type Dir = "drift" | "thread" | "back" | "cross";
 
 // A random-drift card waiting in the buffer, tagged with the topic it came from
 // (interesting-random, M8) and why that topic was chosen (M9). topic/reason are
@@ -70,16 +76,20 @@ const cardVariants: Variants = {
   enter: (d: Dir) =>
     d === "thread"
       ? { x: 140, y: -20, opacity: 0, rotate: 1.5 }
-      : d === "back"
-        ? { y: -70, opacity: 0 }
-        : { y: 70, opacity: 0 },
+      : d === "cross"
+        ? { x: 300, opacity: 0 } // a clean sideways slide — crossing realms
+        : d === "back"
+          ? { y: -70, opacity: 0 }
+          : { y: 70, opacity: 0 },
   center: { x: 0, y: 0, opacity: 1, rotate: 0 },
   exit: (d: Dir) =>
     d === "thread"
       ? { x: -160, y: -30, opacity: 0, rotate: -1.5 }
-      : d === "back"
-        ? { y: 70, opacity: 0 }
-        : { y: -70, opacity: 0 },
+      : d === "cross"
+        ? { x: -300, opacity: 0 }
+        : d === "back"
+          ? { y: 70, opacity: 0 }
+          : { y: -70, opacity: 0 },
 };
 
 const spring = { type: "spring", stiffness: 260, damping: 30 } as const;
@@ -130,10 +140,12 @@ export default function DriftPage() {
   // Per-cardId ♥/✕ (drives the button state on each card). The interest weights
   // themselves live in a ref (in-memory truth, persisted on change).
   const [reactions, setReactions] = useState<Record<string, Reaction>>({});
-  // Which realm this drift session is in (Phase 5). Fixed for the session — set
-  // from ?realm= (or a continued trail's realm) in the init effect. Kept in a ref
-  // too so handlers/effects read the latest without a stale-closure race.
-  const [realm, setRealm] = useState<RealmId>("encyclopedia");
+  // The realm FOLLOWS the displayed card (Phase 15): a trail can now span both
+  // realms (cross via a doorway or a horizontal swipe), so "which realm am I in"
+  // is derived from the current card's source, not fixed for the session. This
+  // `initialRealm` is only the pre-first-card fallback (set from ?realm= / a
+  // continued trail). `realm` (derived below) + `realmRef` are the live values.
+  const [initialRealm, setInitialRealm] = useState<RealmId>("encyclopedia");
   const realmRef = useRef<RealmId>("encyclopedia");
 
   const seenRef = useRef<Set<string>>(new Set());
@@ -150,11 +162,12 @@ export default function DriftPage() {
   // moment (measured at start so iOS momentum after touchend can't cause a false
   // advance). Read by onTouchEnd via resolveSwipe.
   const touchStartRef = useRef<{
+    x: number;
     y: number;
     insideRegion: boolean;
     atTop: boolean;
     atBottom: boolean;
-  }>({ y: 0, insideRegion: false, atTop: true, atBottom: true });
+  }>({ x: 0, y: 0, insideRegion: false, atTop: true, atBottom: true });
   // How many drifts in a row have followed a related thread. Feeds the run-cap
   // in pickDriftNext so passive drifting can't get stuck circling one subject.
   const themeRunRef = useRef(0);
@@ -176,7 +189,15 @@ export default function DriftPage() {
   const sessionTrailRef = useRef<SessionTrail | null>(null);
 
   const current = history[pos];
+  // Realm follows the displayed card's source (so back-nav across a crossing shows
+  // the right chrome/threads), falling back to the seed realm before the first
+  // card. Mirrored into realmRef in render so async handlers/effects read the live
+  // realm without a stale-closure race.
+  const realm: RealmId = current ? realmOfSource(current.card.source) : initialRealm;
+  realmRef.current = realm;
   const realmMeta = getRealm(realm);
+  // The realm a horizontal swipe / the top-bar control crosses INTO (two realms).
+  const otherRealmMeta = getRealm(realm === "gallery" ? "encyclopedia" : "gallery");
   // The displayed card's app-wide id (thread cache key) and source-native id
   // (used to fetch related/summary). Distinct because two realms can share a
   // native title string.
@@ -213,9 +234,9 @@ export default function DriftPage() {
       }
       // Fix the session's realm up front (validated → unknown falls to
       // Encyclopedia); a continued trail overrides it below from its own realm.
-      const initialRealm = getRealm(realmParam).id;
-      realmRef.current = initialRealm;
-      setRealm(initialRealm);
+      const startRealm = getRealm(realmParam).id;
+      realmRef.current = startRealm;
+      setInitialRealm(startRealm);
       try {
         // Hydrate the persistent seen-list so we don't immediately repeat pages
         // visited in earlier sessions (spec §5).
@@ -251,7 +272,7 @@ export default function DriftPage() {
           if (trail && trail.steps.length > 0) {
             const trealm = getRealm(trail.realm).id;
             realmRef.current = trealm;
-            setRealm(trealm);
+            setInitialRealm(trealm);
             trail.steps.forEach((s) => seenRef.current.add(cardId(s.card)));
             sessionTrailRef.current = {
               id: trail.id,
@@ -346,30 +367,49 @@ export default function DriftPage() {
   useEffect(() => {
     if (!displayedId || !displayedNative || displayedId in threadCache) return;
     const controller = new AbortController();
-    fetch(relatedUrl(realmRef.current, displayedNative), {
-      signal: controller.signal,
-    })
-      .then((r) => r.json())
-      .then((cands: RelatedCandidate[]) => {
-        const rm = getRealm(realmRef.current);
-        const cc = cardForThreadsRef.current;
-        let chosen: Thread[] = [];
-        if (Array.isArray(cands)) {
-          if (rm.threadMode === "facet") {
-            chosen = selectFacetThreads(cands, { count: 3, seen: seenRef.current });
-          } else if (cc && cc.pageTitle === displayedNative) {
-            // Encyclopedia: classify into directional threads (Phase 6).
-            chosen = classifyThreads(cc, cands, { count: 3, seen: seenRef.current });
-          } else {
-            chosen = selectDiverseThreads(cands, { count: 3, seen: seenRef.current });
-          }
+    const rid = realmRef.current;
+    (async () => {
+      // In-realm threads + a cross-realm doorway (Phase 15), fetched together
+      // within this card's prefetch window. The doorway is best-effort: {} on any
+      // miss ⇒ no doorway chip, in-realm threads unaffected.
+      const [cands, door] = await Promise.all([
+        fetch(relatedUrl(rid, displayedNative), { signal: controller.signal })
+          .then((r) => r.json())
+          .catch(() => []),
+        fetch(doorwayUrl(rid, displayedNative), { signal: controller.signal })
+          .then((r) => r.json())
+          .catch(() => ({})),
+      ]);
+      const rm = getRealm(rid);
+      const cc = cardForThreadsRef.current;
+      let chosen: Thread[] = [];
+      if (Array.isArray(cands)) {
+        if (rm.threadMode === "facet") {
+          chosen = selectFacetThreads(cands, { count: 3, seen: seenRef.current });
+        } else if (cc && cc.pageTitle === displayedNative) {
+          // Encyclopedia: classify into directional threads (Phase 6).
+          chosen = classifyThreads(cc, cands, { count: 3, seen: seenRef.current });
+        } else {
+          chosen = selectDiverseThreads(cands, { count: 3, seen: seenRef.current });
         }
-        setThreadCache((c) => ({ ...c, [displayedId]: chosen }));
-      })
-      .catch((e: unknown) => {
-        if ((e as { name?: string })?.name !== "AbortError")
-          setThreadCache((c) => ({ ...c, [displayedId]: [] }));
-      });
+      }
+      const cand = (door as { candidate?: RelatedCandidate })?.candidate;
+      if (cand?.pageTitle && !seenRef.current.has(cardId(cand))) {
+        chosen = [
+          ...chosen,
+          {
+            candidate: cand,
+            label: cand.threadLabel || cand.displayTitle || cand.pageTitle,
+            eyebrow: cand.eyebrow,
+            doorway: realmOfSource(cand.source),
+          },
+        ];
+      }
+      setThreadCache((c) => ({ ...c, [displayedId]: chosen }));
+    })().catch((e: unknown) => {
+      if ((e as { name?: string })?.name !== "AbortError")
+        setThreadCache((c) => ({ ...c, [displayedId]: [] }));
+    });
     return () => controller.abort();
   }, [displayedId, displayedNative, threadCache]);
 
@@ -506,13 +546,86 @@ export default function DriftPage() {
     }
   }
 
+  // Cross to the OTHER realm (Phase 15) — from a horizontal swipe or the top-bar
+  // control. "Smart cross": land on the current card's doorway if one exists (a
+  // genuinely related crossing), else a fresh discover card in the other realm.
+  // Either way the realm then follows the landed card.
+  async function crossRealm() {
+    if (ended || busyRef.current || !current) return;
+    const fromRealm = realm;
+    const otherRealm: RealmId =
+      fromRealm === "gallery" ? "encyclopedia" : "gallery";
+    themeRunRef.current = 0;
+    busyRef.current = true;
+    setAdvancing(true);
+    try {
+      let landed: { card: Card; via: ArrivedVia } | null = null;
+
+      // #1 the current card's doorway (related crossing).
+      try {
+        const res = await fetch(doorwayUrl(fromRealm, current.card.pageTitle), {
+          signal: AbortSignal.timeout(6000),
+        });
+        const data = (await res.json()) as { candidate?: RelatedCandidate };
+        const cand = data?.candidate;
+        if (cand?.pageTitle && !seenRef.current.has(cardId(cand))) {
+          landed = {
+            card: candidateToCard(cand),
+            via: {
+              type: "thread",
+              label: cand.threadLabel || cand.displayTitle || cand.pageTitle,
+              fromTitle: current.card.pageTitle,
+              crossedFrom: fromRealm,
+            },
+          };
+        }
+      } catch {
+        /* no doorway — fall through to a fresh card */
+      }
+
+      // #2 no doorway → a fresh discover card in the other realm.
+      if (!landed) {
+        const batch = await fetchDiscoverBatch(otherRealm);
+        const idx = batch.findIndex(
+          (b) => b.card?.pageTitle && !seenRef.current.has(cardId(b.card)),
+        );
+        if (idx >= 0) {
+          const bc = batch[idx];
+          landed = {
+            card: bc.card,
+            via: {
+              type: "drift",
+              topic: bc.topic,
+              reason: bc.reason,
+              crossedFrom: fromRealm,
+            },
+          };
+          // Seed the buffer with the rest so the next drifts in the new realm are instant.
+          randomBufferRef.current.push(...batch.filter((_, i) => i !== idx));
+        }
+      }
+
+      if (landed) pushStep(landed.card, landed.via, "cross");
+      else showHint("Couldn't cross realms just now. Try again in a moment.");
+    } finally {
+      busyRef.current = false;
+      setAdvancing(false);
+    }
+  }
+
   // Take the next unseen card off the random buffer (discarding any now-seen), or
   // null if the buffer is empty.
   function takeBufferedRandom(): BufferedCard | null {
     const buf = randomBufferRef.current;
     while (buf.length > 0) {
       const bc = buf.shift()!;
-      if (bc?.card?.pageTitle && !seenRef.current.has(cardId(bc.card)))
+      // Only serve cards from the realm we're currently in (the buffer can hold
+      // leftovers from the other side of a crossing).
+      if (
+        bc?.card?.pageTitle &&
+        !seenRef.current.has(cardId(bc.card)) &&
+        realmOfSource(bc.card.source) === realmRef.current
+      )
         return bc;
     }
     return null;
@@ -523,8 +636,9 @@ export default function DriftPage() {
   // interleave so consecutive random drifts alternate topics. Returns [] on total
   // failure. Topic choice is interest-weighted when personalization is on (with a
   // serendipity floor + truthful reason), else a plain uniform-random wander.
-  async function fetchDiscoverBatch(): Promise<BufferedCard[]> {
-    const rid = realmRef.current;
+  async function fetchDiscoverBatch(
+    rid: RealmId = realmRef.current,
+  ): Promise<BufferedCard[]> {
     const rm = getRealm(rid);
     const personalize = personalizeRef.current && rm.hasInterestModel;
     const picks = Array.from({ length: REFILL_TOPICS }, () =>
@@ -654,6 +768,11 @@ export default function DriftPage() {
     themeRunRef.current = 0;
     setFollowingLabel(thread.label);
     window.setTimeout(() => setFollowingLabel(null), 950);
+    // A doorway (or any candidate in the other realm) crosses realms — the realm
+    // then follows the landed card automatically; we just record where we came
+    // from for the honest "Crossed to …" line + a distinct trail-map/atlas edge.
+    const destRealm = realmOfSource(thread.candidate.source);
+    const crossing = destRealm !== realm;
     pushStep(
       candidateToCard(thread.candidate),
       {
@@ -661,6 +780,7 @@ export default function DriftPage() {
         label: thread.label,
         fromTitle: current.card.pageTitle,
         kind: thread.kind,
+        ...(crossing ? { crossedFrom: realm } : {}),
       },
       "thread",
     );
@@ -755,6 +875,7 @@ export default function DriftPage() {
       ? edgesOf(region)
       : { scrollable: false, atTop: true, atBottom: true };
     touchStartRef.current = {
+      x: e.changedTouches[0].clientX,
       y: e.changedTouches[0].clientY,
       insideRegion: !!region,
       atTop: edges.atTop,
@@ -763,8 +884,16 @@ export default function DriftPage() {
   }
   function onTouchEnd(e: React.TouchEvent) {
     const start = touchStartRef.current;
+    const deltaX = e.changedTouches[0].clientX - start.x;
+    const deltaY = start.y - e.changedTouches[0].clientY;
+    // Axis-lock: a clearly-horizontal swipe crosses realms; otherwise it's the
+    // vertical read/advance gesture. Never both.
+    if (resolveHorizontalSwipe({ deltaX, deltaY }) === "cross") {
+      crossRealm();
+      return;
+    }
     const action = resolveSwipe({
-      deltaY: start.y - e.changedTouches[0].clientY,
+      deltaY,
       insideRegion: start.insideRegion,
       atTopStart: start.atTop,
       atBottomStart: start.atBottom,
@@ -786,6 +915,12 @@ export default function DriftPage() {
         pos={pos}
         stops={history.length}
         realm={{ label: realmMeta.label, glyph: realmMeta.glyph }}
+        otherRealm={{
+          id: otherRealmMeta.id,
+          label: otherRealmMeta.label,
+          glyph: otherRealmMeta.glyph,
+        }}
+        onCrossRealm={crossRealm}
         endless={endless}
         onJump={jumpTo}
         onEnd={endSession}

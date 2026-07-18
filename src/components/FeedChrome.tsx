@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import type { TrailStep } from "@/lib/types";
+import type { RealmId } from "@/lib/realms/types";
 import { Monogram } from "@/components/BrandLogo";
+import { DoorwayIcon } from "@/components/ThreadChips";
 
 // Quiet, persistent UI chrome. No red badges, no streaks — a home link, the
 // trail rail (where am I?), a soft stop counter, and gentle nav controls.
@@ -63,6 +65,8 @@ export function FeedTopBar({
   pos,
   stops,
   realm,
+  otherRealm,
+  onCrossRealm,
   endless,
   onJump,
   onEnd,
@@ -71,6 +75,10 @@ export function FeedTopBar({
   pos: number;
   stops: number;
   realm: { label: string; glyph: string };
+  // The realm you can cross INTO (Phase 15) + the handler; the quiet control is a
+  // discoverable + desktop-friendly complement to the horizontal swipe.
+  otherRealm?: { id: RealmId; label: string; glyph: string };
+  onCrossRealm?: () => void;
   // "Just drift" mode (no trail framing): hide the breadcrumb rail and soften
   // the end action to a quiet, optional "Keep this trail" escape hatch.
   endless?: boolean;
@@ -98,7 +106,21 @@ export function FeedTopBar({
 
       {!endless && <TrailRail steps={steps} pos={pos} onJump={onJump} />}
 
-      <div className="flex shrink-0 items-center gap-4">
+      <div className="flex shrink-0 items-center gap-3 sm:gap-4">
+        {onCrossRealm && otherRealm && (
+          <button
+            type="button"
+            onClick={onCrossRealm}
+            data-realm={otherRealm.id}
+            aria-label={`Cross to the ${otherRealm.label}`}
+            title={`Cross to the ${otherRealm.label} (or swipe sideways)`}
+            className="inline-flex items-center gap-1 rounded-full border border-dashed border-accent/50 px-2.5 py-1 text-xs font-medium text-accent-strong transition hover:bg-accent/10"
+          >
+            <DoorwayIcon size={12} />
+            <span aria-hidden="true">{otherRealm.glyph}</span>
+            <span className="hidden sm:inline">{otherRealm.label}</span>
+          </button>
+        )}
         <span className="text-sm tabular-nums text-ink-soft">
           {stops} {stops === 1 ? "stop" : "stops"}
         </span>

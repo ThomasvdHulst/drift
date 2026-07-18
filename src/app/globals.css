@@ -45,6 +45,17 @@
   --accent: #cf9d80;
   --accent-strong: #e2b89b;
 }
+/* Encyclopedia is the default sage, but make it EXPLICIT too so a nested element
+   can rebind back to sage inside a gallery scope — e.g. a cross-realm doorway chip
+   (Phase 15) tinted by its DESTINATION realm. */
+[data-realm="encyclopedia"] {
+  --accent: #6f8f74;
+  --accent-strong: #4f6d55;
+}
+:root[data-theme="dark"] [data-realm="encyclopedia"] {
+  --accent: #86a98c;
+  --accent-strong: #a9c6ad;
+}
 
 @theme inline {
   --color-paper: var(--paper);

@@ -63,4 +63,25 @@ describe("layoutMeander", () => {
     expect(nodes[0].cx).toBe(300 - 50); // left of centre
     expect(nodes[1].cx).toBe(300 + 50); // right of centre
   });
+
+  it("flags a segment that crosses realms (Phase 15)", () => {
+    const wiki: TrailStep = { ...step({ type: "seed", seedName: "Octopus" }) };
+    const art: TrailStep = {
+      card: {
+        pageTitle: "123",
+        displayTitle: "Octopus and Shell",
+        extract: "x",
+        sourceUrl: "https://www.artic.edu/artworks/123",
+        source: "artic",
+      },
+      arrivedVia: { type: "thread", label: "Octopus and Shell", fromTitle: "Octopus", crossedFrom: "encyclopedia" },
+      timestamp: 0,
+      expanded: false,
+    };
+    const { segments } = layoutMeander([wiki, art, { ...wiki }]);
+    expect(segments[0].crossRealm).toBe(true); // wiki → artic
+    expect(segments[1].crossRealm).toBe(true); // artic → wiki
+    // A same-realm hop is not a crossing.
+    expect(layoutMeander([wiki, { ...wiki }]).segments[0].crossRealm).toBe(false);
+  });
 });

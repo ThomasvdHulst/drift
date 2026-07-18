@@ -103,6 +103,12 @@ export function relatedUrl(realm: RealmId, id: string): string {
   return `/api/realm/${realm}/related?id=${encodeURIComponent(id)}`;
 }
 
+/** The cross-realm doorway for a card (Phase 15): the one genuinely-related card
+ *  in the OTHER realm, or {} if there's none. */
+export function doorwayUrl(realm: RealmId, id: string): string {
+  return `/api/doorway?realm=${realm}&id=${encodeURIComponent(id)}`;
+}
+
 export function summaryUrl(
   realm: RealmId,
   id: string,

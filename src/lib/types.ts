@@ -45,6 +45,12 @@ export type RelatedCandidate = {
   // (Gallery: "MORE BY" / "THE MOVEMENT" / "THE SUBJECT" …). The facet-realm
   // parallel to the Encyclopedia's directional `kind` (Phase 14 M-G3).
   eyebrow?: string;
+  // Rich card fields carried through so a candidate that LANDS on a card keeps its
+  // museum label / zoom / blur-up / alt (Phase 14 fields). Only art sets these.
+  zoomUrl?: string;
+  blurDataUrl?: string;
+  imageAlt?: string;
+  facts?: { label: string; value: string }[];
 };
 
 // The "direction" a thread takes you (Phase 6). Encyclopedia threads are
@@ -59,13 +65,25 @@ export type Thread = {
   // Facet-realm eyebrow (Gallery). Distinct from `kind` (Encyclopedia). At most
   // one of `kind` / `eyebrow` is set.
   eyebrow?: string;
+  // A cross-realm "doorway" (Phase 15): presence marks this chip a realm-crossing,
+  // the value is the destination realm. Pulling it lands you in the other realm.
+  doorway?: RealmId;
 };
 
 export type ArrivedVia =
   | { type: "seed"; seedName: string }
   // `kind` records the thread's direction (Phase 6); optional ⇒ back-compatible
   // with trails saved before it, and with facet realms (Gallery) that omit it.
-  | { type: "thread"; label: string; fromTitle: string; kind?: ThreadKind }
+  // `crossedFrom` (Phase 15) is set when this step crossed into a new realm (the
+  // realm you came FROM) — powers the honest "Crossed to …" line + a distinct
+  // trail-map / atlas edge. Absent ⇒ an in-realm thread.
+  | {
+      type: "thread";
+      label: string;
+      fromTitle: string;
+      kind?: ThreadKind;
+      crossedFrom?: RealmId;
+    }
   // A drift may carry the topic it landed in (interesting-random, M8) and why
   // that topic was chosen (M9): "interest" = weighted by what you like,
   // "wildcard" = the serendipity floor. Optional → back-compatible with trails
@@ -74,6 +92,9 @@ export type ArrivedVia =
       type: "drift";
       topic?: { id: string; label: string };
       reason?: "interest" | "wildcard";
+      // Set when a horizontal swipe crossed into a new realm with no doorway (a
+      // fresh wander into the other realm) — the realm you came FROM (Phase 15).
+      crossedFrom?: RealmId;
     };
 
 export type TrailStep = {

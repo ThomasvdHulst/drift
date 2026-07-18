@@ -149,5 +149,11 @@ export function candidateToCard(c: RelatedCandidate): Card {
     sourceUrl:
       source === "wikipedia" ? titleToSourceUrl(c.pageTitle) : c.sourceUrl ?? "",
     source,
+    // Carry the Phase-14 rich fields so landing on an art card keeps its museum
+    // label / zoom / blur / alt (absent on Wikipedia candidates).
+    ...(c.zoomUrl ? { zoomUrl: c.zoomUrl } : {}),
+    ...(c.blurDataUrl ? { blurDataUrl: c.blurDataUrl } : {}),
+    ...(c.imageAlt ? { imageAlt: c.imageAlt } : {}),
+    ...(c.facts ? { facts: c.facts } : {}),
   };
 }
