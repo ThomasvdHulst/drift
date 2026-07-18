@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { pickDriftNext, pickRandomThread, MAX_THEME_RUN } from "./drift";
+import { pickDriftNext, pickRandomThread } from "./drift";
 import type { Thread } from "./types";
 
 function thread(title: string): Thread {
@@ -18,54 +18,42 @@ function seededRng(values: number[]): () => number {
 describe("pickDriftNext", () => {
   const threads = [thread("A"), thread("B"), thread("C")];
 
-  it("follows a thread when the first roll is < 0.5 (thread bias)", () => {
-    // first roll 0.3 (< 0.5 → thread branch), second roll 0.0 → index 0
-    const choice = pickDriftNext(threads, { rng: seededRng([0.3, 0.0]) });
+  it("drifts fully random by default (not liked) even with threads available", () => {
+    const choice = pickDriftNext(threads, { rng: seededRng([0.0]) });
+    expect(choice.type).toBe("random");
+  });
+
+  it("follows a related thread when the current card is liked", () => {
+    // rng 0.0 → index 0 (A)
+    const choice = pickDriftNext(threads, {
+      likedCurrent: true,
+      rng: seededRng([0.0]),
+    });
     expect(choice.type).toBe("thread");
     if (choice.type === "thread") {
       expect(choice.thread.candidate.pageTitle).toBe("A");
     }
   });
 
-  it("selects thread by the second roll", () => {
-    // 0.1 → thread branch; 0.9 * 3 = 2.7 → floor 2 → index 2 (C)
-    const choice = pickDriftNext(threads, { rng: seededRng([0.1, 0.9]) });
+  it("picks a random related thread when liked (0.9 * 3 = 2.7 → index 2 = C)", () => {
+    const choice = pickDriftNext(threads, {
+      likedCurrent: true,
+      rng: seededRng([0.9]),
+    });
     expect(choice.type).toBe("thread");
     if (choice.type === "thread") {
       expect(choice.thread.candidate.pageTitle).toBe("C");
     }
   });
 
-  it("goes fully random when the first roll is >= 0.5", () => {
-    const choice = pickDriftNext(threads, { rng: seededRng([0.6]) });
+  it("goes random when liked but there are no untapped threads", () => {
+    const choice = pickDriftNext([], { likedCurrent: true, rng: seededRng([0.0]) });
     expect(choice.type).toBe("random");
-  });
-
-  it("always goes random when there are no untapped threads", () => {
-    const choice = pickDriftNext([], { rng: seededRng([0.0, 0.0]) });
-    expect(choice.type).toBe("random");
-  });
-
-  it("forces random once the theme run hits the cap, even on a low roll", () => {
-    // A roll of 0.0 would normally pick a thread, but the run cap overrides it.
-    const choice = pickDriftNext(threads, {
-      rng: seededRng([0.0, 0.0]),
-      consecutiveThemeDrifts: MAX_THEME_RUN,
-    });
-    expect(choice.type).toBe("random");
-  });
-
-  it("still allows a thread just below the cap", () => {
-    const choice = pickDriftNext(threads, {
-      rng: seededRng([0.0, 0.0]),
-      consecutiveThemeDrifts: MAX_THEME_RUN - 1,
-    });
-    expect(choice.type).toBe("thread");
   });
 
   it("defaults to Math.random when no rng is supplied (smoke)", () => {
     // No throw, returns a valid shape.
-    const choice = pickDriftNext(threads);
+    const choice = pickDriftNext(threads, { likedCurrent: true });
     expect(["thread", "random"]).toContain(choice.type);
   });
 });

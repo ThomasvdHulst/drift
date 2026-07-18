@@ -168,9 +168,6 @@ export default function DriftPage() {
     atTop: boolean;
     atBottom: boolean;
   }>({ x: 0, y: 0, insideRegion: false, atTop: true, atBottom: true });
-  // How many drifts in a row have followed a related thread. Feeds the run-cap
-  // in pickDriftNext so passive drifting can't get stuck circling one subject.
-  const themeRunRef = useRef(0);
   // A buffer of "interesting random" cards, tagged with their topic. Random
   // drifts are served from here; it's refilled reactively when it runs dry (via
   // the topic-discover endpoint) — deliberately NOT a continuously-topped-up
@@ -497,24 +494,29 @@ export default function DriftPage() {
       return;
     }
 
-    // At the live card → drift. Roughly half the time we follow one of the
-    // current card's untapped threads (instant, on-theme); the rest jump fully
-    // random. The run-cap forces a random jump after a streak of thread-drifts.
-    const choice = pickDriftNext(threads, {
-      consecutiveThemeDrifts: themeRunRef.current,
-    });
-    if (choice.type === "thread") {
-      themeRunRef.current += 1;
-      pushStep(candidateToCard(choice.thread.candidate), { type: "drift" }, "drift");
+    // At the live card → drift. By default every drift is an independent random
+    // jump (two scrolls are unrelated). The one exception: if you ♥-liked this
+    // card, the next drift follows one of its related threads to "stay in the
+    // stream" (instant, on-theme) — relatedness tied to an explicit signal, not
+    // a blind coin flip that used to chain near-identical pages together.
+    const likedCurrent = current
+      ? reactions[cardId(current.card)] === "like"
+      : false;
+    const choice = pickDriftNext(threads, { likedCurrent });
+    if (choice.type === "thread" && current) {
+      pushStep(
+        candidateToCard(choice.thread.candidate),
+        { type: "drift", fromLiked: current.card.displayTitle },
+        "drift",
+      );
       return;
     }
 
-    // Fully random breaks the on-theme streak. Served from the buffered batch:
-    // instant whenever it holds cards; we only refetch when it runs dry. The
-    // buffer is filled from the topic-discover endpoint (interesting-random),
-    // so a "random" drift lands on a popular, on-topic page instead of an
-    // obscure stub — and carries the topic it came from (shown on the card).
-    themeRunRef.current = 0;
+    // Independent random drift. Served from the buffered batch: instant whenever
+    // it holds cards; we only refetch when it runs dry. The buffer is filled from
+    // the topic-discover endpoint (interesting-random), so a "random" drift lands
+    // on a popular, on-topic page instead of an obscure stub — and carries the
+    // topic it came from (shown on the card).
     let bc = takeBufferedRandom();
     if (!bc) {
       busyRef.current = true;
@@ -555,7 +557,6 @@ export default function DriftPage() {
     const fromRealm = realm;
     const otherRealm: RealmId =
       fromRealm === "gallery" ? "encyclopedia" : "gallery";
-    themeRunRef.current = 0;
     busyRef.current = true;
     setAdvancing(true);
     try {
@@ -748,7 +749,6 @@ export default function DriftPage() {
   function goBack() {
     if (ended || busyRef.current) return;
     if (pos > 0) {
-      themeRunRef.current = 0;
       setDir("back");
       setPos((p) => p - 1);
     }
@@ -757,15 +757,12 @@ export default function DriftPage() {
   function jumpTo(index: number) {
     if (ended || busyRef.current || index === pos) return;
     if (index < 0 || index >= history.length) return;
-    themeRunRef.current = 0;
     setDir(index < pos ? "back" : "drift");
     setPos(index);
   }
 
   function onThread(thread: Thread) {
     if (ended || busyRef.current || !current) return;
-    // A deliberate thread pull is a fresh direction — reset the passive-drift streak.
-    themeRunRef.current = 0;
     setFollowingLabel(thread.label);
     window.setTimeout(() => setFollowingLabel(null), 950);
     // A doorway (or any candidate in the other realm) crosses realms — the realm

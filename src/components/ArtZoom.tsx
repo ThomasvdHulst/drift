@@ -8,10 +8,15 @@ import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 // the art on a Gallery card; loads the sanctioned larger public-domain image
 // (IIIF 1686px) and lets you pinch / double-tap / wheel to zoom and drag to pan.
 //
-// Rendered through a PORTAL to <body>, so its touch/wheel events never bubble to
-// the feed's advance/read gesture handlers (which live in the /drift card subtree)
-// — zoom is its own mode, isolated by construction. Close via ✕, Esc, or a tap on
-// the empty backdrop; body scroll is locked while open.
+// Rendered through a PORTAL to <body> so it visually escapes the card, but React
+// synthetic events still bubble through the COMPONENT tree (a portal's events
+// reach its React parent, not just its DOM parent). So we explicitly stop touch
+// and wheel events at the dialog root — otherwise a pinch/pan/drag while zooming,
+// or the tap that closes it, bubbles up to the feed's gesture handlers on /drift
+// and gets read as an advance or a realm-cross (you close the image and land on a
+// new card). The stop happens ABOVE the zoom library's own inner handlers, so
+// pinch/pan/double-tap still work. Close via ✕, Esc, or a tap on the empty
+// backdrop; body scroll is locked while open.
 export function ArtZoom({
   src,
   alt,
@@ -59,6 +64,12 @@ export function ArtZoom({
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
+      // Keep the zoom's gestures from reaching the feed's advance/cross handlers,
+      // which sit above this portal in the React tree (see the note above). Stop
+      // (never preventDefault) so the zoom library keeps its native pinch/pan.
+      onTouchStart={(e) => e.stopPropagation()}
+      onTouchEnd={(e) => e.stopPropagation()}
+      onWheel={(e) => e.stopPropagation()}
     >
       {blurDataUrl && !loaded && (
         <img

@@ -130,6 +130,25 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > Reflection)** — the last of the three brainstorm directions. _(Deferred: in-app friend-share of the Atlas;
 > a real-iOS momentum pass on the swipe.)_
 >
+> 🐞 **Two bug fixes (2026-07-18).** Both from real use; both verified (build + lint clean, **215 unit
+> tests**, mobile-390px Playwright **16/16**, 0 page errors). **(1) Drift clustering (Encyclopedia).**
+> Plain drifting used to follow one of the current card's `morelike:` threads ~50% of the time (up to 3 in
+> a row via `MAX_THEME_RUN`), and a neighbour-of-a-neighbour stays in one tight cluster — so scrolling gave
+> 3–4 near-identical pages (same subject, different year). **Fix:** every drift is now an INDEPENDENT random
+> jump by default; the one exception is an explicit signal — ♥-like a card and the NEXT drift follows one of
+> its related threads ("stay in this stream", honest **"More like {title}"** mode chip). Relatedness is tied
+> to a transparent user choice, not a blind coin flip (§2.1). `drift.ts` (`likedCurrent` replaces the
+> `consecutiveThemeDrifts` run-cap; `DRIFT_THREAD_BIAS`/`MAX_THEME_RUN`/`themeRunRef` removed), `page.tsx`
+> `advance()`, `ArrivedVia` drift `+fromLiked`, `CardView` ModeChip, `drift.test.ts`. Verified: Octopus♥ →
+> "Octopus tetricus" [MORE LIKE OCTOPUS]; unliked Jupiter drift → Kindergarten→Gettysburg→Dune→UC Press→
+> Purple Heart (all distinct, unrelated). **(2) Gallery zoom close jumped to a new card (mobile).** The
+> deep-zoom lightbox is portaled to `<body>`, but **React synthetic events still bubble through the COMPONENT
+> tree** (a portal's events reach its React parent), so a pinch/pan/tap-✕ in the zoom bubbled to the feed's
+> `onTouchStart/End`/`onWheel` on `/drift` and was read as an advance (new Gallery card) or a realm-cross
+> (new Encyclopedia card). The old code comment wrongly claimed the portal isolated events. **Fix:**
+> `ArtZoom` now `stopPropagation()`s touch + wheel at the dialog root (above the zoom lib's own inner
+> handlers, so pinch/pan still work); comment corrected.
+>
 > _(Update this line whenever progress changes.)_
 
 ---

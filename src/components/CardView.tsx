@@ -107,15 +107,18 @@ function ModeChip({ via, realmLabel }: { via: ArrivedVia; realmLabel: string }) 
       </span>
     );
   }
-  // Drift wording answers "why this card?" (transparency, §2.1): a personalized
-  // pick names the interest; a serendipity pick is flagged as a wildcard; a
-  // realm-crossing wander reads "Crossed to …"; a plain drift reads "Drifting".
+  // Drift wording answers "why this card?" (transparency, §2.1): a liked-follow
+  // names the card you liked; a personalized pick names the interest; a
+  // serendipity pick is flagged as a wildcard; a realm-crossing wander reads
+  // "Crossed to …"; a plain drift reads "Drifting".
   const crossedDrift = via.type === "drift" && via.crossedFrom !== undefined;
   let label = "Drifting";
   if (via.type === "seed") {
     label = "Starting point";
   } else if (via.type === "drift" && crossedDrift) {
     label = via.topic ? `Crossed to ${realmLabel} · ${via.topic.label}` : `Crossed to ${realmLabel}`;
+  } else if (via.type === "drift" && via.fromLiked) {
+    label = `More like ${via.fromLiked}`;
   } else if (via.type === "drift" && via.topic) {
     label =
       via.reason === "interest"

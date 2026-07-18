@@ -1,25 +1,19 @@
 import type { Thread } from "./types";
 
 // ---------------------------------------------------------------------------
-// "Drift" = advancing without choosing a thread. Per spec §8.2 it is a
-// *semi-random* next card: roughly half the time it follows one of the current
-// card's untapped related threads (instant, on-theme, no fetch), and half the
-// time it jumps to a fully-random card — "feels organic, still surprising."
+// "Drift" = advancing without choosing a thread. By default every drift is an
+// INDEPENDENT random jump: two consecutive scrolls are unrelated, so passive
+// scrolling never gets stuck circling one subject (the old behaviour chained
+// 3–4 near-identical pages — same topic, different year — because a drift used
+// to follow one of the current card's morelike neighbours ~half the time, and a
+// neighbour of a neighbour stays in the same tight cluster).
+//
+// The one exception is an explicit signal: when you ♥-like a card you're saying
+// "keep me in this stream", so the NEXT drift follows one of that card's related
+// threads. Relatedness is now tied to a transparent, user-chosen positive signal
+// (§2.1) instead of an opaque coin flip — like to stay, just scroll to wander.
 // RNG is injected for deterministic tests.
 // ---------------------------------------------------------------------------
-
-// Probability that a drift follows a related thread rather than a fully-random
-// jump. The spec calls for a roughly even split. (An earlier build raised this
-// to 0.85 to dodge Wikimedia burst rate-limits on the random endpoint — but that
-// made drifting feel trapped on one subject, the "everything is Alaska" problem.
-// The burst limiter is a non-issue at human drift pace, so we're back to ~50%.)
-export const DRIFT_THREAD_BIAS = 0.5;
-
-// Hard cap on how many drifts in a row may follow a related thread before the
-// next drift is forced fully-random. Guarantees the subject changes at least
-// this often even on an unlucky run of thread rolls, so a passive drifter can
-// never get stuck circling one cluster.
-export const MAX_THEME_RUN = 3;
 
 export type DriftChoice =
   | { type: "thread"; thread: Thread }
@@ -27,19 +21,21 @@ export type DriftChoice =
 
 export interface DriftOptions {
   rng?: () => number;
-  // How many drifts in a row have already followed a related thread. Once this
-  // reaches MAX_THEME_RUN, the next drift is forced random regardless of the roll.
-  consecutiveThemeDrifts?: number;
+  // Whether the user explicitly ♥-liked the current card. Only then does a drift
+  // follow one of the card's related threads ("stay in this stream"); otherwise
+  // every drift is a fully-independent random jump.
+  likedCurrent?: boolean;
 }
 
 export function pickDriftNext(
   untappedThreads: Thread[],
   opts: DriftOptions = {},
 ): DriftChoice {
-  const { rng = Math.random, consecutiveThemeDrifts = 0 } = opts;
+  const { rng = Math.random, likedCurrent = false } = opts;
 
-  const runCapped = consecutiveThemeDrifts >= MAX_THEME_RUN;
-  if (!runCapped && untappedThreads.length > 0 && rng() < DRIFT_THREAD_BIAS) {
+  // Liked → stay in the stream by following a (random) related thread. If the
+  // threads haven't loaded yet, fall through to a random jump.
+  if (likedCurrent && untappedThreads.length > 0) {
     return { type: "thread", thread: pickRandomThread(untappedThreads, rng)! };
   }
   return { type: "random" };
@@ -47,10 +43,10 @@ export function pickDriftNext(
 
 /**
  * Pick a uniformly-random thread from the list, or null if empty. Used both by
- * the drift roll above and as the degraded fallback when a random-card fetch
- * fails (a random thread keeps the degraded path varied vs. always the top one).
- * Lives here (not inline in the component) so it stays pure + unit-testable and
- * out of React's render-purity path.
+ * the liked-follow drift above and as the degraded fallback when a random-card
+ * fetch fails (a random thread keeps the degraded path varied vs. always the
+ * top one). Lives here (not inline in the component) so it stays pure +
+ * unit-testable and out of React's render-purity path.
  */
 export function pickRandomThread(
   threads: Thread[],

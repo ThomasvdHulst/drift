@@ -95,6 +95,10 @@ export type ArrivedVia =
       // Set when a horizontal swipe crossed into a new realm with no doorway (a
       // fresh wander into the other realm) — the realm you came FROM (Phase 15).
       crossedFrom?: RealmId;
+      // Set when this drift followed a related thread because you ♥-liked the
+      // previous card ("keep me in this stream"). The value is that liked card's
+      // title, for an honest "More like {title}" mode chip.
+      fromLiked?: string;
     };
 
 export type TrailStep = {
