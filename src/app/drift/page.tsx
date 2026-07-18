@@ -195,6 +195,10 @@ export default function DriftPage() {
   const realmMeta = getRealm(realm);
   // The realm a horizontal swipe / the top-bar control crosses INTO (two realms).
   const otherRealmMeta = getRealm(realm === "gallery" ? "encyclopedia" : "gallery");
+  // Cross-realm is an Encyclopedia<->Gallery feature (Phase 15). Papers stays
+  // self-contained for now (its cross-realm doorways arrive later), so it neither
+  // offers the cross control nor reacts to a horizontal swipe.
+  const canCross = realm === "encyclopedia" || realm === "gallery";
   // The displayed card's app-wide id (thread cache key) and source-native id
   // (used to fetch related/summary). Distinct because two realms can share a
   // native title string.
@@ -555,6 +559,8 @@ export default function DriftPage() {
   async function crossRealm() {
     if (ended || busyRef.current || !current) return;
     const fromRealm = realm;
+    // Only Encyclopedia<->Gallery cross for now; Papers is self-contained.
+    if (fromRealm !== "encyclopedia" && fromRealm !== "gallery") return;
     const otherRealm: RealmId =
       fromRealm === "gallery" ? "encyclopedia" : "gallery";
     busyRef.current = true;
@@ -883,9 +889,9 @@ export default function DriftPage() {
     const start = touchStartRef.current;
     const deltaX = e.changedTouches[0].clientX - start.x;
     const deltaY = start.y - e.changedTouches[0].clientY;
-    // Axis-lock: a clearly-horizontal swipe crosses realms; otherwise it's the
-    // vertical read/advance gesture. Never both.
-    if (resolveHorizontalSwipe({ deltaX, deltaY }) === "cross") {
+    // Axis-lock: a clearly-horizontal swipe crosses realms (only where crossing
+    // applies); otherwise it's the vertical read/advance gesture. Never both.
+    if (canCross && resolveHorizontalSwipe({ deltaX, deltaY }) === "cross") {
       crossRealm();
       return;
     }
@@ -912,12 +918,16 @@ export default function DriftPage() {
         pos={pos}
         stops={history.length}
         realm={{ label: realmMeta.label, glyph: realmMeta.glyph }}
-        otherRealm={{
-          id: otherRealmMeta.id,
-          label: otherRealmMeta.label,
-          glyph: otherRealmMeta.glyph,
-        }}
-        onCrossRealm={crossRealm}
+        otherRealm={
+          canCross
+            ? {
+                id: otherRealmMeta.id,
+                label: otherRealmMeta.label,
+                glyph: otherRealmMeta.glyph,
+              }
+            : undefined
+        }
+        onCrossRealm={canCross ? crossRealm : undefined}
         endless={endless}
         onJump={jumpTo}
         onEnd={endSession}

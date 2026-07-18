@@ -11,6 +11,7 @@ const SOURCE_TO_REALM: Record<SourceId, RealmId> = {
   wikipedia: "encyclopedia",
   artic: "gallery",
   gutenberg: "library",
+  arxiv: "papers",
 };
 
 export function realmOfSource(source?: SourceId | null): RealmId {
@@ -35,6 +36,7 @@ export const DOORWAY_EYEBROW: Record<RealmId, string> = {
   gallery: "In the Gallery",
   library: "In the Library",
   today: "In Today",
+  papers: "In Papers",
 };
 
 function norm(s: string | null | undefined): string {

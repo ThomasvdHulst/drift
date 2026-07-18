@@ -7,6 +7,7 @@ import type { RealmId } from "@/lib/realms/types";
 import { summaryUrl, getRealm } from "@/lib/realms";
 import { ThreadChips, KindIcon, KIND_META, DoorwayIcon } from "./ThreadChips";
 import { ArtZoom } from "./ArtZoom";
+import { PaperCover } from "./PaperCover";
 
 // Quiet ♥ / ✕ that teach the interest model (M9). Sage when active, neutral
 // otherwise — deliberately calm, never a red badge (§6, the opposite of a
@@ -144,6 +145,11 @@ function ImagePanel({ card, onZoom }: { card: Card; onZoom?: () => void }) {
   // image and fades out once it loads — no layout shift, a calm reveal.
   const [loaded, setLoaded] = useState(false);
   const alt = card.imageAlt || card.displayTitle;
+  // Papers have no image: render a generated, field-themed cover instead (Phase 17).
+  if (card.source === "arxiv" && card.cover) {
+    const fieldLabel = card.facts?.find((f) => f.label === "Field")?.value;
+    return <PaperCover cover={card.cover} label={fieldLabel} />;
+  }
   if (!card.imageUrl) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-accent/10">
@@ -230,6 +236,7 @@ function ImagePanel({ card, onZoom }: { card: Card; onZoom?: () => void }) {
 function sourceLinkLabel(source?: string): string {
   if (source === "artic") return "View at the Art Institute ↗";
   if (source === "gutenberg") return "Read the full text ↗";
+  if (source === "arxiv") return "Read the full paper ↗";
   return "From Wikipedia ↗";
 }
 

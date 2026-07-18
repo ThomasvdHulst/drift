@@ -149,6 +149,13 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > `ArtZoom` now `stopPropagation()`s touch + wheel at the dialog root (above the zoom lib's own inner
 > handlers, so pinch/pan still work); comment corrected.
 >
+> 🧪 **Phase 17 — Papers realm (arXiv), M-P0 + M-P1 SHIPPED behind a flag (2026-07-18).** An experimental
+> third realm: open research read as text-forward, field-themed cards (no images — a generated hue+motif cover
+> per discipline). 100% copyright-clean (arXiv CC0 metadata only; PDF linked, never rehosted). Off by default;
+> set `NEXT_PUBLIC_REALM_PAPERS=1` in `.env.local` to try it. 247 tests, build+lint clean, browser-verified
+> (see Phase 17 below). OpenAlex enrichment + cross-realm doorways (M-P2) and AI simplification (M-P3) are
+> deferred until the user has tried the feel. Detail: Phase 17 section + `~/.claude/plans/synchronous-leaping-wren.md`.
+>
 > _(Update this line whenever progress changes.)_
 
 ---
@@ -1229,6 +1236,100 @@ it just never comes back to the user (dwell is captured but unused; `readMores` 
 
 **Phase 16 exit:** Drift doesn't just help you wander — it helps you *keep* what you found and quietly remember
 it later, which is the whole point of the experiment.
+
+---
+
+## Phase 17 — The Papers realm: vetted research, read like a card  *(idea — researched 2026-07-18, NOT yet committed)*
+
+**Goal:** a third realm that turns Drift into a reader of **open research**, the same way Gallery made it a
+reader of open art. A full-screen card = one paper (title, authors, the abstract as the "hook", key facts),
+with pull-threads that wander the citation/topic graph, cross-realm doorways into the Encyclopedia, and (a
+*later* step) an AI plain-language simplification. This reopens the arXiv note parked in Phase 5's realm
+research — the "no images" objection there is real and is addressed head-on by making this a deliberately
+**text-forward / theme-styled** realm (no scraped figures), not by pretending it's image-forward.
+
+**The two concerns, answered by research (2026-07-18):**
+1. **Access.** The full text is often paywalled, but a Drift card only needs title + abstract + metadata, and
+   those are open via free scholarly APIs (the same ones an AI uses to "find a paper"): **arXiv** (~2.4M STEM
+   preprints, one free query endpoint, etiquette 1 req / 3 s), **OpenAlex** (~250M works, free REST API,
+   **CC0 data** — the citation/topic graph), **Semantic Scholar** (free, AI "TLDR" summaries, but license
+   caveats). Access is *not* the blocker.
+2. **Copyright — the sharp one, and the reason to build on arXiv.** Three separable pieces:
+   - **Titles + hard facts** (authors, venue, year, DOI, citations, categories): facts, not copyrightable;
+     OpenAlex/Crossref release them **CC0**. Always free to show.
+   - **Abstracts in general**: original prose, therefore *copyrightable*. Showing a random paywalled paper's
+     abstract leans on fair use (what Scholar/PubMed do) — legally murky, **not** something to ship publicly.
+   - **The escape hatch:** **arXiv dedicates ALL its metadata, including the abstract, to CC0 1.0 Public
+     Domain** (verified on info.arxiv.org/help/license — *"A Creative Commons CC0 1.0 Universal Public Domain
+     Dedication will apply to all metadata"*, separate from the e-print's own license). So **arXiv abstracts
+     are 100% free to display, remix, and feed to an AI.** That makes arXiv the **publish-safe** academic
+     source, exactly analogous to Encyclopedia (CC BY-SA) and Gallery (CC0). ⚠️ **Nuance:** OpenAlex stores
+     abstracts as an *inverted index* precisely to avoid redistributing copyrighted abstract text — so use
+     OpenAlex for the *graph/facts only*, and only ever display abstract *prose* for **arXiv** papers.
+     Semantic Scholar data is often CC BY-**NC** + its API license restricts commercial use — fine for a
+     hobby project, a flag if Drift ever monetizes; lean on arXiv (CC0) + OpenAlex (CC0), treat S2 as optional.
+   - **Decision (user, 2026-07-18):** *rather a smaller 100%-clean selection than a large uncertain one.*
+     ⇒ **display only arXiv (CC0) content**; use OpenAlex (CC0) purely for the relationship/topic graph and
+     the Wikidata cross-realm links. Nothing shown relies on fair use.
+
+**What it maps onto (all already built):**
+- The **source abstraction** (M10): `source: "arxiv"`, a `papers` realm in the registry, generic
+  `/api/realm/[realm]/{discover,related,summary}` routes — same shape as `gallery`.
+- **The card:** big serif title, authors, an eyebrow like "arXiv · {category} · {year}", the CC0 abstract as
+  the extract, "Read the full paper ↗" to the PDF. Reuse the **Phase 14 museum-label** for facts (categories,
+  citation count, "Published in {venue}" when OpenAlex shows a published version exists).
+- **Threads (directions):** "More in {category}" / "More by {author}" straight from arXiv; richer *References /
+  Cited by / Related* from OpenAlex's `referenced_works`/`related_works`, **filtered to candidates that are
+  also on arXiv** so the card you land on keeps a CC0 abstract.
+- **Cross-realm doorways to Encyclopedia:** the nicest fit of all — every OpenAlex **concept carries a Wikidata
+  ID**, so a paper's topic maps *directly* to a Wikipedia article (cleaner than Phase 15's AIC string-match).
+- **Interest model:** arXiv categories (or OpenAlex topics) feed a transparent topic-weight model like the
+  Encyclopedia's ORES topics.
+- **AI simplification (explicitly a LATER step):** batch-precompute plain-language summaries **from the CC0
+  arXiv abstract** into a stored DB (not on-the-fly). Legally clean (CC0 input); must obey §2.5 (reshape,
+  never invent) — technical-paper hallucination is real, so careful prompting + honest "AI summary, original
+  linked" labeling. Depends on the Phase 3 Ollama layer (still deferred).
+
+**Honest blockers / tensions (name them, don't paper over):**
+- **No images.** The real one (why arXiv was parked before). Drift is image-forward; a paper is text. This
+  realm goes **text-forward / theme-styled** on purpose (the "quiet reading room" suits it): a generated,
+  **category-tinted** card (no scraped figures — a figure is part of the e-print, not the CC0 metadata). A
+  design spike comes first.
+- **Preprints ≠ peer-reviewed**, brushing §2.5's "vetted". Label honestly; optionally surface "Published in
+  {venue}" via OpenAlex, or bias toward arXiv papers that have a published version.
+- **Density** of abstracts is exactly what the (later) AI simplification is for — and the hardest to do faithfully.
+- **Scope:** arXiv is STEM only (physics/math/CS/quant-bio/stats/econ). Biomed has its own clean OA path
+  (Europe PMC / PMC open-access subset, CC-licensed) if we ever extend; humanities are scattered.
+- **Reversibility (user ask):** build it so the realm can be **dropped/hidden with one flag** and *locally
+  tested first* — e.g. do **not** add it to the logged-out landing page yet, keep it behind a realm-enable
+  gate, no schema/homepage commitments that are hard to undo.
+
+**Status:** 🎨 **M-P0 (design spike) + M-P1 (arXiv MVP) — ✅ COMPLETE & verified (2026-07-18).** Behind the
+`NEXT_PUBLIC_REALM_PAPERS` flag (off by default). Shipped:
+- Pure logic: `src/lib/realms/arxiv.categories.ts` (12 buckets + 9 field groups w/ hue+motif + `categoryGroupOf`
+  + injection-guard `arxivBucketById`), `src/lib/realms/arxiv.ts` (regex `parseArxivAtom`, `arxivToCard`/
+  `arxivToCandidate`, `paperCover`, `arxivFacts`, `isUsableEntry`, **`detexLite`** — strips inline LaTeX
+  `$…$`/`\textit{}`/`\ldots` from titles+abstracts so the prose reads cleanly, §2.5-safe).
+- Server adapter `src/lib/realms/server/arxiv.ts` (own 3s gate, `Api-User-Agent`, `fetchText` added to
+  `upstream.ts`; discover = category + random start, related = "More in {field}" / "More by {author}",
+  summary, extended). Registered in client + server registries.
+- `src/components/PaperCover.tsx` — the generated, field-themed, image-less cover (hue gradient + seeded SVG
+  motif: graph/orbits/grid/cells/curve/trend/wave/bars). Wired into `CardView` (`source==="arxiv"` branch),
+  `[data-realm="papers"]` dusty-blue accent in `globals.css`. Papers kept OUT of cross-realm (guard in
+  `drift/page.tsx`; doorway route already no-ops). Types: `SourceId+="arxiv"`, `RealmId+="papers"`,
+  `Card.cover?`; `SOURCE_TO_REALM`/`DOORWAY_EYEBROW` extended; `candidateToCard` carries `cover`.
+- **Reversible:** flag off ⇒ no Papers tab (verified: only Encyclopedia+Gallery), realm still resolves for
+  saved trails; landing page untouched (never enumerates realms). Drop entirely = remove the additive files.
+- **Verified:** 247 unit tests (+32), build+lint clean; browser (flag on, ungated) 12/12 — themed covers
+  render across fields (light+dark+mobile screenshots), abstract/facts/"Read the full paper ↗"/preprint label,
+  facet threads pull, drift works, no cross-realm control, 0 console errors; detex 5/5 abstracts clean;
+  flag-off hides the tab. **To use locally: set `NEXT_PUBLIC_REALM_PAPERS=1` in `.env.local`.**
+
+**▶ NEXT (when the user is ready): M-P2 (OpenAlex enrichment — references/cited-by threads + Wikidata
+cross-realm doorways to the Encyclopedia + "published in" facts) then M-P3 (AI simplification, needs Ollama).**
+Plan file: `~/.claude/plans/synchronous-leaping-wren.md`. Sources: arXiv metadata CC0 (info.arxiv.org/help/
+license), arXiv API TOU (apps may display metadata; don't rehost PDFs), OpenAlex API + concepts/Wikidata (CC0),
+Semantic Scholar API license, Harvard OGC copyright/fair-use.
 
 ---
 

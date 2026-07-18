@@ -56,6 +56,17 @@
   --accent: #86a98c;
   --accent-strong: #a9c6ad;
 }
+/* Papers (Phase 17): a single calm dusty-blue for the chrome + thread chips. The
+   per-field tint lives only inside the card cover, so the app still reads as one
+   system. */
+[data-realm="papers"] {
+  --accent: #6f83a6;
+  --accent-strong: #566f95;
+}
+:root[data-theme="dark"] [data-realm="papers"] {
+  --accent: #8b9fc0;
+  --accent-strong: #a9bcd8;
+}
 
 @theme inline {
   --color-paper: var(--paper);

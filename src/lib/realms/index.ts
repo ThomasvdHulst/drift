@@ -11,7 +11,15 @@ import { uniformTopic } from "../discover";
 import { pickRandom } from "../pick";
 import type { RealmId, RealmMeta, DiscoverPick, SeedTile } from "./types";
 import { ARTIC_BUCKETS, articBucketById } from "./artic.buckets";
+import { ARXIV_BUCKETS, arxivBucketById } from "./arxiv.categories";
 import encyclopediaSeedData from "../../data/seeds.json";
+
+// The Papers realm (Phase 17) is behind a flag so it can be dropped/hidden with
+// one env var while we test the feel locally. Off ⇒ no homepage tab, no behavior
+// change anywhere; the realm still resolves via getRealm so a saved Papers trail
+// still opens. The logged-out landing page never enumerates realms, so it is
+// untouched regardless.
+const PAPERS_ENABLED = process.env.NEXT_PUBLIC_REALM_PAPERS === "1";
 
 export interface RealmClient extends RealmMeta {
   /** Homepage seed tiles for this realm. */
@@ -74,10 +82,35 @@ const gallery: RealmClient = {
   bucketLabel: (id) => articBucketById(id)?.label ?? id,
 };
 
+// Papers realm (Phase 17): arXiv preprints, read as text-forward, field-themed
+// cards. No interest model, facet threads (like Gallery). Dusty-blue accent.
+const papers: RealmClient = {
+  id: "papers",
+  contentSource: "arxiv",
+  label: "Papers",
+  glyph: "◈",
+  blurb: "Open research from arXiv. Wander the frontier of knowledge.",
+  hasInterestModel: false,
+  threadMode: "facet",
+  seeds: ARXIV_BUCKETS.map((b) => ({
+    label: b.label,
+    glyph: b.glyph,
+    blurb: b.blurb,
+    tint: b.tint,
+    bucket: b.id,
+  })),
+  pickDiscover() {
+    const b = pickRandom(ARXIV_BUCKETS) ?? ARXIV_BUCKETS[0];
+    return { id: b.id, label: b.label, bucket: b.id };
+  },
+  bucketLabel: (id) => arxivBucketById(id)?.label ?? id,
+};
+
 // Additional realms (library/today) are registered in M12.
 const REALMS: Partial<Record<RealmId, RealmClient>> = {
   encyclopedia,
   gallery,
+  papers,
 };
 
 /** The realm client for an id, defaulting to Encyclopedia for unknown/absent. */
@@ -85,9 +118,12 @@ export function getRealm(id: string | null | undefined): RealmClient {
   return (id ? REALMS[id as RealmId] : undefined) ?? encyclopedia;
 }
 
-/** All wired realms, in registration order (drives the homepage tabs). */
+/** All realms shown as homepage tabs, in registration order. Papers is gated by
+ *  its flag (still resolvable via getRealm when off, just not offered as a tab). */
 export function listRealms(): RealmClient[] {
-  return Object.values(REALMS).filter((r): r is RealmClient => !!r);
+  return Object.values(REALMS).filter(
+    (r): r is RealmClient => !!r && (r.id !== "papers" || PAPERS_ENABLED),
+  );
 }
 
 // ----- URL builders for the generic /api/realm/[realm]/* routes -----

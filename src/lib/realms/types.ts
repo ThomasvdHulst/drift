@@ -13,12 +13,12 @@
 /** Where a Card's content originates. Drives cardId, the seen-set, and which
  *  card body renders. `Card.source` is optional and defaults to "wikipedia" so
  *  every trail saved before Phase 5 still resolves. */
-export type SourceId = "wikipedia" | "artic" | "gutenberg";
+export type SourceId = "wikipedia" | "artic" | "gutenberg" | "arxiv";
 
 /** Which room a drift session is in. Drives the homepage tab, the accent, the
  *  discover strategy, and the My-Trails badge. `Trail.realm` defaults to
  *  "encyclopedia" when absent. */
-export type RealmId = "encyclopedia" | "gallery" | "library" | "today";
+export type RealmId = "encyclopedia" | "gallery" | "library" | "today" | "papers";
 
 /** Static description of a realm (data only — no functions, so it stays a leaf). */
 export interface RealmMeta {

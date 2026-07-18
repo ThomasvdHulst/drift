@@ -78,3 +78,37 @@ export async function fetchJson(
     throw new Error(`Upstream responded ${res.status}`);
   }
 }
+
+/**
+ * Like fetchJson, but returns the raw response text — for sources that speak XML
+ * rather than JSON (arXiv's Atom feed). Same gate + bounded 429/503 retry.
+ */
+export async function fetchText(
+  url: string,
+  opts: FetchJsonOptions = {},
+): Promise<string> {
+  const { headers = {}, gate, retries = 2, sleep = defaultSleep, timeoutMs } =
+    opts;
+
+  for (let attempt = 0; ; attempt++) {
+    if (gate) await gate.next(sleep);
+    const res = await fetch(url, {
+      headers,
+      cache: "no-store",
+      signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
+    });
+    if (res.ok) return res.text();
+
+    const retryable = res.status === 429 || res.status === 503;
+    if (retryable && attempt < retries) {
+      const retryAfter = Number(res.headers.get("retry-after"));
+      const base =
+        Number.isFinite(retryAfter) && retryAfter > 0
+          ? Math.min(retryAfter * 1000, 1500)
+          : 300 * (attempt + 1);
+      await sleep(base + Math.floor(Math.random() * 200));
+      continue;
+    }
+    throw new Error(`Upstream responded ${res.status}`);
+  }
+}

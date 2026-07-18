@@ -24,6 +24,9 @@ export type Card = {
   zoomUrl?: string; // hi-res image for the deep-zoom lightbox (art: IIIF 1686px)
   blurDataUrl?: string; // tiny base64 placeholder for a blur-up load (art: lqip)
   imageAlt?: string; // real alt text when the source provides one (art: alt_text)
+  // A generated, field-themed "cover" for image-less realms (Phase 17 — Papers):
+  // a hue + motif + seed the card renders instead of a photo. Only arXiv sets it.
+  cover?: { hue: string; motif: string; seed: number };
 };
 
 // A related page returned by a realm's "related" endpoint — already carries
@@ -51,6 +54,7 @@ export type RelatedCandidate = {
   blurDataUrl?: string;
   imageAlt?: string;
   facts?: { label: string; value: string }[];
+  cover?: { hue: string; motif: string; seed: number }; // Papers: field-themed cover
 };
 
 // The "direction" a thread takes you (Phase 6). Encyclopedia threads are

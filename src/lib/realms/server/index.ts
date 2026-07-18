@@ -7,6 +7,7 @@ import type { Card, RelatedCandidate } from "@/lib/types";
 import type { RealmId } from "../types";
 import { topicByKeyword } from "@/lib/topics";
 import { articBucketById } from "../artic.buckets";
+import { arxivBucketById } from "../arxiv.categories";
 import {
   wikiRelated,
   wikiSummary,
@@ -19,6 +20,12 @@ import {
   articSummary,
   articExtended,
 } from "./artic";
+import {
+  arxivDiscover,
+  arxivRelated,
+  arxivSummary,
+  arxivExtended,
+} from "./arxiv";
 
 /** Thrown for an invalid/injection bucket so the route can answer 400. */
 export class BadRequestError extends Error {}
@@ -53,9 +60,18 @@ const gallery: ServerRealm = {
   extended: (id) => articExtended(id),
 };
 
+const papers: ServerRealm = {
+  validateBucket: (b) => !!arxivBucketById(b),
+  discover: ({ bucket, offset, limit }) => arxivDiscover(bucket, offset, limit),
+  related: (id) => arxivRelated(id),
+  summary: (id) => arxivSummary(id),
+  extended: (id) => arxivExtended(id),
+};
+
 const REALMS: Partial<Record<RealmId, ServerRealm>> = {
   encyclopedia,
   gallery,
+  papers,
 };
 
 /** The server adapter for a realm, or null if the realm isn't known/wired. */

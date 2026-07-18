@@ -155,5 +155,6 @@ export function candidateToCard(c: RelatedCandidate): Card {
     ...(c.blurDataUrl ? { blurDataUrl: c.blurDataUrl } : {}),
     ...(c.imageAlt ? { imageAlt: c.imageAlt } : {}),
     ...(c.facts ? { facts: c.facts } : {}),
+    ...(c.cover ? { cover: c.cover } : {}),
   };
 }
