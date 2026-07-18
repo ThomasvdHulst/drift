@@ -95,6 +95,42 @@ export function actionPageToCard(page: ActionPage): Card {
   };
 }
 
+/** A lightweight page suggestion for the "drift around a page" search bar. */
+export type SearchSuggestion = {
+  title: string;
+  description: string;
+  thumbnail?: string;
+};
+
+/** True for list/index/navigation titles we never want as a drift starting
+ *  point (a subset of isJunk's title rules, usable without an extract). */
+export function isListLikeTitle(title: string): boolean {
+  return (
+    /^Lists? of\b/i.test(title) ||
+    /^(Index|Outline|Glossary|Timeline) of\b/i.test(title) ||
+    /\blistings\b/i.test(title)
+  );
+}
+
+/**
+ * Normalize a `prefixsearch` generator response into ordered search suggestions,
+ * dropping disambiguation + list/index pages. Suggestions have no extract (just a
+ * title + short description), so we can't use the full isJunk here. Pure; the
+ * route just fetches.
+ */
+export function normalizeSearchResults(raw: unknown): SearchSuggestion[] {
+  const pages = (raw as { query?: { pages?: ActionPage[] } })?.query?.pages;
+  if (!Array.isArray(pages)) return [];
+  return [...pages]
+    .sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
+    .filter((p) => !!p.title && !isDisambiguation(p) && !isListLikeTitle(p.title))
+    .map((p) => ({
+      title: p.title as string,
+      description: p.description ?? "",
+      ...(p.thumbnail?.source ? { thumbnail: p.thumbnail.source } : {}),
+    }));
+}
+
 /** Normalize a morelike generator response into related candidates. */
 export function relatedToCandidates(raw: unknown): RelatedCandidate[] {
   const pages = (raw as { query?: { pages?: ActionPage[] } })?.query?.pages;

@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { listTrails, getSettings, setSettings } from "@/lib/storage";
 import { pickRandom } from "@/lib/pick";
+import { TOPICS, type Topic } from "@/lib/topics";
 import { listRealms, getRealm } from "@/lib/realms";
 import type { RealmId, SeedTile } from "@/lib/realms/types";
 import { RealmTabs } from "@/components/RealmTabs";
+import { OrbitSearch } from "@/components/OrbitSearch";
 import { useAuth } from "@/components/AuthProvider";
 import { Wordmark } from "@/components/BrandLogo";
 
@@ -59,6 +61,32 @@ export default function Home() {
     } else if (tile.bucket) {
       params.set("bucket", tile.bucket);
     }
+    if (!keepTrail) params.set("mode", "endless");
+    router.push(`/drift?${params.toString()}`);
+  }
+
+  // Start a "focused drift" confined to one field (Phase 18, Encyclopedia only):
+  // drift stays within this ORES topic instead of wandering the whole encyclopedia.
+  function openField(topic: Topic) {
+    const params = new URLSearchParams({
+      realm: "encyclopedia",
+      focus: "field",
+      bucket: topic.keyword,
+      seed: topic.label,
+    });
+    if (!keepTrail) params.set("mode", "endless");
+    router.push(`/drift?${params.toString()}`);
+  }
+
+  // Start a page orbit (Phase 18, Encyclopedia only): begin at this page and
+  // drift in its widening neighbourhood.
+  function openOrbit(title: string) {
+    const params = new URLSearchParams({
+      realm: "encyclopedia",
+      focus: "orbit",
+      title,
+      seed: title,
+    });
     if (!keepTrail) params.set("mode", "endless");
     router.push(`/drift?${params.toString()}`);
   }
@@ -131,6 +159,55 @@ export default function Home() {
               : "Just drift. Read freely, nothing saved. You can still send single cards, or keep a trail anytime."}
           </p>
         </div>
+
+        {/* Directed drift (Phase 18): start a page orbit. A search bar to begin
+            at any page and spiral outward from it. Encyclopedia only. */}
+        {active === "encyclopedia" && (
+          <div className="mt-9 flex w-full flex-col items-center gap-2">
+            <p className="text-xs font-medium uppercase tracking-widest text-ink-soft">
+              Or drift around a page
+            </p>
+            <OrbitSearch onPick={openOrbit} />
+          </div>
+        )}
+
+        {/* Focused drift (Phase 18): confine drift to one broad field. A calm
+            disclosure so it doesn't crowd the default "surprise me" flow.
+            Encyclopedia only (fields are Wikipedia's ORES topics). */}
+        {active === "encyclopedia" && (
+          <details className="group mt-9 w-full">
+            <summary className="mx-auto flex w-fit cursor-pointer list-none items-center gap-1.5 text-xs font-medium uppercase tracking-widest text-ink-soft transition hover:text-accent-strong">
+              Or drift within a field
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+                className="transition-transform group-open:rotate-180"
+              >
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </summary>
+            <ul className="mx-auto mt-4 flex max-w-2xl flex-wrap justify-center gap-2">
+              {TOPICS.map((t) => (
+                <li key={t.id}>
+                  <button
+                    type="button"
+                    onClick={() => openField(t)}
+                    className="rounded-full border border-line bg-paper-raised px-3.5 py-1.5 text-sm text-ink transition hover:-translate-y-0.5 hover:border-accent/50 hover:text-accent-strong"
+                  >
+                    {t.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
 
         <h2 className="mb-4 mt-10 text-center text-xs font-medium uppercase tracking-widest text-ink-soft">
           Or start somewhere

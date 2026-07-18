@@ -156,6 +156,18 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > (see Phase 17 below). OpenAlex enrichment + cross-realm doorways (M-P2) and AI simplification (M-P3) are
 > deferred until the user has tried the feel. Detail: Phase 17 section + `~/.claude/plans/synchronous-leaping-wren.md`.
 >
+> 🎯 **Phase 18 — Focused Drift COMPLETE & verified (M-FD1 + M-FD2, 2026-07-18).** An optional session
+> *focus* that confines the passive drift gesture (threads stay free), pure Wikipedia metadata, no AI,
+> §2-strengthening (more transparent + more agency). **M-FD1 (Field Focus):** pin drift to one broad ORES
+> field via a homepage "Or drift within a field" picker → a calm "Within {Field}" banner. **M-FD2 (Page
+> Orbit):** a homepage search bar ("Drift around a page…") + a "Drift around this" card action start a
+> drift *anchored* to a seed page that spirals outward ring by ring (BFS `orbit.ts` engine over `morelike`;
+> banner "Orbiting {seed} · nearby → further out"). Both: one-tap "Drift freely" release; personalization +
+> cross-realm suspended while focused; threads stay free (the way out). New: `focus.ts`, `orbit.ts`,
+> `FocusBanner.tsx`, `OrbitSearch.tsx`, `/api/wiki/search`; wiring in `drift/page.tsx`, `page.tsx`,
+> `CardView.tsx`. **270 tests, build+lint clean**, real-browser verified (field 12/12; orbit search →
+> widening → re-anchor → threads-free → release, zero errors). Plan: `~/.claude/plans/humming-munching-spark.md`.
+>
 > _(Update this line whenever progress changes.)_
 
 ---
@@ -1330,6 +1342,75 @@ cross-realm doorways to the Encyclopedia + "published in" facts) then M-P3 (AI s
 Plan file: `~/.claude/plans/synchronous-leaping-wren.md`. Sources: arXiv metadata CC0 (info.arxiv.org/help/
 license), arXiv API TOU (apps may display metadata; don't rehost PDFs), OpenAlex API + concepts/Wikidata (CC0),
 Semantic Scholar API license, Harvard OGC copyright/fair-use.
+
+---
+
+## Phase 18 — Focused Drift (Directed Drift)  *(feedback direction — 2026-07-18)*
+
+> Born from real use: drift (passive scroll) wanders the *whole* encyclopedia even when your
+> interest is one field, while threads are the opposite (tight `morelike:` neighbours). There's
+> nothing in between. **Focused Drift** adds an optional session *focus* that confines the drift
+> gesture to a chosen area (threads stay free). Two kinds: **field** (stay within one broad ORES
+> topic) and **orbit** (spiral outward from one seed page). Pure Wikipedia metadata, **no AI**;
+> §2-strengthening (more transparent + more agency). Full detail: `~/.claude/plans/humming-munching-spark.md`.
+> Confirmed choices: field first then orbit; all three entry points (search bar, field picker,
+> "drift around this"); orbit anchored+widening; threads steer freely (the way *out* of a focus).
+
+### M-FD1 — Field Focus ✅ *(idea 1; ships standalone; DONE & verified 2026-07-18)*
+- [x] `src/lib/focus.ts` (pure, 8 unit tests): `Focus` type + `focusToParams`/`focusFromParams`
+      (URL encode/decode; validates the field bucket against `topicByKeyword` → junk/injection safe)
+      + `describeFocus`. `focus.test.ts`.
+- [x] `src/lib/types.ts`: extended `ArrivedVia.drift.reason` with `"field"|"orbit"` + optional
+      `orbit:{seedLabel,ring}` (both optional ⇒ back-compatible, no migration).
+- [x] `src/components/FocusBanner.tsx` (new): calm sage pill under the top bar — names the focus
+      ("Within Mathematics") with a one-tap **"Drift freely"** release; orbit variant + proximity ready.
+- [x] `src/app/drift/page.tsx`: `focus`/`focusRef` parsed from params on load; field seed reuses the
+      existing `bucketParam` batch path (friendly label + `reason:"field"`); `fetchDiscoverBatch` **pins
+      every refill pick to the field** (each at a fresh `randomOffset`, personalization suspended);
+      `clearFocus()` drops the focus + buffer + strips URL params; the **cross-realm control is hidden
+      while focused** (top bar + horizontal swipe both gated on `crossEnabled = canCross && !focus`).
+- [x] `src/app/page.tsx`: Encyclopedia-only **field picker** — a calm "Or drift within a field"
+      disclosure listing the 28 `TOPICS`; routes to `/drift?...&focus=field&bucket=<keyword>&seed=<label>`
+      (honors the keep-trail/endless toggle).
+- [x] **Test M-FD1:** build + lint clean; **255 unit tests** (+8 focus). Real-browser (390px, ungated
+      local instance) **12/12**: field picker → `/drift` with focus, banner "Within Mathematics", first
+      card on-field, **12/15 distinct** drift cards all "DRIFTING · MATHEMATICS" (no crawl), cross control
+      hidden, focus survives reload, threads still steer freely (Square root → Square root of 5), "Drift
+      freely" removes banner + strips URL, post-release drift wanders again ("DRIFTING · COMPUTING"),
+      **zero console/page errors**. _(Verified against a shell-env-ungated dev instance since the app is
+      login-gated when cloud is configured; the focus feature is orthogonal to the gate.)_
+
+### M-FD2 — Page Orbit ✅ *(idea 2; DONE & verified 2026-07-18)*
+- [x] `src/lib/orbit.ts` (pure, 11 unit tests): the anchored breadth-first "orbit" engine —
+      `initOrbit`/`nextToExpand`/`ingestMorelike`/`takeFromPool`/`proximityWord`. Serves the seed's
+      neighbours first, then theirs, spiraling outward (ring-ordered pool + BFS frontier + dedup +
+      seen-filter; skips each parent's rank-0 near-duplicate; `MAX_PER_PARENT = 6` so widening is
+      perceptible after a handful of drifts). `orbit.test.ts`.
+- [x] `src/lib/wiki.ts`: pure `normalizeSearchResults` + `isListLikeTitle` (+ `wiki.search.test.ts`)
+      for the search bar (suggestions have no extract, so isJunk can't be reused directly).
+- [x] `src/app/api/wiki/search/route.ts` (new): `generator=prefixsearch` autocomplete (title +
+      description + thumbnail in one call, disambiguation/list pages filtered, graceful → []).
+- [x] `src/app/drift/page.tsx`: `orbitRef` + orbit branch in `advance()` (serves the orbit engine,
+      refill-on-empty by expanding ≤2 frontier titles via `morelike`); orbit `arrivedVia`
+      (`reason:"orbit"` + `orbit:{seedLabel,ring}`); `startOrbitHere` (re-anchor); dead-end → gentle
+      hint. **Robustness:** a frontier title whose fetch *fails* (429/timeout) is NOT marked expanded,
+      so one unlucky refill can't strand the orbit (a genuine dead-end still is).
+- [x] Homepage **search bar** (`src/components/OrbitSearch.tsx`: debounced, calm dropdown, keyboard
+      nav) + **"Drift around this"** card action (`OrbitButton` in `CardView.tsx` → `startOrbitHere`,
+      Encyclopedia only, re-anchors mid-session without navigating).
+- [x] `ModeChip` (`CardView.tsx`) + `FocusBanner`: render "Orbiting {seed} · {proximityWord(ring)}".
+- [x] **Test M-FD2:** build + lint clean; **270 unit tests** (+22 orbit/search). Real-browser (390px,
+      ungated local): search "Bauhaus" → orbit; banner "Orbiting Bauhaus · the center"; ring-1 cards
+      on-theme; **widening confirmed** — Impressionism orbit went NEARBY (Julie Manet, Berthe Morisot,
+      Renoir…) → FURTHER OUT (Paule Gobillard, Eugène Manet…); "Drift around this" on "Jazz drumming"
+      re-anchored (banner + URL + next chip "ORBITING JAZZ DRUMMING · NEARBY"); threads still steer
+      (Arieh Sharon → Yachin House); cross hidden while orbiting; "Drift freely" releases; zero console
+      errors. _(Caveat: repeated in-session test runs self-throttle our Wikimedia IP — the documented
+      burst limit — which can stall a refill mid-test; confirmed clean at human pace after a cooldown.)_
+
+**▶ Phase 18 COMPLETE.** Both directed-drift modes shipped: stay within a field, or orbit a page and
+spiral outward. Possible follow-ups (not committed): field/orbit focus for Gallery/Papers (the engine
+is realm-generic); persist a focus as a first-class trail attribute; an atlas tint for orbit drifts.
 
 ---
 

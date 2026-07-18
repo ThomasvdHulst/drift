@@ -90,12 +90,16 @@ export type ArrivedVia =
     }
   // A drift may carry the topic it landed in (interesting-random, M8) and why
   // that topic was chosen (M9): "interest" = weighted by what you like,
-  // "wildcard" = the serendipity floor. Optional → back-compatible with trails
-  // saved before Phase 4.
+  // "wildcard" = the serendipity floor. "field"/"orbit" are the Phase 18 focused
+  // drifts (confined to a field / spiraling out from a seed). Optional →
+  // back-compatible with trails saved before Phase 4.
   | {
       type: "drift";
       topic?: { id: string; label: string };
-      reason?: "interest" | "wildcard";
+      reason?: "interest" | "wildcard" | "field" | "orbit";
+      // Set only on an orbit drift (Phase 18): the seed being orbited + the ring
+      // (distance) this card sits at, for the honest "Orbiting X · nearby" chip.
+      orbit?: { seedLabel: string; ring: number };
       // Set when a horizontal swipe crossed into a new realm with no doorway (a
       // fresh wander into the other realm) — the realm you came FROM (Phase 15).
       crossedFrom?: RealmId;

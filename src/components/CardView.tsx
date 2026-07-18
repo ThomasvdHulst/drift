@@ -5,6 +5,7 @@ import type { ArrivedVia, Card, Thread } from "@/lib/types";
 import type { Reaction } from "@/lib/interest";
 import type { RealmId } from "@/lib/realms/types";
 import { summaryUrl, getRealm } from "@/lib/realms";
+import { proximityWord } from "@/lib/orbit";
 import { ThreadChips, KindIcon, KIND_META, DoorwayIcon } from "./ThreadChips";
 import { ArtZoom } from "./ArtZoom";
 import { PaperCover } from "./PaperCover";
@@ -79,6 +80,25 @@ function ShareButton({ onShare }: { onShare: () => void }) {
   );
 }
 
+// "Drift around this" (Phase 18): re-anchor the drift as an orbit of THIS page.
+// Same calm register as the reaction / share buttons — a small orbit mark.
+function OrbitButton({ onOrbit }: { onOrbit: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onOrbit}
+      aria-label="Drift around this page"
+      title="Drift around this"
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-line text-ink-soft transition hover:border-accent/40 hover:text-accent-strong"
+    >
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+        <circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none" />
+        <ellipse cx="12" cy="12" rx="10" ry="4.4" />
+      </svg>
+    </button>
+  );
+}
+
 // The mode chip answers "where am I?" — drifting (casual wandering) vs being on a
 // thread (a deliberate direction you pulled). Threads read prominent + sage;
 // drifting reads quiet + neutral.
@@ -118,6 +138,8 @@ function ModeChip({ via, realmLabel }: { via: ArrivedVia; realmLabel: string }) 
     label = "Starting point";
   } else if (via.type === "drift" && crossedDrift) {
     label = via.topic ? `Crossed to ${realmLabel} · ${via.topic.label}` : `Crossed to ${realmLabel}`;
+  } else if (via.type === "drift" && via.orbit) {
+    label = `Orbiting ${via.orbit.seedLabel} · ${proximityWord(via.orbit.ring)}`;
   } else if (via.type === "drift" && via.fromLiked) {
     label = `More like ${via.fromLiked}`;
   } else if (via.type === "drift" && via.topic) {
@@ -251,6 +273,7 @@ export function CardView({
   reaction,
   onReact,
   onShare,
+  onOrbit,
 }: {
   card: Card;
   realm: RealmId;
@@ -262,6 +285,7 @@ export function CardView({
   reaction?: Reaction;
   onReact?: (signal: Reaction) => void;
   onShare?: () => void;
+  onOrbit?: () => void;
 }) {
   // "Read more" reveals the first several BODY paragraphs (fetched lazily, once).
   // Local state resets per card because the parent re-keys CardView by pageTitle.
@@ -358,6 +382,7 @@ export function CardView({
             <ModeChip via={arrivedVia} realmLabel={getRealm(realm).label} />
             <div className="flex shrink-0 items-center gap-1.5">
               {onReact && <ReactionButtons reaction={reaction} onReact={onReact} />}
+              {onOrbit && <OrbitButton onOrbit={onOrbit} />}
               {onShare && <ShareButton onShare={onShare} />}
             </div>
           </div>

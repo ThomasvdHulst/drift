@@ -23,6 +23,16 @@ import {
 } from "@/lib/gesture";
 import { randomOffset, interleave } from "@/lib/discover";
 import { applyFeedback, type Interest, type Reaction } from "@/lib/interest";
+import { focusFromParams, type Focus } from "@/lib/focus";
+import {
+  initOrbit,
+  nextToExpand,
+  ingestMorelike,
+  takeFromPool,
+  proximityWord,
+  type OrbitState,
+  type OrbitCard,
+} from "@/lib/orbit";
 import { getRealm, discoverUrl, relatedUrl, doorwayUrl, summaryUrl } from "@/lib/realms";
 import type { RealmId } from "@/lib/realms/types";
 import { realmOfSource } from "@/lib/crossrealm";
@@ -48,6 +58,7 @@ import {
 } from "@/lib/storage";
 import { CardView } from "@/components/CardView";
 import { FeedTopBar, FeedBottomNav } from "@/components/FeedChrome";
+import { FocusBanner } from "@/components/FocusBanner";
 import { TrailMap } from "@/components/TrailMap";
 import { useAuth } from "@/components/AuthProvider";
 import { ShareToFriend } from "@/components/ShareToFriend";
@@ -61,7 +72,7 @@ type Dir = "drift" | "thread" | "back" | "cross";
 type BufferedCard = {
   card: Card;
   topic?: { id: string; label: string };
-  reason?: "interest" | "wildcard";
+  reason?: "interest" | "wildcard" | "field" | "orbit";
 };
 
 // Enough of a saved trail to update it in place (preserving id/name/like/date).
@@ -147,6 +158,16 @@ export default function DriftPage() {
   // continued trail). `realm` (derived below) + `realmRef` are the live values.
   const [initialRealm, setInitialRealm] = useState<RealmId>("encyclopedia");
   const realmRef = useRef<RealmId>("encyclopedia");
+  // A "focused drift" (Phase 18): confine drift to a field or spiral out from a
+  // seed. `focus` drives the banner; `focusRef` is the live truth read by the
+  // buffer refill + gesture handlers. Set from URL params on load, or mid-session
+  // via "Drift around this" / released via "Drift freely".
+  const [focus, setFocus] = useState<Focus | null>(null);
+  const focusRef = useRef<Focus | null>(null);
+  focusRef.current = focus;
+  // The live orbit engine (Phase 18, page-orbit focus): a widening BFS
+  // neighbourhood of the seed, served lowest-ring-first. Null unless orbiting.
+  const orbitRef = useRef<OrbitState | null>(null);
 
   const seenRef = useRef<Set<string>>(new Set());
   // The interest model (topic → weight) + whether personalization is on. Held in
@@ -199,6 +220,20 @@ export default function DriftPage() {
   // self-contained for now (its cross-realm doorways arrive later), so it neither
   // offers the cross control nor reacts to a horizontal swipe.
   const canCross = realm === "encyclopedia" || realm === "gallery";
+  // While a focus is set, the cross-realm control is hidden and the horizontal
+  // swipe is inert: a focus is a single-realm intent (Phase 18). Release it
+  // ("Drift freely") to cross again.
+  const crossEnabled = canCross && !focus;
+  // The orbit banner's "how far from the seed" word: the seed is the center, an
+  // orbit drift carries its ring, a thread mid-orbit has no defined distance.
+  const orbitProx =
+    focus?.kind === "orbit" && current
+      ? current.arrivedVia.type === "seed"
+        ? "the center"
+        : current.arrivedVia.type === "drift" && current.arrivedVia.orbit
+          ? proximityWord(current.arrivedVia.orbit.ring)
+          : undefined
+      : undefined;
   // The displayed card's app-wide id (thread cache key) and source-native id
   // (used to fetch related/summary). Distinct because two realms can share a
   // native title string.
@@ -229,6 +264,11 @@ export default function DriftPage() {
       // "Just drift" (endless) comes from the homepage toggle; a continued trail
       // always keeps its trail (that branch returns before we set endless).
       const wantEndless = params.get("mode") === "endless";
+      // A focused drift (Phase 18): field (stay in one topic) or orbit (spiral
+      // out from a seed). Validated → an unknown/injected field bucket yields no
+      // focus. Applied only on a fresh session (a continued trail returns first).
+      const parsedFocus = focusFromParams(params);
+      focusRef.current = parsedFocus;
       if (!sessionIdRef.current) {
         sessionIdRef.current = crypto.randomUUID();
         sessionStartRef.current = Date.now();
@@ -308,11 +348,18 @@ export default function DriftPage() {
           if (!res.ok || !Array.isArray(cards) || cards.length === 0)
             throw new Error("no card");
           card = cards[0];
-          const bLabel = getRealm(realmRef.current).bucketLabel(bucketParam);
+          // A field focus pins the buffer to this topic; use its friendly label
+          // + tag drifts "field" (vs. a Gallery/Papers one-off bucket seed tile).
+          const fieldFocus =
+            parsedFocus?.kind === "field" ? parsedFocus : null;
+          const bLabel = fieldFocus
+            ? fieldFocus.label
+            : getRealm(realmRef.current).bucketLabel(bucketParam);
           randomBufferRef.current.push(
             ...cards.slice(1).map((c) => ({
               card: c,
               topic: { id: bucketParam, label: bLabel },
+              ...(fieldFocus ? { reason: "field" as const } : {}),
             })),
           );
         } else {
@@ -340,6 +387,24 @@ export default function DriftPage() {
         seenRef.current.add(cardId(card));
         persistSeen([cardId(card)]);
         if (wantEndless) setEndless(true);
+        // Apply the focus. For an orbit, anchor on the *resolved* card (redirects
+        // followed), so morelike queries use the canonical title, and start the
+        // engine seeded at ring 0.
+        if (parsedFocus) {
+          const effectiveFocus: Focus =
+            parsedFocus.kind === "orbit"
+              ? {
+                  kind: "orbit",
+                  seedTitle: card.pageTitle,
+                  seedLabel: card.displayTitle,
+                }
+              : parsedFocus;
+          focusRef.current = effectiveFocus;
+          setFocus(effectiveFocus);
+          if (effectiveFocus.kind === "orbit") {
+            orbitRef.current = initOrbit(card.pageTitle, card.displayTitle);
+          }
+        }
         const via: ArrivedVia = {
           type: "seed",
           seedName: seed ?? title ?? "Surprise me",
@@ -498,6 +563,42 @@ export default function DriftPage() {
       return;
     }
 
+    // Focused orbit drift (Phase 18): serve the seed's widening neighbourhood
+    // (BFS, lowest ring first) instead of the topic buffer. Refill by expanding
+    // the frontier via morelike (the healthy endpoint), on empty only.
+    if (focusRef.current?.kind === "orbit") {
+      const orbit = focusRef.current;
+      let oc = takeOrbitCard();
+      if (!oc) {
+        busyRef.current = true;
+        setAdvancing(true);
+        try {
+          await refillOrbit();
+          oc = takeOrbitCard();
+        } finally {
+          busyRef.current = false;
+          setAdvancing(false);
+        }
+      }
+      if (oc) {
+        pushStep(
+          oc.card,
+          {
+            type: "drift",
+            reason: "orbit",
+            topic: { id: "orbit", label: orbit.seedLabel },
+            orbit: { seedLabel: orbit.seedLabel, ring: oc.ring },
+          },
+          "drift",
+        );
+      } else {
+        showHint(
+          "You've wandered this whole orbit. Pull a thread, or drift freely to go wider.",
+        );
+      }
+      return;
+    }
+
     // At the live card → drift. By default every drift is an independent random
     // jump (two scrolls are unrelated). The one exception: if you ♥-liked this
     // card, the next drift follows one of its related threads to "stay in the
@@ -647,10 +748,25 @@ export default function DriftPage() {
     rid: RealmId = realmRef.current,
   ): Promise<BufferedCard[]> {
     const rm = getRealm(rid);
-    const personalize = personalizeRef.current && rm.hasInterestModel;
-    const picks = Array.from({ length: REFILL_TOPICS }, () =>
-      rm.pickDiscover({ interest: interestRef.current, personalize }),
-    );
+    // A field focus (Phase 18) pins every pick to one topic, so a refill stays
+    // entirely within the chosen field (Encyclopedia only; each pick still uses a
+    // fresh random offset for variety). Otherwise the normal interest-weighted /
+    // uniform topic mix (personalization is suspended while focused).
+    const focus = focusRef.current;
+    const fieldFocus =
+      focus?.kind === "field" && rid === "encyclopedia" ? focus : null;
+    const personalize =
+      personalizeRef.current && rm.hasInterestModel && !fieldFocus;
+    const picks = fieldFocus
+      ? Array.from({ length: REFILL_TOPICS }, () => ({
+          id: fieldFocus.bucket,
+          label: fieldFocus.label,
+          bucket: fieldFocus.bucket,
+          reason: "field" as const,
+        }))
+      : Array.from({ length: REFILL_TOPICS }, () =>
+          rm.pickDiscover({ interest: interestRef.current, personalize }),
+        );
     const batches = await Promise.all(
       picks.map(async (pick): Promise<BufferedCard[]> => {
         try {
@@ -750,6 +866,96 @@ export default function DriftPage() {
   function showHint(message: string) {
     setHint(message);
     window.setTimeout(() => setHint(null), 3000);
+  }
+
+  // ----- page orbit (Phase 18) -----
+  // Take the lowest-ring unseen card from the orbit pool (or null if dry).
+  function takeOrbitCard(): OrbitCard | null {
+    const st = orbitRef.current;
+    if (!st) return null;
+    const { state, card } = takeFromPool(st, seenRef.current);
+    orbitRef.current = state;
+    return card;
+  }
+
+  // One orbit refill: expand up to 2 frontier titles by fetching their morelike
+  // (the healthy, non-burst-limited endpoint), then fold the results into the
+  // pool + frontier. Widens the ring the deeper the frontier goes. Graceful:
+  // any fetch failure just contributes nothing; the caller handles a dry pool.
+  async function refillOrbit(): Promise<void> {
+    const st = orbitRef.current;
+    if (!st) return;
+    const toExpand = nextToExpand(st, 2);
+    if (toExpand.length === 0) return;
+    const fetched = await Promise.all(
+      toExpand.map(async (f) => {
+        try {
+          const res = await fetch(relatedUrl("encyclopedia", f.title), {
+            signal: AbortSignal.timeout(6000),
+          });
+          if (!res.ok) return { f, cands: [] as RelatedCandidate[], ok: false };
+          const cands = (await res.json()) as RelatedCandidate[];
+          return { f, cands: Array.isArray(cands) ? cands : [], ok: true };
+        } catch {
+          return { f, cands: [] as RelatedCandidate[], ok: false };
+        }
+      }),
+    );
+    let next = orbitRef.current;
+    if (!next) return;
+    for (const { f, cands, ok } of fetched) {
+      // Only fold in (and mark expanded) a title whose fetch SUCCEEDED. A
+      // transient failure (429 / timeout) leaves it on the frontier to retry, so
+      // one unlucky refill can't strand the orbit; a genuine dead-end (ok but no
+      // candidates) is still marked expanded and simply contributes nothing.
+      if (ok) next = ingestMorelike(next, f.title, f.ring, cands, seenRef.current);
+    }
+    orbitRef.current = next;
+  }
+
+  // "Drift around this" (Phase 18): re-anchor a page orbit on the current card
+  // mid-session. Doesn't navigate — the card you're on becomes the new seed; the
+  // next drift begins spiraling out from it. Threads stay free (the way out).
+  function startOrbitHere(card: Card) {
+    const f: Focus = {
+      kind: "orbit",
+      seedTitle: card.pageTitle,
+      seedLabel: card.displayTitle,
+    };
+    focusRef.current = f;
+    setFocus(f);
+    orbitRef.current = initOrbit(card.pageTitle, card.displayTitle);
+    randomBufferRef.current = [];
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.set("focus", "orbit");
+      u.searchParams.set("title", card.pageTitle);
+      u.searchParams.set("seed", card.displayTitle);
+      u.searchParams.delete("bucket");
+      window.history.replaceState(null, "", `${u.pathname}${u.search}`);
+    } catch {
+      /* non-fatal */
+    }
+  }
+
+  // Release a focused drift ("Drift freely", Phase 18): drop the focus + its
+  // buffered cards / orbit so the next drift refills from the normal
+  // (interest-weighted) mix, and strip the focus params from the URL so a reload
+  // doesn't re-apply it. The trail continues seamlessly.
+  function clearFocus() {
+    focusRef.current = null;
+    setFocus(null);
+    orbitRef.current = null;
+    randomBufferRef.current = [];
+    try {
+      const u = new URL(window.location.href);
+      ["focus", "bucket", "seed", "title"].forEach((k) =>
+        u.searchParams.delete(k),
+      );
+      window.history.replaceState(null, "", `${u.pathname}${u.search}`);
+    } catch {
+      /* URL API unavailable — non-fatal; focus is still cleared in memory */
+    }
   }
 
   function goBack() {
@@ -890,8 +1096,9 @@ export default function DriftPage() {
     const deltaX = e.changedTouches[0].clientX - start.x;
     const deltaY = start.y - e.changedTouches[0].clientY;
     // Axis-lock: a clearly-horizontal swipe crosses realms (only where crossing
-    // applies); otherwise it's the vertical read/advance gesture. Never both.
-    if (canCross && resolveHorizontalSwipe({ deltaX, deltaY }) === "cross") {
+    // applies and no focus is set); otherwise it's the vertical read/advance
+    // gesture. Never both.
+    if (crossEnabled && resolveHorizontalSwipe({ deltaX, deltaY }) === "cross") {
       crossRealm();
       return;
     }
@@ -919,7 +1126,7 @@ export default function DriftPage() {
         stops={history.length}
         realm={{ label: realmMeta.label, glyph: realmMeta.glyph }}
         otherRealm={
-          canCross
+          crossEnabled
             ? {
                 id: otherRealmMeta.id,
                 label: otherRealmMeta.label,
@@ -927,11 +1134,15 @@ export default function DriftPage() {
               }
             : undefined
         }
-        onCrossRealm={canCross ? crossRealm : undefined}
+        onCrossRealm={crossEnabled ? crossRealm : undefined}
         endless={endless}
         onJump={jumpTo}
         onEnd={endSession}
       />
+
+      {focus && current && (
+        <FocusBanner focus={focus} proximity={orbitProx} onRelease={clearFocus} />
+      )}
 
       <main className="relative min-h-0 flex-1">
         {initialLoading && (
@@ -984,6 +1195,11 @@ export default function DriftPage() {
                 onShare={
                   cloudConfigured && user
                     ? () => setShareCard(current.card)
+                    : undefined
+                }
+                onOrbit={
+                  realm === "encyclopedia"
+                    ? () => startOrbitHere(current.card)
                     : undefined
                 }
               />
