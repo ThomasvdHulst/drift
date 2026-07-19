@@ -11,7 +11,7 @@ import {
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { getSupabase, isCloudConfigured } from "@/lib/supabase/client";
-import type { OAuthProvider } from "@/lib/auth";
+import { humanizeAuthError, type OAuthProvider } from "@/lib/auth";
 import { setSyncRecording, clearAllLocalData } from "@/lib/storage";
 import { startSync, stopSync, flushSync } from "@/lib/sync/replicator";
 
@@ -135,7 +135,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           password,
           options: { emailRedirectTo: window.location.origin },
         });
-        if (error) return { error: error.message };
+        if (error) {
+          // Log the raw error (its message may be an opaque "{}" for 5xx; the
+          // status/name still help diagnose, e.g. a failed confirmation email).
+          console.error("[auth] signUp failed", error);
+          return { error: humanizeAuthError(error, "signup") };
+        }
         // With "Confirm email" enabled, no session comes back until the link in
         // the confirmation email is clicked — surface the "check your email"
         // state so the user knows to verify before signing in.
@@ -175,7 +180,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { error } = await sb.auth.resetPasswordForEmail(email, {
           redirectTo: `${window.location.origin}/account/reset`,
         });
-        if (error) return { error: error.message };
+        if (error) {
+          console.error("[auth] password reset failed", error);
+          return { error: humanizeAuthError(error, "reset") };
+        }
         return { error: null };
       } catch {
         return { error: "Couldn't send the reset email. Please try again." };
@@ -188,7 +196,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!sb) return NOT_CONFIGURED;
       try {
         const { error } = await sb.auth.updateUser({ password: newPassword });
-        if (error) return { error: error.message };
+        if (error) {
+          console.error("[auth] updatePassword failed", error);
+          return { error: humanizeAuthError(error, "generic") };
+        }
         return { error: null };
       } catch {
         return { error: "Couldn't update your password. Please try again." };
@@ -205,7 +216,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email,
           options: { emailRedirectTo: window.location.origin },
         });
-        if (error) return { error: error.message };
+        if (error) {
+          console.error("[auth] resend confirmation failed", error);
+          return { error: humanizeAuthError(error, "signup") };
+        }
         return { error: null };
       } catch {
         return { error: "Couldn't resend the email. Please try again." };
@@ -217,7 +231,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!sb) return NOT_CONFIGURED;
       try {
         const { error } = await sb.auth.signInWithPassword({ email, password });
-        if (error) return { error: error.message };
+        if (error) {
+          console.error("[auth] signIn failed", error);
+          return { error: humanizeAuthError(error, "generic") };
+        }
         return { error: null };
       } catch {
         return { error: "Couldn't reach the cloud. You're still drifting locally." };
