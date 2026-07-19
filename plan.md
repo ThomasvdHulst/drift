@@ -1439,6 +1439,13 @@ is realm-generic); persist a focus as a first-class trail attribute; an atlas ti
 
 ## Cross-cutting smaller polish (grab-bag — do anytime, not a phase)
 
+- [x] **Install guide (`/install`, 2026-07-19).** A calm, public (AuthGate-allowlisted) page with iOS (Safari)
+      + Android (Chrome) "add to home screen" steps. iOS has 3 screenshot slots that gracefully fall back to
+      labelled placeholders until the images are added (`public/install/ios-{1-share,2-add,3-confirm}.png`;
+      see `public/install/README.md`); `InstallGuide.tsx` also has an "already installed" (standalone) note +
+      a platform hint. Linked quietly from the homepage footer + `/account`. Build+lint clean, 296 tests,
+      390px browser-verified (both sections, placeholders, no overflow, links).
+
 - [x] **LaTeX/math rendering in Encyclopedia cards (2026-07-18).** Wikipedia's `explaintext` extracts render
       `<math>` as flattened-MathML "garble" (each symbol on its own indented line) followed by the TeX
       annotation `{\displaystyle …}`, which read as unreadable noise on math pages *and* corrupted read-more

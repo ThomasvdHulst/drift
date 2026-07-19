@@ -9,7 +9,7 @@ import { Landing } from "@/components/landing/Landing";
 // Public, content-only routes that render even when signed out (e.g. so someone
 // can read what Drift stores before creating an account). These expose no user
 // data, so letting them through the gate is safe.
-const PUBLIC_ROUTES = ["/privacy"];
+const PUBLIC_ROUTES = ["/privacy", "/install"];
 
 // Phase 13: when the cloud IS configured (i.e. the hosted app), Drift requires an
 // account — a logged-out visitor sees a calm sign-in / create-account screen

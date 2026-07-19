@@ -282,6 +282,12 @@ export default function Home() {
             mapped.
           </p>
         )}
+        <Link
+          href="/install"
+          className="text-xs text-ink-soft underline-offset-2 transition hover:text-accent-strong hover:underline"
+        >
+          On your phone? Add Drift to your home screen
+        </Link>
       </footer>
     </main>
   );

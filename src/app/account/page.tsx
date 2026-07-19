@@ -59,7 +59,11 @@ export default function AccountPage() {
         <AuthForm />
       )}
 
-      <p className="mt-8 text-center text-xs text-ink-soft">
+      <p className="mt-8 flex items-center justify-center gap-3 text-center text-xs text-ink-soft">
+        <Link href="/install" className="transition hover:text-accent-strong">
+          Install on your phone
+        </Link>
+        <span aria-hidden="true">·</span>
         <Link href="/privacy" className="transition hover:text-accent-strong">
           What Drift stores
         </Link>
