@@ -87,8 +87,10 @@ without them:
   `Api-User-Agent` header + junk-filtering + CORS). Supabase is the opposite case: it's
   *designed* for direct browser access secured by the **publishable key + Row-Level Security**
   (`user_id = auth.uid()`) — that IS its security model. So Drift calls Supabase directly from
-  the browser. The **`sb_secret_*` key is server-only** (used only by `scripts/verify-supabase.mjs`);
-  never give it a `NEXT_PUBLIC_` prefix. Like Ollama, the backend **must degrade gracefully**:
+  the browser. The **`sb_secret_*` key is server-only** (used by `scripts/verify-supabase.mjs`
+  and by the one server route `/api/account/delete`, which needs it to fully remove the auth user
+  on account deletion — it verifies the caller's own JWT first, so a user can only delete
+  themselves); **never give it a `NEXT_PUBLIC_` prefix.** Like Ollama, the backend **must degrade gracefully**:
   unconfigured/unreachable ⇒ `getSupabase()` returns null / errors are caught ⇒ the app runs
   fully local and the core loop never breaks. Env: `NEXT_PUBLIC_SUPABASE_URL`,
   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`. Migrations live in

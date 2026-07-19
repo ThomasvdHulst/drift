@@ -53,10 +53,17 @@ export default function AccountPage() {
           <SignedIn email={user.email ?? "your account"} onSignOut={signOut} />
           <ChangePassword />
           <ProfileSection />
+          <DeleteAccount />
         </div>
       ) : (
         <AuthForm />
       )}
+
+      <p className="mt-8 text-center text-xs text-ink-soft">
+        <Link href="/privacy" className="transition hover:text-accent-strong">
+          What Drift stores
+        </Link>
+      </p>
     </main>
   );
 }
@@ -300,6 +307,103 @@ function ChangePassword() {
         <p className="mt-3 text-sm text-accent-strong" role="status">
           Password updated.
         </p>
+      )}
+    </div>
+  );
+}
+
+// Danger zone: permanently delete the account + all its data. Calm, deliberate,
+// and clear rather than alarming (§2): the seriousness comes from the copy and a
+// type-to-confirm step, not red-alert styling. Backed by /api/account/delete.
+function DeleteAccount() {
+  const { deleteAccount } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const armed = confirmText.trim().toLowerCase() === "delete";
+
+  async function run() {
+    if (!armed) return;
+    setError(null);
+    setBusy(true);
+    const res = await deleteAccount();
+    if (res.error) {
+      setBusy(false);
+      setError(res.error);
+      return;
+    }
+    // Account + local world are gone. Full reload to the landing for a clean slate.
+    window.location.href = "/";
+  }
+
+  return (
+    <div className="rounded-2xl border border-line bg-paper-raised p-6">
+      <p className="text-xs font-medium uppercase tracking-wide text-ink-soft">
+        Delete account
+      </p>
+      {!open ? (
+        <div className="mt-2">
+          <p className="text-sm leading-relaxed text-ink-soft">
+            Permanently remove your account and everything in it: your trails,
+            reactions, interests, handle, and friends. This cannot be undone.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(true);
+              setError(null);
+            }}
+            className="mt-4 rounded-full border border-line px-5 py-2.5 text-sm text-ink-soft transition hover:border-ink/40 hover:text-ink"
+          >
+            Delete account
+          </button>
+        </div>
+      ) : (
+        <div className="mt-2 space-y-3">
+          <p className="text-sm leading-relaxed text-ink">
+            This permanently deletes your account and every trail you have saved.
+            There is no undo, and no way to recover it afterwards.
+          </p>
+          <label className="block text-xs font-medium uppercase tracking-wide text-ink-soft">
+            Type <span className="font-semibold text-ink">delete</span> to confirm
+            <input
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              className="mt-1 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-ink/40"
+            />
+          </label>
+          {error && (
+            <p className="text-sm text-ink" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="flex gap-3">
+            <button
+              type="button"
+              disabled={!armed || busy}
+              onClick={run}
+              className="rounded-full bg-ink px-6 py-2.5 text-sm font-semibold text-paper-raised shadow-sm transition hover:bg-ink/85 disabled:opacity-40"
+            >
+              {busy ? "Deleting…" : "Delete forever"}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setOpen(false);
+                setConfirmText("");
+                setError(null);
+              }}
+              className="rounded-full border border-line px-5 py-2.5 text-sm text-ink transition hover:border-accent/50 disabled:opacity-60"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

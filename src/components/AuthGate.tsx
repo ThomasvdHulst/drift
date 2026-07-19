@@ -1,9 +1,15 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { Monogram } from "@/components/BrandLogo";
 import { Landing } from "@/components/landing/Landing";
+
+// Public, content-only routes that render even when signed out (e.g. so someone
+// can read what Drift stores before creating an account). These expose no user
+// data, so letting them through the gate is safe.
+const PUBLIC_ROUTES = ["/privacy"];
 
 // Phase 13: when the cloud IS configured (i.e. the hosted app), Drift requires an
 // account — a logged-out visitor sees a calm sign-in / create-account screen
@@ -13,9 +19,13 @@ import { Landing } from "@/components/landing/Landing";
 // graceful-degradation contract (CLAUDE.md §4) is preserved.
 export function AuthGate({ children }: { children: ReactNode }) {
   const { user, loading, cloudConfigured } = useAuth();
+  const pathname = usePathname();
 
   // No backend ⇒ never gate. Local-only Drift, unchanged.
   if (!cloudConfigured) return <>{children}</>;
+
+  // Public informational routes render regardless of auth state.
+  if (pathname && PUBLIC_ROUTES.includes(pathname)) return <>{children}</>;
 
   // Resolving the session — a quiet placeholder, no flash of the gate or the app.
   if (loading) {

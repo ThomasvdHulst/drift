@@ -52,12 +52,17 @@ _and_ **Preview** (copy the values from your local `.env`):
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://<your-project>.supabase.co` | from `.env` |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | `sb_publishable_…` | from `.env` — safe in the browser (RLS protects data) |
-| `WIKI_USER_AGENT` | `Drift/1.0 (https://<your>.vercel.app; you@email)` | optional but polite to Wikimedia |
-| `ARTIC_USER_AGENT` | `Drift/1.0 (https://<your>.vercel.app; you@email)` | optional (Art Institute) |
+| `WIKI_USER_AGENT` | `Drift/1.0 (https://<your>.vercel.app; you@email)` | **required for multi-user** — a compliant UA (resolvable URL + contact email) gets ~200 req/min per IP from Wikimedia vs ~10/min unidentified. All users share one egress IP, so keep this real. See `docs/beta-readiness.md` Q3. |
+| `ARTIC_USER_AGENT` | `Drift/1.0 (https://<your>.vercel.app; you@email)` | recommended (Art Institute etiquette) |
+| `SUPABASE_SECRET_KEY` | `sb_secret_…` | **server-only, NO `NEXT_PUBLIC_` prefix.** Needed only so "Delete my account" can fully remove the auth user. Used exclusively by the server route `/api/account/delete`; it is never inlined into the browser build. |
 
-> ⚠️ **Do NOT add `SUPABASE_SECRET_KEY`** (or `SUPABASE_URL` / `SUPABASE_EMAIL` /
-> `SUPABASE_PASSWORD`) to Vercel. The secret key bypasses Row-Level Security and is used
-> **only** by the local `npm run verify:*` scripts — it must never reach the browser build.
+> ⚠️ **`SUPABASE_SECRET_KEY` is server-only — add it WITHOUT a `NEXT_PUBLIC_` prefix.**
+> It bypasses Row-Level Security, so it must never be inlined into the browser build. It's
+> read only by the server route `/api/account/delete` (to fully remove the auth user on
+> account deletion) and by the local `npm run verify:*` scripts. If you skip it, account
+> deletion degrades gracefully (it clears the device but can't remove the auth login).
+> **Do NOT add `SUPABASE_URL` / `SUPABASE_EMAIL` / `SUPABASE_PASSWORD` to Vercel** — those
+> are only for the local verify scripts.
 
 The two `NEXT_PUBLIC_*` values are inlined at build time, so if you add them after the first
 deploy, **redeploy** (Deployments → ⋯ → Redeploy) for them to take effect.
@@ -98,6 +103,10 @@ stable production alias). In the Supabase dashboard → **Authentication → URL
 4. Try **Forgot your password?** → the reset link lands on `/account/reset` to set a new one; and
    **Change password** on `/account` while signed in.
 5. Optional: set a **handle** on `/account` if you want to use Friends/Inbox.
+6. **Account deletion** (needs `SUPABASE_SECRET_KEY` in Vercel, server-only): create a **throwaway**
+   account, save a trail, then `/account` → **Delete account** → type `delete` → **Delete forever**.
+   It should sign you out and land on the landing page; confirm in Supabase → Auth that the user is
+   gone. Without the secret key it degrades to a device-only wipe (a message says so).
 
 ## Step 6 — Install on your phone
 

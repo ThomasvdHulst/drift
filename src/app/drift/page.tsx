@@ -59,6 +59,7 @@ import {
 import { CardView } from "@/components/CardView";
 import { FeedTopBar, FeedBottomNav } from "@/components/FeedChrome";
 import { FocusBanner } from "@/components/FocusBanner";
+import { FirstRunCoach } from "@/components/FirstRunCoach";
 import { TrailMap } from "@/components/TrailMap";
 import { useAuth } from "@/components/AuthProvider";
 import { ShareToFriend } from "@/components/ShareToFriend";
@@ -1272,6 +1273,8 @@ export default function DriftPage() {
               </div>
             </div>
           )}
+
+        <FirstRunCoach ready={Boolean(current) && !error} />
       </main>
 
       {current && !error && (

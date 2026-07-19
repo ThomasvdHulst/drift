@@ -168,6 +168,22 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > `CardView.tsx`. **270 tests, build+lint clean**, real-browser verified (field 12/12; orbit search →
 > widening → re-anchor → threads-free → release, zero errors). Plan: `~/.claude/plans/humming-munching-spark.md`.
 >
+> 🚀 **Beta-readiness pass — IN PROGRESS (2026-07-19).** Prepping for a 20–50 friend/colleague beta.
+> Full research in `docs/beta-readiness.md` (4 questions: email, free tiers, rate limits, launch gaps).
+> **Shipped this session** (build+lint clean, **284 tests**): **(1) Rate-limit scaling** — the deployed app
+> shares ONE Wikimedia budget (all users egress one Vercel IP), so: a compliant `WIKI_USER_AGENT` (real
+> URL+email ⇒ ~200 req/min vs ~10 unidentified, now marked REQUIRED in deploy docs) + **CDN caching** of the
+> deterministic content proxy routes (`src/lib/cache-headers.ts`; `s-maxage`+SWR on summary/related/discover/
+> search/topics/doorway success paths, `no-store` on every error/empty/random path so a throttle-blip is never
+> cached). **(2) Complete account deletion** — server route `/api/account/delete` (verifies the caller's own
+> JWT, service-role delete cascades every table), calm type-to-confirm UI on `/account`, `deleteAccount()` in
+> AuthProvider; needs `SUPABASE_SECRET_KEY` server-only in Vercel. **(3) `/privacy`** "what Drift stores" note
+> (allowlisted public in AuthGate; linked from account + landing footer). **(4) Error boundaries** `app/error.tsx`
+> + `app/global-error.tsx` (calm, logged). **(5) First-run coach** — one-time gentle "you are the algorithm"
+> intro on `/drift` (`FirstRunCoach.tsx`, per-device localStorage). **Deferred to Phase 19** (blocked on a
+> domain + Resend): custom SMTP + Confirm-email + branded templates + full auth E2E, a feedback channel, and the
+> custom domain. Then the user adds `SUPABASE_SECRET_KEY` to Vercel + works Phase 19 when email is ready.
+>
 > _(Update this line whenever progress changes.)_
 
 ---
@@ -1497,6 +1513,66 @@ is realm-generic); persist a focus as a first-class trail attribute; an atlas ti
       factual only (§2.5). Not a full phase — a polish item.
 - [ ] **Session "beginning" variety:** rotate the homepage seeds / add a "pick up where curiosity left off"
       entry, so the *beginning* feels alive (pairs with Phase 8 M20 and the Today realm).
+
+---
+
+## Phase 19 — Email, Domain & Feedback: opening the door to real users  *(BLOCKED on a domain + Resend; queued 2026-07-19)*
+
+> **Status: NOT STARTED — blocked on user-side setup (see "What you must do first" below).** Born from the
+> beta-readiness research (`docs/beta-readiness.md`, Q1 + the deferred parts of Q4). The rest of that research
+> (Wikimedia User-Agent, proxy caching, account deletion, "what we store" note, error boundaries, first-run
+> coach) already shipped this session; everything that *depends on being able to send email* lives here. When
+> the user has a domain + a Resend account wired up, an AI session can pick this up and work straight through
+> it. All of it binds §2 (no notification bait, no engagement email — a digest at most, opt-in).
+
+**▶ What you (the user) must do yourself BEFORE this phase can start** *(the AI can't do these — they need a
+credit card / DNS / dashboard access):*
+1. **Buy a domain** (e.g. `drift.example`) and, ideally, point the Vercel deployment at it (Vercel → Project →
+   Settings → Domains). Decide the final From address (e.g. `hello@yourdomain` / `no-reply@yourdomain`).
+2. **Create a free [Resend](https://resend.com) account**, add your domain, and add the DNS records Resend
+   shows you (SPF, DKIM, DMARC) at your registrar. Wait for Resend to verify the domain (green check).
+3. In Resend, create an **SMTP credential** (host `smtp.resend.com`, port, username `resend`, a password/API
+   key). Have these ready.
+4. In **Supabase → Authentication → Emails → SMTP Settings**, paste the Resend SMTP host/port/user/password +
+   your From address, and **enable custom SMTP**. (You can do this, or hand the AI the values to guide you.)
+5. Tell the AI: the production domain, the From address, and confirm SMTP is verified/sending. Then the AI
+   works the milestones below.
+
+*(Separately, note the already-shipped account-deletion feature needs `SUPABASE_SECRET_KEY` set as a
+server-only env var in Vercel — that's independent of this phase; do it whenever convenient.)*
+
+### M-E1 — Turn on real email (confirm + reset), verified end to end
+- [ ] **Supabase → Auth → Providers → Email → "Confirm email" ON.** Sign-up then returns no session; the app
+      already shows the "check your email" panel + resend (built in the auth overhaul). Verify redirect URLs
+      (Site URL + Redirect URLs incl. `/account/reset`, the production domain, `localhost`) per `docs/deploy.md`
+      Step 4.
+- [ ] **Full auth E2E with a fresh, real address** (the flows are built but were flagged not-recently-live-tested):
+      sign up → receive confirm email → click → sign in; forgot password → reset email → `/account/reset` sets
+      new password → sign in; change password while signed in; sign out → local wipe → sign back in → trails pull.
+- [ ] **Security toggles** (all free, in Supabase Auth settings): leaked-password protection (HaveIBeenPwned),
+      a sensible minimum password length, and "Secure password change" (re-auth). Re-run `npm run verify:supabase`
+      + `npm run verify:social` (RLS isolation) before opening signups.
+- [ ] Decide **open signup vs invite/allowed-domain** gating (open + confirm is reasonable for known friends).
+
+### M-E2 — Branded email templates (Drift's voice)
+- [ ] Hand over branded HTML for **Confirm signup** and **Reset password** at minimum (Magic link + Change email
+      optional), matching the "quiet reading room" look: cream paper, ink text, one sage accent, serif display
+      for the heading, generous spacing. Pasted into Supabase → Auth → Email Templates. Keep copy calm, no
+      dashes. (This is the standing hand-over item from memory `auth-and-email-status`.)
+
+### M-E3 — A calm feedback channel *(depends on the From address existing)*
+- [ ] A quiet "Send feedback" link (the whole point of the beta is learning whether people reach for Drift, §9).
+      Simplest: a `mailto:` to your address from a small footer/account link. Optional upgrade: a tiny form that
+      posts to a server route which emails you via Resend's API. Calm, no widget, no nagging.
+
+### M-E4 — Custom domain wiring *(depends on the domain)*
+- [ ] Point Vercel at the custom domain; update **Supabase Site URL / Redirect URLs** and the email links/From to
+      match (aligning the app domain with the sending domain also improves deliverability). Update
+      `WIKI_USER_AGENT` / `ARTIC_USER_AGENT` to the new domain. Re-run the deploy smoke test.
+
+**Phase 19 exit:** real users can sign up, confirm, and reset via branded email on your own domain; there's a
+calm way for them to send feedback; the app lives on a proper URL. Combined with this session's shipped work,
+Drift is production-ready for a 20–50 person beta.
 
 ---
 

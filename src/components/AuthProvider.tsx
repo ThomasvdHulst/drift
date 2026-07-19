@@ -36,6 +36,7 @@ interface AuthContextValue {
   requestPasswordReset: (email: string) => Promise<AuthResult>;
   updatePassword: (newPassword: string) => Promise<AuthResult>;
   resendConfirmation: (email: string) => Promise<AuthResult>;
+  deleteAccount: () => Promise<AuthResult>;
   signOut: () => Promise<void>;
 }
 
@@ -200,6 +201,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    // Permanently delete this account and all its data. The privileged deletion
+    // runs server-side (/api/account/delete) with the caller's own JWT; on
+    // success we tear down the local session + wipe this device, exactly like a
+    // sign-out but with nothing left in the cloud to come back to.
+    async function deleteAccount(): Promise<AuthResult> {
+      const sb = getSupabase();
+      if (!sb) return NOT_CONFIGURED;
+      try {
+        const { data } = await sb.auth.getSession();
+        const token = data.session?.access_token;
+        if (!token) return { error: "You're not signed in." };
+        const res = await fetch("/api/account/delete", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const body = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          unconfigured?: boolean;
+        };
+        if (body?.unconfigured) {
+          // No server-side deletion available: at least clear this device.
+          stopSync();
+          await clearAllLocalData();
+          return {
+            error:
+              "Your data was cleared from this device, but full account deletion isn't set up on the server yet.",
+          };
+        }
+        if (!res.ok || !body?.ok) {
+          return { error: "Couldn't delete your account. Please try again." };
+        }
+        // The account is gone. Clear the local session + world on this device.
+        stopSync();
+        try {
+          await sb.auth.signOut();
+        } catch {
+          // The session is already invalid server-side; ignore.
+        }
+        await clearAllLocalData();
+        return { error: null };
+      } catch {
+        return { error: "Couldn't delete your account. Please try again." };
+      }
+    }
+
     async function signOut(): Promise<void> {
       const sb = getSupabase();
       if (!sb) return;
@@ -229,6 +275,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       requestPasswordReset,
       updatePassword,
       resendConfirmation,
+      deleteAccount,
       signOut,
     };
   }, [user, session, loading, cloudConfigured]);
@@ -252,6 +299,7 @@ export function useAuth(): AuthContextValue {
       requestPasswordReset: async () => NOT_CONFIGURED,
       updatePassword: async () => NOT_CONFIGURED,
       resendConfirmation: async () => NOT_CONFIGURED,
+      deleteAccount: async () => NOT_CONFIGURED,
       signOut: async () => {},
     };
   }

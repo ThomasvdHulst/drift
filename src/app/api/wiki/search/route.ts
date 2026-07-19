@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { wikiQuery } from "@/lib/wiki-server";
 import { normalizeSearchResults } from "@/lib/wiki";
-
-export const dynamic = "force-dynamic";
+import { cacheHeaders, CACHE_MEDIUM, NO_STORE } from "@/lib/cache-headers";
 
 // GET /api/wiki/search?q=<query> → up to ~8 page suggestions for the "drift
 // around a page" search bar (Phase 18, Encyclopedia). Uses the Action API
@@ -11,7 +10,7 @@ export const dynamic = "force-dynamic";
 // query or any upstream failure returns [] (HTTP 200) so the bar never errors.
 export async function GET(request: Request) {
   const q = (new URL(request.url).searchParams.get("q") ?? "").trim();
-  if (q.length < 2) return NextResponse.json([]);
+  if (q.length < 2) return NextResponse.json([], { headers: NO_STORE });
   try {
     const raw = await wikiQuery({
       generator: "prefixsearch",
@@ -25,9 +24,11 @@ export async function GET(request: Request) {
       format: "json",
       formatversion: "2",
     });
-    return NextResponse.json(normalizeSearchResults(raw));
+    return NextResponse.json(normalizeSearchResults(raw), {
+      headers: cacheHeaders(CACHE_MEDIUM),
+    });
   } catch (err) {
     console.error("[api/wiki/search]", err);
-    return NextResponse.json([], { status: 200 });
+    return NextResponse.json([], { status: 200, headers: NO_STORE });
   }
 }

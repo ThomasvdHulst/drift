@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { wikiQuery, wikiUserAgent } from "@/lib/wiki-server";
 import { firstPage } from "@/lib/wiki";
 import { topicByOresKey } from "@/lib/topics";
-
-export const dynamic = "force-dynamic";
+import { cacheHeaders, CACHE_STABLE, NO_STORE } from "@/lib/cache-headers";
 
 // GET /api/wiki/topics?title=Octopus → { topics: TopicId[] } — the tracked
 // article-topics the page scores above threshold. Used by the interest model
@@ -23,7 +22,10 @@ const THRESHOLD = 0.5;
 export async function GET(request: Request) {
   const title = new URL(request.url).searchParams.get("title");
   if (!title) {
-    return NextResponse.json({ error: "missing title" }, { status: 400 });
+    return NextResponse.json(
+      { error: "missing title" },
+      { status: 400, headers: NO_STORE },
+    );
   }
   try {
     const raw = await wikiQuery({
@@ -40,7 +42,7 @@ export async function GET(request: Request) {
       | null;
     const revid = page?.revisions?.[0]?.revid;
     if (!page || page.missing || !revid) {
-      return NextResponse.json({ topics: [] });
+      return NextResponse.json({ topics: [] }, { headers: NO_STORE });
     }
 
     const ua = wikiUserAgent();
@@ -55,23 +57,32 @@ export async function GET(request: Request) {
       signal: AbortSignal.timeout(4000),
       cache: "no-store",
     });
-    if (!res.ok) return NextResponse.json({ topics: [] });
+    if (!res.ok) return NextResponse.json({ topics: [] }, { headers: NO_STORE });
 
     const data = await res.json();
     const prob = data?.enwiki?.scores?.[String(revid)]?.articletopic?.score
       ?.probability as Record<string, number> | undefined;
     if (!prob || typeof prob !== "object") {
-      return NextResponse.json({ topics: [] });
+      return NextResponse.json({ topics: [] }, { headers: NO_STORE });
     }
 
-    const topics = Object.entries(prob)
-      .filter(([, p]) => typeof p === "number" && p > THRESHOLD)
-      .map(([key]) => topicByOresKey(key)?.id)
-      .filter((id): id is string => !!id);
+    const topics = [
+      ...new Set(
+        Object.entries(prob)
+          .filter(([, p]) => typeof p === "number" && p > THRESHOLD)
+          .map(([key]) => topicByOresKey(key)?.id)
+          .filter((id): id is string => !!id),
+      ),
+    ];
 
-    return NextResponse.json({ topics: [...new Set(topics)] });
+    // A page's topic labels are very stable, so cache a real result. Never cache
+    // an empty one (it's indistinguishable from a Lift Wing hiccup).
+    return NextResponse.json(
+      { topics },
+      { headers: topics.length ? cacheHeaders(CACHE_STABLE) : NO_STORE },
+    );
   } catch (err) {
     console.error("[api/wiki/topics]", err);
-    return NextResponse.json({ topics: [] });
+    return NextResponse.json({ topics: [] }, { headers: NO_STORE });
   }
 }

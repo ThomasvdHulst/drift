@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { serverRealm } from "@/lib/realms/server";
-
-export const dynamic = "force-dynamic";
+import { cacheHeaders, CACHE_MEDIUM, NO_STORE } from "@/lib/cache-headers";
 
 // GET /api/realm/[realm]/discover?bucket=<slug>&offset=<n>&limit=<n>
 // → a batch of interesting, on-bucket, non-junk Cards for the drift buffer.
@@ -13,12 +12,19 @@ export async function GET(
 ) {
   const { realm } = await params;
   const r = serverRealm(realm);
-  if (!r) return NextResponse.json({ error: "unknown realm" }, { status: 400 });
+  if (!r)
+    return NextResponse.json(
+      { error: "unknown realm" },
+      { status: 400, headers: NO_STORE },
+    );
 
   const url = new URL(request.url);
   const bucket = url.searchParams.get("bucket") ?? "";
   if (!r.validateBucket(bucket)) {
-    return NextResponse.json({ error: "unknown bucket" }, { status: 400 });
+    return NextResponse.json(
+      { error: "unknown bucket" },
+      { status: 400, headers: NO_STORE },
+    );
   }
 
   const offsetNum = Number(url.searchParams.get("offset"));
@@ -29,9 +35,15 @@ export async function GET(
     Number.isFinite(limitNum) && limitNum > 0 ? Math.min(limitNum, 20) : 20;
 
   try {
-    return NextResponse.json(await r.discover({ bucket, offset, limit }));
+    const cards = await r.discover({ bucket, offset, limit });
+    // Only cache a real batch. An empty result is more likely a transient upstream
+    // hiccup than a genuine "nothing here", and caching it would freeze the drift
+    // buffer empty for the whole edge population.
+    return NextResponse.json(cards, {
+      headers: cards.length ? cacheHeaders(CACHE_MEDIUM) : NO_STORE,
+    });
   } catch (err) {
     console.error(`[api/realm/${realm}/discover]`, err);
-    return NextResponse.json([], { status: 200 });
+    return NextResponse.json([], { status: 200, headers: NO_STORE });
   }
 }

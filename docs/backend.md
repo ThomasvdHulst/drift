@@ -33,11 +33,15 @@ Put these in the git-ignored `.env` (see `.env.local.example` for the template):
 | `NEXT_PUBLIC_SUPABASE_URL` | browser (auth + sync) | no |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | browser (auth + sync) | no — RLS protects data |
 | `SUPABASE_URL` | `scripts/verify-supabase.mjs` | no |
-| `SUPABASE_SECRET_KEY` | `scripts/verify-supabase.mjs` **only** | **YES — never `NEXT_PUBLIC_`** |
+| `SUPABASE_SECRET_KEY` | `scripts/verify-supabase.mjs` + the server route `/api/account/delete` | **YES — never `NEXT_PUBLIC_`** |
 | `SUPABASE_EMAIL` / `SUPABASE_PASSWORD` | a test account for the verify script | test creds |
 
-Only the two `NEXT_PUBLIC_*` vars reach the app. The secret key bypasses RLS and is used
-solely by the verification script.
+Only the two `NEXT_PUBLIC_*` vars reach the browser. The secret key bypasses RLS and is used
+server-side only: by the verification script, and by the one server route `/api/account/delete`
+(so "Delete my account" can remove the auth user, not just the user's data rows). It verifies
+the caller's own JWT before deleting, so a user can only ever delete themselves; deleting the
+auth user cascades to every app table. If the key is absent, deletion degrades to a
+device-local wipe.
 
 ## 3. One-time setup (per Supabase project)
 
