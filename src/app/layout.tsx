@@ -6,6 +6,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthProvider } from "@/components/AuthProvider";
 import { AuthGate } from "@/components/AuthGate";
 import { AccountButton } from "@/components/AccountButton";
+import { StorageNotice } from "@/components/StorageNotice";
 
 // Runs before first paint to set the theme with no flash of the wrong one.
 // IndexedDB (our settings store) is async, so the theme is mirrored to a
@@ -76,6 +77,7 @@ export default function RootLayout({
             <AccountButton />
           </AuthGate>
           <ThemeToggle />
+          <StorageNotice />
         </AuthProvider>
       </body>
     </html>

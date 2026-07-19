@@ -62,6 +62,17 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
+        <Section title="Cookies and storage">
+          <p className="text-ink-soft">
+            Drift uses no tracking cookies, no advertising, and no third-party
+            analytics. It sets no browser cookies at all. To work, it keeps a few
+            essential things in your browser&apos;s own storage: a secure sign-in token
+            so you stay logged in, your saved trails and settings, and small
+            preferences like dark mode. Nothing here follows you around the web,
+            so there is nothing to opt out of.
+          </p>
+        </Section>
+
         <Section title="Where the content comes from">
           <p className="text-ink-soft">
             The cards themselves are made from openly licensed human knowledge:
