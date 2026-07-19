@@ -129,3 +129,16 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
+
+/* Inline KaTeX math inside card text (lib/mathtext + components/MathText). Keep a
+   wide formula from breaking the card: it scrolls within its own box instead. */
+.drift-math {
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  vertical-align: middle;
+}
+.drift-math .katex {
+  font-size: 1.05em;
+}

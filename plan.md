@@ -1416,6 +1416,20 @@ is realm-generic); persist a focus as a first-class trail attribute; an atlas ti
 
 ## Cross-cutting smaller polish (grab-bag — do anytime, not a phase)
 
+- [x] **LaTeX/math rendering in Encyclopedia cards (2026-07-18).** Wikipedia's `explaintext` extracts render
+      `<math>` as flattened-MathML "garble" (each symbol on its own indented line) followed by the TeX
+      annotation `{\displaystyle …}`, which read as unreadable noise on math pages *and* corrupted read-more
+      paragraph splitting. New pure `src/lib/mathtext.ts` (`preprocessMath` strips the garble + keeps the
+      LaTeX in invisible markers, balanced-brace aware, indentation-based garble detection so prose
+      connectors like ", and" survive; `splitMath`/`hasMath`/`stripMathMarkers`; 10 unit tests) runs
+      server-side in `actionPageToCard` + `relatedToCandidates` + `wikiExtended` (before `topParagraphs`).
+      Client `src/components/MathText.tsx` renders the markers with **KaTeX** (new dep `katex@0.18`,
+      `throwOnError:false` so it never breaks a card; CSS in `layout.tsx`; `.drift-math` overflow guard in
+      globals). Wired into `CardView` extract + read-more; inbox preview strips markers. **Verified:** Euler's
+      identity + Quadratic formula render cleanly (7/9 KaTeX spans, no raw markup), read-more too, non-math
+      pages unchanged, zero console errors. **280 tests, build+lint clean.**
+- [x] **Interests copy: thumbs, not heart/cross (2026-07-18).** `/interests` still described reactions as
+      "♥ / ✕"; updated to "A thumbs up or down" to match the current thumbs-up/down reaction buttons.
 - [x] **Mobile reading-scroll fix (2026-07-17):** the feed's advance gesture is now scroll-aware — the card
       text scrolls to read and only an *overscroll past the end* advances (back = overscroll past the top).
       On phones the **whole card scrolls** (image scrolls away) with threads pinned as a bottom bar; desktop

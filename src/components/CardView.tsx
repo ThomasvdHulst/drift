@@ -9,6 +9,7 @@ import { proximityWord } from "@/lib/orbit";
 import { ThreadChips, KindIcon, KIND_META, DoorwayIcon } from "./ThreadChips";
 import { ArtZoom } from "./ArtZoom";
 import { PaperCover } from "./PaperCover";
+import { MathText } from "./MathText";
 
 // Quiet ♥ / ✕ that teach the interest model (M9). Sage when active, neutral
 // otherwise — deliberately calm, never a red badge (§6, the opposite of a
@@ -402,7 +403,7 @@ export function CardView({
                   key={i}
                   className="text-base leading-relaxed text-ink/85 sm:text-lg"
                 >
-                  {para}
+                  <MathText text={para} />
                 </p>
               ),
             )}

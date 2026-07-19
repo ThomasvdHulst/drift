@@ -1,4 +1,5 @@
 import type { Card, RelatedCandidate } from "./types";
+import { preprocessMath } from "./mathtext";
 
 // ---------------------------------------------------------------------------
 // Pure Wikipedia helpers — no network here. Route handlers do the fetching (so
@@ -87,7 +88,7 @@ export function actionPageToCard(page: ActionPage): Card {
     pageTitle,
     displayTitle: pageTitle,
     description: page.description,
-    extract: page.extract ?? "",
+    extract: preprocessMath(page.extract ?? ""),
     imageUrl: page.thumbnail?.source,
     sourceUrl:
       page.canonicalurl ?? page.fullurl ?? titleToSourceUrl(pageTitle),
@@ -142,7 +143,7 @@ export function relatedToCandidates(raw: unknown): RelatedCandidate[] {
       pageTitle: p.title ?? "",
       displayTitle: p.title ?? "",
       description: p.description,
-      extract: p.extract,
+      extract: p.extract ? preprocessMath(p.extract) : p.extract,
       imageUrl: p.thumbnail?.source,
       source: "wikipedia" as const,
     }))

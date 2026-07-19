@@ -16,6 +16,7 @@ import {
 } from "@/lib/social/share";
 import { saveTrail } from "@/lib/storage";
 import { getRealm } from "@/lib/realms";
+import { stripMathMarkers } from "@/lib/mathtext";
 import { TrailSparkline } from "@/components/TrailSparkline";
 import type { Card, Trail, TrailStep } from "@/lib/types";
 
@@ -256,7 +257,9 @@ function CardShareCard({
             </p>
           )}
           {card.extract && (
-            <p className="mt-1 line-clamp-3 text-sm text-ink/80">{card.extract}</p>
+            <p className="mt-1 line-clamp-3 text-sm text-ink/80">
+              {stripMathMarkers(card.extract)}
+            </p>
           )}
         </div>
       </div>

@@ -12,6 +12,7 @@ import {
   type ActionPage,
 } from "@/lib/wiki";
 import { topParagraphs } from "@/lib/extract";
+import { preprocessMath } from "@/lib/mathtext";
 import type { Card, RelatedCandidate } from "@/lib/types";
 
 /** morelike related candidates for a title (client selects the diverse 3). */
@@ -63,7 +64,9 @@ export async function wikiExtended(
   });
   const page = firstPage(raw);
   if (!page || page.missing) return null;
-  const { text, hasMore } = topParagraphs(page.extract ?? "");
+  // Convert <math> garble → clean inline LaTeX markers BEFORE paragraph slicing:
+  // the garble's stray newlines would otherwise corrupt topParagraphs' splitting.
+  const { text, hasMore } = topParagraphs(preprocessMath(page.extract ?? ""));
   return { extract: text, hasMore };
 }
 
