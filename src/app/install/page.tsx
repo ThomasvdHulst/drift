@@ -65,23 +65,6 @@ export default function InstallPage() {
               appears on your home screen with its own icon.
             </Step>
           </ol>
-          <div className="mt-5 flex flex-wrap justify-center gap-5 sm:justify-start">
-            <InstallShot
-              src="/install/ios-1-share.png"
-              alt="The Safari share button"
-              caption="1. Tap Share"
-            />
-            <InstallShot
-              src="/install/ios-2-add.png"
-              alt="Add to Home Screen in the share sheet"
-              caption="2. Add to Home Screen"
-            />
-            <InstallShot
-              src="/install/ios-3-confirm.png"
-              alt="Confirming the new home-screen app"
-              caption="3. Tap Add"
-            />
-          </div>
         </section>
 
         {/* Android */}
