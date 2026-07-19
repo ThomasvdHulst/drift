@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -101,6 +102,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user) void startSync(user.id);
     else stopSync();
   }, [user, cloudConfigured]);
+
+  // Fire the one-time welcome email once a user's email is confirmed. The server
+  // route (/api/email/welcome) is the real once-only guard (it checks the DB's
+  // app_metadata.welcomed), so this is just a best-effort nudge: skip when already
+  // welcomed, and let a failed attempt retry on a later mount. Fully guarded.
+  const welcomeTriedRef = useRef(false);
+  useEffect(() => {
+    if (!cloudConfigured || !user) return;
+    const confirmed = Boolean(user.email_confirmed_at ?? user.confirmed_at);
+    const welcomed = Boolean(
+      (user.app_metadata as Record<string, unknown> | undefined)?.welcomed,
+    );
+    const token = session?.access_token;
+    if (!confirmed || welcomed || welcomeTriedRef.current || !token) return;
+    welcomeTriedRef.current = true;
+    void fetch("/api/email/welcome", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    }).catch(() => {
+      welcomeTriedRef.current = false; // allow a retry next mount
+    });
+  }, [user, session, cloudConfigured]);
 
   const value = useMemo<AuthContextValue>(() => {
     async function signUp(email: string, password: string): Promise<AuthResult> {

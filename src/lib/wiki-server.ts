@@ -13,7 +13,7 @@ import { makeGate, fetchJson } from "./upstream";
 // one (their 2025 global limits now cover the Action API too). The real value is
 // set via WIKI_USER_AGENT in the deploy env; this fallback is only for local dev.
 const DEFAULT_UA =
-  "Drift/1.0 (https://drift-psi-three.vercel.app; thomasvdhulst03@gmail.com)";
+  "Drift/1.0 (https://www.usedrift.org; thomasvdhulst03@gmail.com)";
 const API = "https://en.wikipedia.org/w/api.php";
 
 export function wikiUserAgent(): string {

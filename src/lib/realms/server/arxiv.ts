@@ -17,7 +17,7 @@ import { arxivBucketById, FIELD_STYLES, categoryGroupOf } from "../arxiv.categor
 const API = "https://export.arxiv.org/api/query";
 const UA =
   process.env.ARXIV_USER_AGENT ||
-  "Drift/1.0 (https://drift-psi-three.vercel.app; thomasvdhulst03@gmail.com)";
+  "Drift/1.0 (https://www.usedrift.org; thomasvdhulst03@gmail.com)";
 // arXiv asks for 1 request every 3 seconds on a single connection.
 const arxivGate = makeGate(3000);
 

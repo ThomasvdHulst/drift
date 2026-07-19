@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { goodbyeEmail } from "@/lib/email/messages";
+import { sendViaResend } from "@/lib/email/send";
 
 export const dynamic = "force-dynamic";
 
@@ -46,11 +48,20 @@ export async function POST(request: Request) {
     // forged / expired token yields no user, so nothing is deleted.
     const { data, error } = await admin.auth.getUser(token);
     const uid = data?.user?.id;
+    const email = data?.user?.email;
     if (error || !uid) {
       return NextResponse.json(
         { ok: false, error: "invalid session" },
         { status: 401 },
       );
+    }
+
+    // Send the "sorry to see you go" email BEFORE deletion (their address is gone
+    // after). Best-effort: a failed send must never block the deletion the user
+    // asked for, so it's fully caught inside sendViaResend and ignored here.
+    if (email) {
+      const bye = goodbyeEmail();
+      await sendViaResend({ to: email, subject: bye.subject, html: bye.html });
     }
 
     // Hard-delete the auth user; the FK cascades clean up every app row.

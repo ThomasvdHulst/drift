@@ -52,9 +52,12 @@ _and_ **Preview** (copy the values from your local `.env`):
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://<your-project>.supabase.co` | from `.env` |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | `sb_publishable_…` | from `.env` — safe in the browser (RLS protects data) |
-| `WIKI_USER_AGENT` | `Drift/1.0 (https://<your>.vercel.app; you@email)` | **required for multi-user** — a compliant UA (resolvable URL + contact email) gets ~200 req/min per IP from Wikimedia vs ~10/min unidentified. All users share one egress IP, so keep this real. See `docs/beta-readiness.md` Q3. |
-| `ARTIC_USER_AGENT` | `Drift/1.0 (https://<your>.vercel.app; you@email)` | recommended (Art Institute etiquette) |
-| `SUPABASE_SECRET_KEY` | `sb_secret_…` | **server-only, NO `NEXT_PUBLIC_` prefix.** Needed only so "Delete my account" can fully remove the auth user. Used exclusively by the server route `/api/account/delete`; it is never inlined into the browser build. |
+| `WIKI_USER_AGENT` | `Drift/1.0 (https://www.usedrift.org; you@email)` | **required for multi-user** — a compliant UA (resolvable URL + contact email) gets ~200 req/min per IP from Wikimedia vs ~10/min unidentified. All users share one egress IP, so keep this real. See `docs/beta-readiness.md` Q3. |
+| `ARTIC_USER_AGENT` | `Drift/1.0 (https://www.usedrift.org; you@email)` | recommended (Art Institute etiquette) |
+| `SUPABASE_SECRET_KEY` | `sb_secret_…` | **server-only, NO `NEXT_PUBLIC_` prefix.** So "Delete my account" fully removes the auth user, and the welcome email can stamp its once-only flag. Used by `/api/account/delete` + `/api/email/welcome`; never inlined into the browser build. |
+| `RESEND_API_KEY` | `re_…` | **server-only.** Lets the app send the welcome (after verifying) + goodbye (after deleting) emails via the Resend API. Unset ⇒ those two emails are skipped, nothing else breaks. |
+| `EMAIL_FROM` | `Drift <noreply@usedrift.org>` | From address for the app-sent emails. Defaults to this if unset. |
+| `NEXT_PUBLIC_SITE_URL` | `https://www.usedrift.org` | Canonical origin for links + the logo image inside emails. |
 
 > ⚠️ **`SUPABASE_SECRET_KEY` is server-only — add it WITHOUT a `NEXT_PUBLIC_` prefix.**
 > It bypasses Row-Level Security, so it must never be inlined into the browser build. It's
@@ -85,6 +88,11 @@ stable production alias). In the Supabase dashboard → **Authentication → URL
    it. Auth → **Emails → SMTP Settings**: create a free **Resend** account (or SendGrid/SES),
    verify a sending domain, then paste the SMTP host/port/user/password + a From address. (For your
    *own* testing the built-in sender is fine.)
+5. **Branded email templates.** Auth → **Emails → Templates**: for **Confirm signup** and **Reset
+   password**, set the Subject and paste the HTML from `supabase/email-templates/` (see the README
+   there for the exact subjects). These match Drift's look and the welcome/goodbye emails. Make sure
+   the **Site URL** above is your real origin (`https://www.usedrift.org`) so the confirm/reset links
+   point at the live app.
 5. **Google sign-in (optional).** Auth → Providers → **Google** → enable. In **Google Cloud
    Console** create an **OAuth Client ID (Web)** whose *Authorized redirect URI* is the **Callback
    URL** shown in that Google panel (`https://<ref>.supabase.co/auth/v1/callback`); paste the

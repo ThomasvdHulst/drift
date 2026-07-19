@@ -184,6 +184,13 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > domain + Resend): custom SMTP + Confirm-email + branded templates + full auth E2E, a feedback channel, and the
 > custom domain. Then the user adds `SUPABASE_SECRET_KEY` to Vercel + works Phase 19 when email is ready.
 >
+> 📧 **Phase 19 (Email) — CODE COMPLETE (2026-07-19).** Domain **www.usedrift.org** live; Resend + SMTP wired by
+> the user. Shipped: shared branded email renderer (`src/lib/email/*`), generated Supabase **Confirm + Reset**
+> templates (`supabase/email-templates/`), and app-sent **Welcome** (idempotent `/api/email/welcome`) + **Goodbye**
+> (in `/api/account/delete`) emails via Resend, all graceful. UA defaults moved to usedrift.org. **292 tests**,
+> build+lint clean; live sample of all four sent to the owner's inbox. **Remaining = user dashboard steps** (paste
+> templates, Supabase Site URL, Vercel env vars, security toggles, live signup E2E) — see the Phase 19 section.
+>
 > _(Update this line whenever progress changes.)_
 
 ---
@@ -1516,9 +1523,26 @@ is realm-generic); persist a focus as a first-class trail attribute; an atlas ti
 
 ---
 
-## Phase 19 — Email, Domain & Feedback: opening the door to real users  *(BLOCKED on a domain + Resend; queued 2026-07-19)*
+## Phase 19 — Email, Domain & Feedback: opening the door to real users  *(CODE COMPLETE 2026-07-19; a few user dashboard steps remain)*
 
-> **Status: NOT STARTED — blocked on user-side setup (see "What you must do first" below).** Born from the
+> **Status: CODE SHIPPED (2026-07-19).** The user completed all prerequisites (domain **www.usedrift.org**
+> on Vercel, Resend account + verified DNS, Resend SMTP configured in Supabase, Confirm-email ON, From =
+> `noreply@usedrift.org`). Built this session (build+lint clean, **292 tests**): a shared branded email
+> renderer (`src/lib/email/render.ts` + `messages.ts`, email-safe tables/inline styles, cream/ink/sage,
+> the `drift-logo.png` at an absolute URL, no dashes); a graceful Resend send helper (`src/lib/email/send.ts`);
+> **generated Confirm + Reset HTML** in `supabase/email-templates/` (share the look, `{{ .ConfirmationURL }}`);
+> a **Welcome** email (idempotent `/api/email/welcome`, stamped once via `app_metadata.welcomed`, fired from
+> AuthProvider on a confirmed sign-in) and a **Goodbye** email (sent from `/api/account/delete` before the
+> user is removed, best-effort). UA defaults + docs moved to `www.usedrift.org`.
+>
+> **▶ Remaining (user dashboard, no code):** (1) paste `supabase/email-templates/{confirm-signup,reset-password}.html`
+> into Supabase → Auth → Emails → Templates (subjects in that folder's README); (2) set Supabase Auth **Site URL** to
+> `https://www.usedrift.org` + redirect URLs; (3) add `SUPABASE_SECRET_KEY`, `RESEND_API_KEY`, `EMAIL_FROM`,
+> `NEXT_PUBLIC_SITE_URL` to **Vercel** (server-only where noted) and redeploy; (4) the M-E1 security toggles
+> (leaked-password, min length, secure password change) + a full live signup/confirm/reset E2E with a fresh
+> address; (5) M-E3 feedback channel + M-E4 domain wiring double-check are still open (see below).
+>
+> Born from the
 > beta-readiness research (`docs/beta-readiness.md`, Q1 + the deferred parts of Q4). The rest of that research
 > (Wikimedia User-Agent, proxy caching, account deletion, "what we store" note, error boundaries, first-run
 > coach) already shipped this session; everything that *depends on being able to send email* lives here. When
@@ -1554,11 +1578,20 @@ server-only env var in Vercel — that's independent of this phase; do it whenev
       + `npm run verify:social` (RLS isolation) before opening signups.
 - [ ] Decide **open signup vs invite/allowed-domain** gating (open + confirm is reasonable for known friends).
 
-### M-E2 — Branded email templates (Drift's voice)
-- [ ] Hand over branded HTML for **Confirm signup** and **Reset password** at minimum (Magic link + Change email
-      optional), matching the "quiet reading room" look: cream paper, ink text, one sage accent, serif display
-      for the heading, generous spacing. Pasted into Supabase → Auth → Email Templates. Keep copy calm, no
-      dashes. (This is the standing hand-over item from memory `auth-and-email-status`.)
+### M-E2 — Branded email templates (Drift's voice) ✅ *(code done 2026-07-19)*
+- [x] Branded HTML for **Confirm signup** and **Reset password**, generated into `supabase/email-templates/`
+      from the shared renderer so they match the welcome/goodbye look: cream paper, ink text, sage accent,
+      serif heading, the logo, calm copy, no dashes. **User step:** paste into Supabase → Auth → Email
+      Templates (subjects in the folder README). (Closes the standing hand-over item from memory `auth-and-email-status`.)
+
+### M-E5 — Welcome + goodbye emails (app-sent) ✅ *(added per user; done 2026-07-19)*
+- [x] **Welcome** after email verification: idempotent `POST /api/email/welcome` (verifies the caller's own JWT,
+      checks `email_confirmed_at` + `app_metadata.welcomed`, sends once via Resend, then stamps `welcomed` so it
+      never repeats). Fired best-effort from `AuthProvider` on a confirmed sign-in.
+- [x] **Goodbye** on deletion: `/api/account/delete` sends the "sorry to see you go" email via Resend right
+      before removing the user (best-effort, never blocks the deletion).
+- [x] Shared `src/lib/email/*` (render + messages + send). Graceful: no `RESEND_API_KEY` ⇒ these skip silently.
+- [x] **Verified:** build+lint clean, 292 tests; live sample send of both to the owner's inbox (see status).
 
 ### M-E3 — A calm feedback channel *(depends on the From address existing)*
 - [ ] A quiet "Send feedback" link (the whole point of the beta is learning whether people reach for Drift, §9).

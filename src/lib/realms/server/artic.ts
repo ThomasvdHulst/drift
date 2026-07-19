@@ -16,7 +16,7 @@ import { articBucketById } from "../artic.buckets";
 const API = "https://api.artic.edu/api/v1";
 const UA =
   process.env.ARTIC_USER_AGENT ||
-  "Drift/1.0 (https://drift-psi-three.vercel.app; thomasvdhulst03@gmail.com)";
+  "Drift/1.0 (https://www.usedrift.org; thomasvdhulst03@gmail.com)";
 const articGate = makeGate(250);
 
 function headers() {
