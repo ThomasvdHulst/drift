@@ -205,6 +205,16 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > clean; Playwright drove all 16 steps via real actions on mobile (light+dark spot-checked), persistence + replay
 > confirmed, zero tour-caused console errors. Plan file: `~/.claude/plans/tranquil-petting-salamander.md`.
 >
+> 💰 **Phase 21 (Ads exploration) — M-Ad1 + M-Ad2 BUILT & verified (2026-07-20), flag OFF.** An optional, calm,
+> killable in-feed ad: one "Sponsored" full card every N drift-scrolls (`src/lib/ads.ts` +tests,
+> `src/components/AdCard.tsx`), an ephemeral interstitial in `/drift` that is **never saved to a trail**, has no
+> autoplay, and is suppressed during the tour. Kill switch `NEXT_PUBLIC_ADS_ENABLED` (OFF by default ⇒ no script,
+> no cookies, byte-for-byte the ad-free app). `placeholder` mode (house card) testable now with no AdSense;
+> `adsense` mode loads `adsbygoogle.js` only when ids are set, adds `public/ads.txt`, and flips `/privacy` +
+> StorageNotice to honest ad/cookie copy. **Owner action items** (create + get the AdSense account approved,
+> Search Console, crawler login, consent message, ids) are in the Phase 21 section. **320 tests**, build + lint
+> clean; Playwright verified on + off. Real ads await the owner's approved account.
+>
 > _(Update this line whenever progress changes.)_
 
 ---
@@ -1674,11 +1684,90 @@ out; welcome offered once per account (synced settings).
 - [x] Reactions are **thumbs up/down**, not heart/cross: fixed tour copy + stale code comments
       (`CardView`, `drift/page.tsx`, `storage.ts`, `api/wiki/topics`). (Spec's heart = trail *like*, left as is.)
 - [x] Verified the forced swipes/End now advance the tour (the earlier "nothing happened" was M-T1's missing
-      anchors/signals, as expected): full 16-step Playwright drive green, all forced actions real.
+      anchors/signals, as expected): full Playwright drive green, all forced actions real.
+- [x] **"This is a card" step** no longer pins a box to a shifting element (Read-more moves as the article/image
+      load): it's now a stable centered card with the whole post visible behind, less forced. Only the forced-swipe
+      steps pass gestures through; other non-spotlight steps keep a calm blocking scrim.
+- [x] **Final outro slide** ("That's the tour"): escorts back home and points at Surprise me + the replay button.
+      (Tour is now 17 steps.)
+- [x] **"Look around" peek mode**: on content-heavy steps (`card`, `threads`, End, view-trail) a quiet "Look
+      around" button hides the coach + scrim so the user can scroll / Read more / study the card or trail freely,
+      while the drift page **holds navigation** (`useTour().holdNav` freezes swipe / thread / End / cross) so they
+      can't drift off what they're studying; a floating "Continue tour" pill brings the coach back. Playwright
+      verified: reading + Read more work, thread taps are inert, card unchanged, resume + advance clean, 0 errors.
 
 **Phase 20 exit:** ✅ a new user is offered a calm optional tour once; if accepted it walks the whole loop with
 real forced actions (thumbs, thread, both swipes, End, Save, view trail) and ends on Interests; declining is one
 tap; it never nags and works fully with the cloud off.
+
+---
+
+## Phase 21 — Ads (exploration): a calm, killable in-feed ad  *(M-Ad1 + M-Ad2 BUILT & verified 2026-07-20, flag OFF)*
+
+> ⚠️ **This deliberately tensions the core ethos.** Drift is the "anti-slot-machine" (§2) with a "no ads, no
+> tracking" promise (StorageNotice, `/privacy`). This phase explores monetization at the owner's request: a
+> single, calm, clearly-labeled ad every ~5 stops, **default OFF behind a kill switch**, with an **ad-free
+> subscription** planned as the mitigation. Kept as gentle as possible: labeled, no autoplay, you scroll past it,
+> it is **never part of a trail**. Build only when the owner asks; ship with the flag OFF.
+
+**Feasibility (researched): YES, with caveats.**
+- **Login gate is not a blocker.** AdSense serves on login-protected pages via a **crawler login** (Account →
+  Access and authorization → Crawler access) once the account is active + the site is verified in Search Console.
+- **Format fits.** An **in-feed / responsive display** unit rendered inside our own card chrome works as an
+  interstitial "stop." Next.js integration is well-trodden (`next/script` + a client `<ins class="adsbygoogle">`
+  + a re-key + one retry for SPA timing).
+- **GDPR:** serving *personalized* ads in the EEA/UK/CH needs a **certified CMP** — use Google's built-in
+  "Privacy & messaging" consent message (no third-party CMP needed). An `ads.txt` at the domain root is required.
+- **Main risk: approval is uncertain.** AdSense wants original, high-value content; Drift shows mostly
+  third-party Wikipedia (CC BY-SA) + AIC (CC0) content. Our curation/threads/trail add real value, but a reviewer
+  may see reproduced content and reject. We can build + feel the whole UX with a **placeholder ad** (no AdSense,
+  no cookies) regardless; real revenue depends on approval.
+
+**Kill switch:** `NEXT_PUBLIC_ADS_ENABLED` (unset/`0` = OFF: no script, no ad cards, no cookies. byte-for-byte
+the current app). Matches the existing flag pattern (`NEXT_PUBLIC_REALM_PAPERS`, `NEXT_PUBLIC_OAUTH_PROVIDERS`).
+A second flag `NEXT_PUBLIC_ADS_MODE` = `placeholder` (calm house card, local testing) | `adsense` (real ads).
+(Optional later: a Supabase config row for an instant, no-redeploy toggle.)
+
+### Owner action items (do these before real ads can serve)
+1. Create an **AdSense account** (adsense.google.com) with your Google account; add site **www.usedrift.org**.
+2. Verify the site in **Google Search Console** (prereq for the crawler login on gated pages).
+3. Add **`public/ads.txt`**: `google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0` (your publisher ID).
+4. Set up **Crawler access** for the login-gated feed: AdSense → Account → Access and authorization → Crawler
+   access → a dedicated test login + the gated URL.
+5. Submit for review and **wait for approval** (days to weeks; may be rejected for third-party content, be ready
+   to add original value or appeal).
+6. Turn on the **consent message**: AdSense → Privacy & messaging → European regulations → create + publish.
+7. Create an **In-feed (or responsive display) ad unit** → note `data-ad-client` (ca-pub-…), `data-ad-slot`
+   (+ in-feed layout key if in-feed).
+8. Add env vars (Vercel + `.env.local`): `NEXT_PUBLIC_ADS_ENABLED`, `NEXT_PUBLIC_ADS_MODE`,
+   `NEXT_PUBLIC_ADSENSE_CLIENT`, `NEXT_PUBLIC_ADSENSE_SLOT` (+ layout key).
+
+### Milestones
+- **M-Ad1 — Kill switch + placeholder ad card. ✅ DONE & verified 2026-07-20.** Pure `src/lib/ads.ts`
+  (`parseAdsConfig`/`shouldShowAd`/`adsenseReady`, +8 tests) + a calm `src/components/AdCard.tsx` styled like a
+  knowledge card ("Sponsored", muted), shown as an ephemeral interstitial every N drift-*scrolls* in `/drift`
+  (thread pulls / crosses don't count), **never added to `history`/trail**, no autoplay (leave it by drifting on),
+  suppressed during the tour. Wired in `drift/page.tsx` (`driftsSinceAdRef`, `showAd`, `advance`→`doDrift` split,
+  `goBack` dismiss, render). `.env.local.example` documents the flags.
+- **M-Ad2 — Real AdSense (dormant). ✅ DONE & verified 2026-07-20.** AdSense `<ins>` branch in `AdCard`
+  (SPA-safe push + one retry, gated on `adsenseReady`); the **loader script** `adsbygoogle.js` loads via
+  `next/script` in `layout.tsx` on `adsenseScriptEnabled` = **just the publisher id set** (decoupled from the
+  kill switch, so the site can be *under review* with the script live but no visible ads); `public/ads.txt`
+  carries the real `pub-3106905427372661` line; `/privacy` + StorageNotice flip to honest "uses Google AdSense /
+  may set cookies" copy whenever the script is loaded, the "no ads / no tracking" copy intact otherwise.
+  **Verified review state:** with only `NEXT_PUBLIC_ADSENSE_CLIENT` set, the loader script + `/ads.txt` are live,
+  the disclosure copy shows, and no visible ad renders (kill switch off).
+- **M-Ad3 — Ad-free subscription (PARKED).** A paid tier that turns the ads flag off per account (Stripe or
+  similar).
+
+**Verified (Playwright, placeholder mode, every=3):** 3 drifts (stops 2→3→4, no ad) → 4th advance shows a calm
+"Sponsored" card with the **stop count unchanged (ad not counted)** → dismiss resumes a real card; with the flag
+OFF, **no ad over 6 drifts and no `adsbygoogle` script injected**. 320 tests, build + lint clean, zero console
+errors.
+
+**Phase 21 exit:** ✅ the owner can flip ads on (locally / in production), see a calm labeled ad every ~N stops
+that fits the reading-room look and never pollutes a trail, and flip it fully off (no script, no cookies) at will.
+Real revenue awaits the owner's AdSense account + approval (see the owner action items above).
 
 ---
 

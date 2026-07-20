@@ -50,6 +50,11 @@ export interface TourStep {
   title: string;
   body: string | string[];
   gestureHint?: GestureHint;
+  // Offer a quiet "Look around" button that hides the coach + scrim so the user
+  // can read/scroll/Read more freely, while navigation (swipe, thread, End, cross)
+  // is held so they stay on the content they're studying. For steps that sit on a
+  // full card or the trail map and would otherwise be blocked by the coach.
+  explore?: boolean;
   // Skip this step when the cloud isn't configured / signed out (future-proofing
   // for any account-only step; nothing uses it yet since friends stays out).
   requiresCloud?: boolean;
@@ -128,6 +133,7 @@ export const TOUR_STEPS: TourStep[] = [
     placement: "center",
     spotlight: false,
     advance: "next",
+    explore: true,
     title: "This is a card",
     body: "Take it in: read the hook, tap Read more for the fuller article, and the chip up top always says why you landed here.",
   },
@@ -149,6 +155,7 @@ export const TOUR_STEPS: TourStep[] = [
     placement: "auto",
     spotlight: true,
     advance: "threaded",
+    explore: true,
     title: "Pull a thread to steer",
     body: "Each thread is a direction you can follow deeper. Give one a tap to dive in.",
     gestureHint: "tap",
@@ -182,6 +189,7 @@ export const TOUR_STEPS: TourStep[] = [
     placement: "auto",
     spotlight: true,
     advance: "ended",
+    explore: true,
     title: "End when you like",
     body: "The reward sits at the exit, not the next card. Tap End to see where you wandered.",
     gestureHint: "tap",
@@ -206,8 +214,9 @@ export const TOUR_STEPS: TourStep[] = [
     placement: "auto",
     spotlight: true,
     advance: { route: TOUR_ROUTES.trail, match: "prefix" },
+    explore: true,
     title: "Keep it close",
-    body: "Open it in My Trails, where every saved trail lives.",
+    body: "Take a look at your trail map, then open it in My Trails, where every saved trail lives.",
     gestureHint: "tap",
   },
   {

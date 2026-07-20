@@ -26,7 +26,7 @@ import {
   type TourStep,
   type TourEvent,
 } from "@/lib/tour/steps";
-import { TourOverlay } from "./TourOverlay";
+import { TourOverlay, TourPeekBar } from "./TourOverlay";
 import { WelcomeModal } from "./WelcomeModal";
 
 // ---------------------------------------------------------------------------
@@ -45,9 +45,16 @@ interface TourContextValue {
   step: TourStep | null;
   index: number;
   total: number;
+  // True while the user is "looking around" (peek mode): the drift page holds its
+  // navigation (swipe / thread / End / cross) so the user can read without
+  // accidentally leaving the card they're studying.
+  holdNav: boolean;
+  peeking: boolean;
   start: () => void;
   stop: () => void;
   next: () => void;
+  peek: () => void;
+  resumePeek: () => void;
   signal: (event: TourEvent) => void;
 }
 
@@ -107,6 +114,8 @@ export function TourProvider({ children }: { children: ReactNode }) {
   const [active, setActive] = useState(false);
   const [stepId, setStepId] = useState<string | null>(null);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
+  // "Look around" peek: the coach + scrim step aside so the user can read the app.
+  const [peeking, setPeeking] = useState(false);
 
   const step = stepId ? (stepById(stepId) ?? null) : null;
 
@@ -114,6 +123,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
   const finishTour = useCallback(() => {
     setActive(false);
     setStepId(null);
+    setPeeking(false);
     writeSession(null);
     // Mark done so the welcome never auto-offers again (synced across devices).
     void setSettings({ tourStatus: "done" });
@@ -122,6 +132,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
   const advance = useCallback(() => {
     if (!stepId) return;
     const nxt = nextStepAfter(stepId, { cloud: cloudConfigured });
+    setPeeking(false); // a new step always starts with the coach shown
     if (!nxt) {
       finishTour();
       return;
@@ -132,6 +143,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
 
   const start = useCallback(() => {
     setWelcomeOpen(false);
+    setPeeking(false);
     const first = firstStep();
     setActive(true);
     setStepId(first.id);
@@ -142,6 +154,8 @@ export function TourProvider({ children }: { children: ReactNode }) {
 
   const stop = useCallback(() => finishTour(), [finishTour]);
   const next = useCallback(() => advance(), [advance]);
+  const peek = useCallback(() => setPeeking(true), []);
+  const resumePeek = useCallback(() => setPeeking(false), []);
 
   const signal = useCallback(
     (event: TourEvent) => {
@@ -230,12 +244,16 @@ export function TourProvider({ children }: { children: ReactNode }) {
       step,
       index: stepId ? indexOf(stepId) : -1,
       total: totalSteps,
+      holdNav: peeking,
+      peeking,
       start,
       stop,
       next,
+      peek,
+      resumePeek,
       signal,
     }),
-    [active, step, stepId, start, stop, next, signal],
+    [active, step, stepId, peeking, start, stop, next, peek, resumePeek, signal],
   );
 
   const onRoute = active && step ? isOnStepRoute(step, pathname) : false;
@@ -246,7 +264,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
       {welcomeOpen && (
         <WelcomeModal onStart={start} onDismiss={dismissWelcome} />
       )}
-      {active && step && onRoute && (
+      {active && step && onRoute && !peeking && (
         <TourOverlay
           key={step.id}
           step={step}
@@ -254,7 +272,11 @@ export function TourProvider({ children }: { children: ReactNode }) {
           total={totalSteps}
           onNext={next}
           onSkip={stop}
+          onPeek={step.explore ? peek : undefined}
         />
+      )}
+      {active && step && onRoute && peeking && (
+        <TourPeekBar onResume={resumePeek} onSkip={stop} />
       )}
     </TourContext.Provider>
   );
@@ -270,9 +292,13 @@ export function useTour(): TourContextValue {
       step: null,
       index: -1,
       total: totalSteps,
+      holdNav: false,
+      peeking: false,
       start: () => {},
       stop: () => {},
       next: () => {},
+      peek: () => {},
+      resumePeek: () => {},
       signal: () => {},
     };
   }

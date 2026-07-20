@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Inter } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import "katex/dist/katex.min.css";
+import { adsConfig, adsenseScriptEnabled } from "@/lib/ads";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthProvider } from "@/components/AuthProvider";
 import { AuthGate } from "@/components/AuthGate";
@@ -59,6 +61,13 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Ads (Phase 21) are OFF by default. The AdSense loader script loads as soon as
+  // a publisher id (NEXT_PUBLIC_ADSENSE_CLIENT) is set — this is what Google needs
+  // live to review the site, and it stays independent of the ad kill switch (so
+  // the site can be "under review" with no visible ads). With no client id set, no
+  // third-party request is made and no cookies are set. The GDPR consent message is
+  // enabled in the AdSense dashboard and served by this script.
+  const ads = adsConfig();
   return (
     <html
       lang="en"
@@ -85,6 +94,14 @@ export default function RootLayout({
           <ThemeToggle />
           <StorageNotice />
         </AuthProvider>
+        {adsenseScriptEnabled(ads) && (
+          <Script
+            id="adsbygoogle-init"
+            src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ads.client}`}
+            strategy="afterInteractive"
+            crossOrigin="anonymous"
+          />
+        )}
       </body>
     </html>
   );

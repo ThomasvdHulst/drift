@@ -64,6 +64,8 @@ import { useAuth } from "@/components/AuthProvider";
 import { useTour } from "@/components/tour/TourProvider";
 import { ShareToFriend } from "@/components/ShareToFriend";
 import { cardToSharePayload } from "@/lib/social/share";
+import { AdCard } from "@/components/AdCard";
+import { adsConfig, shouldShowAd } from "@/lib/ads";
 
 type Dir = "drift" | "thread" | "back" | "cross";
 
@@ -110,6 +112,10 @@ const spring = { type: "spring", stiffness: 260, damping: 30 } as const;
 // (spec §2.4 "gentle awareness, not guilt"). Never blocks, never guilts.
 const NUDGE_AT = 25;
 
+// Ads config (Phase 21) — read once from statically-inlined NEXT_PUBLIC_* env.
+// OFF by default: when disabled nothing below runs (no ad card, no counter effect).
+const ADS = adsConfig();
+
 // A buffer refill pulls this many topics and this many cards per topic, then
 // interleaves them — so the random-drift buffer holds a mix of a few topics at a
 // time (variety) and rotates to fresh topics once drained. Kept small on purpose:
@@ -131,9 +137,15 @@ function scrollRegionFrom(target: EventTarget | null): HTMLElement | null {
 export default function DriftPage() {
   const { user, cloudConfigured } = useAuth();
   // The guided tour listens for real actions on this page (Phase 20). Each call
-  // is a no-op unless the tour is active and waiting on that event.
-  const { signal: tourSignal } = useTour();
+  // is a no-op unless the tour is active and waiting on that event. `holdNav` is
+  // true while the user is "looking around" in the tour: navigation is frozen so
+  // they can read without drifting off the card they're studying.
+  const { signal: tourSignal, holdNav, active: tourActive } = useTour();
   const [shareCard, setShareCard] = useState<Card | null>(null);
+  // Ad interstitial (Phase 21): `showAd` renders a calm ad card in place of the
+  // knowledge card; `driftsSinceAdRef` counts drift-scrolls toward the next one.
+  const [showAd, setShowAd] = useState(false);
+  const driftsSinceAdRef = useRef(0);
   const [history, setHistory] = useState<TrailStep[]>([]);
   const [pos, setPos] = useState(0);
   const [threadCache, setThreadCache] = useState<Record<string, Thread[]>>({});
@@ -510,6 +522,7 @@ export default function DriftPage() {
   // Finalize the current card's dwell (it's never "left") before the trail map,
   // so the duration includes the stop you ended on.
   function endSession() {
+    if (holdNav) return; // frozen while "looking around" in the tour
     const now = Date.now();
     accrueDwell(now);
     dwellRef.current = { index: dwellRef.current.index, at: now };
@@ -550,6 +563,9 @@ export default function DriftPage() {
     if (direction === "drift") tourSignal("drifted");
     else if (direction === "thread") tourSignal("threaded");
     else if (direction === "cross") tourSignal("crossed");
+    // Count only drift-scrolls toward the next ad (Phase 21); deliberate thread
+    // pulls and realm crosses never trigger an ad.
+    if (direction === "drift") driftsSinceAdRef.current += 1;
     setDir(direction);
     const step: TrailStep = {
       card,
@@ -564,7 +580,15 @@ export default function DriftPage() {
   }
 
   async function advance() {
-    if (ended || busyRef.current) return;
+    if (ended || busyRef.current || holdNav) return;
+
+    // Leaving an ad interstitial: clear it, reset the counter, then drift for real.
+    if (showAd) {
+      setShowAd(false);
+      driftsSinceAdRef.current = 0;
+      await doDrift();
+      return;
+    }
 
     // Revisiting: move forward through existing history without a new step.
     if (pos < history.length - 1) {
@@ -573,6 +597,22 @@ export default function DriftPage() {
       return;
     }
 
+    // Every N drift-scrolls, show one calm ad as its own stop (Phase 21) before the
+    // next real card. Off by default; suppressed during the tour; never saved to
+    // history/trail. The ad is left by the same advance gesture (this branch's
+    // showAd path handles the next advance).
+    if (ADS.enabled && !tourActive && shouldShowAd(driftsSinceAdRef.current, ADS.every)) {
+      setDir("drift");
+      setShowAd(true);
+      return;
+    }
+
+    await doDrift();
+  }
+
+  // The real drift (focused orbit / liked-thread follow / independent random),
+  // extracted so advance() can slip a calm ad in front of it every N drifts.
+  async function doDrift() {
     // Focused orbit drift (Phase 18): serve the seed's widening neighbourhood
     // (BFS, lowest ring first) instead of the topic buffer. Refill by expanding
     // the frontier via morelike (the healthy endpoint), on empty only.
@@ -668,7 +708,7 @@ export default function DriftPage() {
   // genuinely related crossing), else a fresh discover card in the other realm.
   // Either way the realm then follows the landed card.
   async function crossRealm() {
-    if (ended || busyRef.current || !current) return;
+    if (ended || busyRef.current || !current || holdNav) return;
     const fromRealm = realm;
     // Only Encyclopedia<->Gallery cross for now; Papers is self-contained.
     if (fromRealm !== "encyclopedia" && fromRealm !== "gallery") return;
@@ -971,7 +1011,13 @@ export default function DriftPage() {
   }
 
   function goBack() {
-    if (ended || busyRef.current) return;
+    if (ended || busyRef.current || holdNav) return;
+    // Swiping back from an ad just returns to the card you were on (no history change).
+    if (showAd) {
+      setDir("back");
+      setShowAd(false);
+      return;
+    }
     if (pos > 0) {
       setDir("back");
       setPos((p) => p - 1);
@@ -979,14 +1025,14 @@ export default function DriftPage() {
   }
 
   function jumpTo(index: number) {
-    if (ended || busyRef.current || index === pos) return;
+    if (ended || busyRef.current || index === pos || holdNav) return;
     if (index < 0 || index >= history.length) return;
     setDir(index < pos ? "back" : "drift");
     setPos(index);
   }
 
   function onThread(thread: Thread) {
-    if (ended || busyRef.current || !current) return;
+    if (ended || busyRef.current || !current || holdNav) return;
     setFollowingLabel(thread.label);
     window.setTimeout(() => setFollowingLabel(null), 950);
     // A doorway (or any candidate in the other realm) crosses realms — the realm
@@ -1181,7 +1227,7 @@ export default function DriftPage() {
         {current && !error && (
           <AnimatePresence custom={dir} initial={false}>
             <motion.div
-              key={current.card.pageTitle}
+              key={showAd ? "__ad__" : current.card.pageTitle}
               custom={dir}
               variants={cardVariants}
               initial="enter"
@@ -1190,31 +1236,35 @@ export default function DriftPage() {
               transition={spring}
               className="absolute inset-0 px-4 pb-safe sm:px-6"
             >
-              <CardView
-                card={current.card}
-                realm={realm}
-                arrivedVia={current.arrivedVia}
-                threads={threads}
-                threadsLoading={threadsLoading}
-                onThread={onThread}
-                onExpand={() => markExpanded(pos)}
-                reaction={reactions[cardId(current.card)]}
-                onReact={
-                  realmMeta.hasInterestModel
-                    ? (sig) => handleReact(current.card, sig)
-                    : undefined
-                }
-                onShare={
-                  cloudConfigured && user
-                    ? () => setShareCard(current.card)
-                    : undefined
-                }
-                onOrbit={
-                  realm === "encyclopedia"
-                    ? () => startOrbitHere(current.card)
-                    : undefined
-                }
-              />
+              {showAd ? (
+                <AdCard config={ADS} />
+              ) : (
+                <CardView
+                  card={current.card}
+                  realm={realm}
+                  arrivedVia={current.arrivedVia}
+                  threads={threads}
+                  threadsLoading={threadsLoading}
+                  onThread={onThread}
+                  onExpand={() => markExpanded(pos)}
+                  reaction={reactions[cardId(current.card)]}
+                  onReact={
+                    realmMeta.hasInterestModel
+                      ? (sig) => handleReact(current.card, sig)
+                      : undefined
+                  }
+                  onShare={
+                    cloudConfigured && user
+                      ? () => setShareCard(current.card)
+                      : undefined
+                  }
+                  onOrbit={
+                    realm === "encyclopedia"
+                      ? () => startOrbitHere(current.card)
+                      : undefined
+                  }
+                />
+              )}
             </motion.div>
           </AnimatePresence>
         )}

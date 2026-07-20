@@ -3,8 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion, useReducedMotion } from "motion/react";
+import { adsConfig, adsenseScriptEnabled } from "@/lib/ads";
 
 const SEEN_KEY = "drift-notice-seen";
+// Honest disclosure flips as soon as the AdSense script is configured (Phase 21);
+// OFF by default.
+const USES_ADSENSE = adsenseScriptEnabled(adsConfig());
 
 // A one-time, calm "cookie notice" shown on the first visit to the site. Drift
 // uses no tracking cookies / analytics / ads (only strictly-necessary functional
@@ -49,8 +53,9 @@ export function StorageNotice() {
     >
       <div className="flex w-full max-w-lg flex-col gap-3 rounded-2xl bg-paper-raised p-4 shadow-xl ring-1 ring-line sm:flex-row sm:items-center sm:gap-4 sm:p-5">
         <p className="text-sm leading-relaxed text-ink-soft">
-          Drift keeps your account and trails so it works across your devices. No
-          tracking, no ads, no third-party cookies.{" "}
+          {USES_ADSENSE
+            ? "Drift keeps your account and trails so they work across your devices, and uses Google AdSense, which may set cookies with your consent. "
+            : "Drift keeps your account and trails so it works across your devices. No tracking, no ads, no third-party cookies. "}
           <Link
             href="/privacy"
             className="text-accent-strong underline-offset-2 hover:underline"

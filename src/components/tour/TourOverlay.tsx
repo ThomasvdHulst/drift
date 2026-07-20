@@ -26,12 +26,15 @@ export function TourOverlay({
   total,
   onNext,
   onSkip,
+  onPeek,
 }: {
   step: TourStep;
   index: number;
   total: number;
   onNext: () => void;
   onSkip: () => void;
+  // Present when the step offers a "Look around" peek; hides the coach + scrim.
+  onPeek?: () => void;
 }) {
   const reduce = useReducedMotion();
   // This component is keyed by step.id in the provider, so it remounts per step
@@ -270,13 +273,24 @@ export function TourOverlay({
           {step.gestureHint && <GestureHint hint={step.gestureHint} reduce={!!reduce} />}
 
           <div className="mt-5 flex items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={onSkip}
-              className="text-xs font-medium text-ink-soft underline-offset-2 transition hover:text-ink hover:underline"
-            >
-              Skip tour
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={onSkip}
+                className="text-xs font-medium text-ink-soft underline-offset-2 transition hover:text-ink hover:underline"
+              >
+                Skip tour
+              </button>
+              {onPeek && (
+                <button
+                  type="button"
+                  onClick={onPeek}
+                  className="text-xs font-medium text-accent-strong underline-offset-2 transition hover:underline"
+                >
+                  Look around
+                </button>
+              )}
+            </div>
 
             {forced ? (
               showStepSkip ? (
@@ -334,6 +348,49 @@ function GestureHint({ hint, reduce }: { hint: TourStep["gestureHint"]; reduce: 
         {hint === "swipe-up" ? "↑" : hint === "swipe-side" ? "↔" : "◉"}
       </motion.span>
       <span className="text-xs font-medium uppercase tracking-wide">{label}</span>
+    </div>
+  );
+}
+
+// The "peek" bar (Phase 20): a calm floating pill shown while the user is looking
+// around. The rest of the screen is fully interactive for reading (scroll, Read
+// more); the tour holds the drift page's navigation until the user continues, so
+// they can't drift off the card they're studying. Non-blocking (only the pill
+// catches taps), so it never gets in the way of exploring.
+export function TourPeekBar({
+  onResume,
+  onSkip,
+}: {
+  onResume: () => void;
+  onSkip: () => void;
+}) {
+  const reduce = useReducedMotion();
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-safe">
+      <motion.div
+        initial={reduce ? { opacity: 0 } : { opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, ease: "easeOut" }}
+        className="pointer-events-auto mb-3 flex items-center gap-3 rounded-full bg-paper-raised px-4 py-2 shadow-xl ring-1 ring-line"
+      >
+        <span className="hidden text-sm text-ink-soft sm:inline">
+          Look around freely
+        </span>
+        <button
+          type="button"
+          onClick={onSkip}
+          className="text-xs font-medium text-ink-soft underline-offset-2 transition hover:text-ink hover:underline"
+        >
+          Skip tour
+        </button>
+        <button
+          type="button"
+          onClick={onResume}
+          className="rounded-full bg-accent px-4 py-1.5 text-sm font-semibold text-paper-raised shadow-sm transition hover:bg-accent-strong"
+        >
+          Continue tour
+        </button>
+      </motion.div>
     </div>
   );
 }

@@ -1,10 +1,17 @@
 import Link from "next/link";
 import { Monogram } from "@/components/BrandLogo";
+import { adsConfig, adsenseScriptEnabled } from "@/lib/ads";
 
 export const metadata = {
   title: "What Drift stores",
   description: "A plain note on what Drift keeps, where, and how to remove it.",
 };
+
+// True as soon as the AdSense script is loaded (a publisher id is set) — that is
+// when third-party cookies become possible, whether or not a visible ad is showing
+// yet (Phase 21). Off by default, so the honest "no ads / no cookies" copy is the
+// norm; it changes only on a deploy that configures AdSense.
+const USES_ADSENSE = adsenseScriptEnabled(adsConfig());
 
 // A calm, plain-language "what we store" note. Intentionally NOT a legal wall of
 // text: Drift is a small personal project shared with friends, so this just says
@@ -47,9 +54,9 @@ export default function PrivacyPage() {
             </li>
           </ul>
           <p className="mt-3 text-ink-soft">
-            There is no tracking, no advertising, no third-party analytics
-            following you around, and nothing is ever sold. Drift has no interest
-            in maximizing your time. It is built to be the opposite of that.
+            {USES_ADSENSE
+              ? "There is no third-party analytics following you around, and nothing is ever sold. Drift uses Google AdSense to help keep it free, but it has no interest in maximizing your time. It is built to be the opposite of that."
+              : "There is no tracking, no advertising, no third-party analytics following you around, and nothing is ever sold. Drift has no interest in maximizing your time. It is built to be the opposite of that."}
           </p>
         </Section>
 
@@ -63,14 +70,25 @@ export default function PrivacyPage() {
         </Section>
 
         <Section title="Cookies and storage">
-          <p className="text-ink-soft">
-            Drift uses no tracking cookies, no advertising, and no third-party
-            analytics. It sets no browser cookies at all. To work, it keeps a few
-            essential things in your browser&apos;s own storage: a secure sign-in token
-            so you stay logged in, your saved trails and settings, and small
-            preferences like dark mode. Nothing here follows you around the web,
-            so there is nothing to opt out of.
-          </p>
+          {USES_ADSENSE ? (
+            <p className="text-ink-soft">
+              To help keep Drift free, it uses Google AdSense. With your consent,
+              AdSense may set third-party cookies, and you can change that choice
+              from the consent prompt in the app. Everything else is essential
+              only: a secure sign-in token so you stay logged in, your saved trails
+              and settings, and small preferences like dark mode. Drift itself runs
+              no tracking or analytics.
+            </p>
+          ) : (
+            <p className="text-ink-soft">
+              Drift uses no tracking cookies, no advertising, and no third-party
+              analytics. It sets no browser cookies at all. To work, it keeps a
+              few essential things in your browser&apos;s own storage: a secure
+              sign-in token so you stay logged in, your saved trails and settings,
+              and small preferences like dark mode. Nothing here follows you
+              around the web, so there is nothing to opt out of.
+            </p>
+          )}
         </Section>
 
         <Section title="Where the content comes from">
