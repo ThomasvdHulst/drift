@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
+import { useTour } from "@/components/tour/TourProvider";
 import { AuthForm } from "@/components/AuthForm";
 import {
   getSyncStatus,
@@ -20,6 +21,7 @@ import { normalizeHandle, handleError } from "@/lib/social/handles";
 
 export default function AccountPage() {
   const { user, loading, cloudConfigured, signOut } = useAuth();
+  const { start: startTour } = useTour();
 
   return (
     <main className="mx-auto min-h-dvh w-full max-w-md px-6 py-12 sm:py-16">
@@ -59,7 +61,15 @@ export default function AccountPage() {
         <AuthForm />
       )}
 
-      <p className="mt-8 flex items-center justify-center gap-3 text-center text-xs text-ink-soft">
+      <p className="mt-8 flex flex-wrap items-center justify-center gap-3 text-center text-xs text-ink-soft">
+        <button
+          type="button"
+          onClick={startTour}
+          className="transition hover:text-accent-strong"
+        >
+          Take the tour
+        </button>
+        <span aria-hidden="true">·</span>
         <Link href="/install" className="transition hover:text-accent-strong">
           Install on your phone
         </Link>

@@ -6,7 +6,7 @@ import { cacheHeaders, CACHE_STABLE, NO_STORE } from "@/lib/cache-headers";
 
 // GET /api/wiki/topics?title=Octopus → { topics: TopicId[] } — the tracked
 // article-topics the page scores above threshold. Used by the interest model
-// (M9) when the user ♥/✕ a card.
+// (M9) when the user gives a card a thumbs up/down.
 //
 // Source: Wikimedia's public, no-auth Lift Wing "articletopic" model. Two hops:
 // title → latest revid (Action API), then revid → topic probabilities (Lift

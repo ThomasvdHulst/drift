@@ -209,7 +209,10 @@ export default function TrailDetailPage() {
         />
       )}
 
-      <div className="mt-8 rounded-2xl bg-paper-raised p-4 shadow-sm ring-1 ring-line">
+      <div
+        data-tour="trail-view"
+        className="mt-8 rounded-2xl bg-paper-raised p-4 shadow-sm ring-1 ring-line"
+      >
         <TrailMap steps={trail.steps} mapRef={mapRef} />
       </div>
     </main>

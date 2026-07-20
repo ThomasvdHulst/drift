@@ -105,7 +105,7 @@ export default function AtlasPage() {
           </Link>
         </div>
       ) : (
-        <div className="mt-6">
+        <div className="mt-6" data-tour="atlas-canvas">
           <Atlas
             ref={atlasRef}
             layout={built.layout}

@@ -359,6 +359,10 @@ export interface Settings {
   // a lightweight "just drift" session with the trail framing removed ("endless").
   // Set from the homepage toggle; remembered + synced. Undefined = "trail".
   sessionMode?: "trail" | "endless";
+  // Whether the first-run guided tour has been completed or dismissed (Phase 20).
+  // Synced, so the welcome + tour is offered once per account across devices.
+  // Undefined = not yet offered.
+  tourStatus?: "done";
 }
 
 export async function getSettings(): Promise<Settings> {
@@ -431,8 +435,8 @@ export async function getReactions(): Promise<Record<string, Reaction>> {
 
 let reactionChain: Promise<void> = Promise.resolve();
 
-/** Set (or clear, with null) a card's ♥/✕ reaction, keyed by cardId. Serialized
- *  to avoid races. */
+/** Set (or clear, with null) a card's thumbs up/down reaction, keyed by cardId.
+ *  Serialized to avoid races. */
 export function setReaction(
   id: string,
   reaction: Reaction | null,

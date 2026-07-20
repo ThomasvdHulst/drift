@@ -11,11 +11,13 @@ import type { RealmId, SeedTile } from "@/lib/realms/types";
 import { RealmTabs } from "@/components/RealmTabs";
 import { OrbitSearch } from "@/components/OrbitSearch";
 import { useAuth } from "@/components/AuthProvider";
+import { useTour } from "@/components/tour/TourProvider";
 import { Wordmark } from "@/components/BrandLogo";
 
 export default function Home() {
   const router = useRouter();
   const { cloudConfigured } = useAuth();
+  const { start: startTour } = useTour();
   const [stats, setStats] = useState<{ trails: number; stops: number } | null>(
     null,
   );
@@ -106,7 +108,7 @@ export default function Home() {
           curiosity surprise you.
         </p>
 
-        <div className="mt-7">
+        <div className="mt-7" data-tour="realm-tabs">
           <RealmTabs realms={realms} active={active} onSelect={selectRealm} />
         </div>
       </header>
@@ -118,6 +120,7 @@ export default function Home() {
         <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
           <button
             type="button"
+            data-tour="drift-cta"
             onClick={() =>
               router.push(
                 `/drift?realm=${active}${keepTrail ? "" : "&mode=endless"}`,
@@ -163,7 +166,10 @@ export default function Home() {
         {/* Directed drift (Phase 18): start a page orbit. A search bar to begin
             at any page and spiral outward from it. Encyclopedia only. */}
         {active === "encyclopedia" && (
-          <div className="mt-9 flex w-full flex-col items-center gap-2">
+          <div
+            data-tour="orbit-search"
+            className="mt-9 flex w-full flex-col items-center gap-2"
+          >
             <p className="text-xs font-medium uppercase tracking-widest text-ink-soft">
               Or drift around a page
             </p>
@@ -175,7 +181,7 @@ export default function Home() {
             disclosure so it doesn't crowd the default "surprise me" flow.
             Encyclopedia only (fields are Wikipedia's ORES topics). */}
         {active === "encyclopedia" && (
-          <details className="group mt-9 w-full">
+          <details data-tour="field-focus" className="group mt-9 w-full">
             <summary className="mx-auto flex w-fit cursor-pointer list-none items-center gap-1.5 text-xs font-medium uppercase tracking-widest text-ink-soft transition hover:text-accent-strong">
               Or drift within a field
               <svg
@@ -212,7 +218,10 @@ export default function Home() {
         <h2 className="mb-4 mt-10 text-center text-xs font-medium uppercase tracking-widest text-ink-soft">
           Or start somewhere
         </h2>
-        <ul className="grid w-full grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <ul
+          data-tour="start-options"
+          className="grid w-full grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
+        >
           {realm.seeds.map((tile) => (
             <li key={tile.label}>
               <button
@@ -258,6 +267,13 @@ export default function Home() {
           >
             Interests
           </Link>
+          <button
+            type="button"
+            onClick={startTour}
+            className="rounded-full border border-line bg-paper-raised px-6 py-2.5 text-base font-medium text-ink transition hover:border-accent/50 hover:text-accent-strong"
+          >
+            Take a tour
+          </button>
           {cloudConfigured && (
             <>
               <Link

@@ -82,7 +82,10 @@ export default function InterestsPage() {
         </Link>
       </header>
 
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-paper-raised p-4 ring-1 ring-line">
+      <div
+        data-tour="interests-list"
+        className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-paper-raised p-4 ring-1 ring-line"
+      >
         <div>
           <p className="text-sm font-medium text-ink">Personalize my drift</p>
           <p className="text-xs text-ink-soft">

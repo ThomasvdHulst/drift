@@ -11,9 +11,10 @@ import { ArtZoom } from "./ArtZoom";
 import { PaperCover } from "./PaperCover";
 import { MathText } from "./MathText";
 
-// Quiet ♥ / ✕ that teach the interest model (M9). Sage when active, neutral
-// otherwise — deliberately calm, never a red badge (§6, the opposite of a
-// casino). "More/less like this" nudges which topics surface while drifting.
+// Quiet thumbs up / thumbs down that teach the interest model (M9). Sage when
+// active, neutral otherwise — deliberately calm, never a red badge (§6, the
+// opposite of a casino). "More/less like this" nudges which topics surface while
+// drifting.
 function ReactionButtons({
   reaction,
   onReact,
@@ -24,7 +25,7 @@ function ReactionButtons({
   const base =
     "flex h-8 w-8 items-center justify-center rounded-full border transition";
   return (
-    <div className="flex shrink-0 items-center gap-1.5">
+    <div data-tour="card-reactions" className="flex shrink-0 items-center gap-1.5">
       <button
         type="button"
         onClick={() => onReact("like")}
@@ -457,7 +458,10 @@ export function CardView({
               )}
             </div>
           )}
-          <div className="flex flex-wrap items-center gap-4">
+          <div
+            data-tour="card-readmore"
+            className="flex flex-wrap items-center gap-4"
+          >
             <button
               type="button"
               onClick={toggleReadMore}
@@ -484,7 +488,10 @@ export function CardView({
 
         {/* Threads pinned below the scroll region — always reachable, and they
             don't eat into the reading height. */}
-        <div className="flex shrink-0 flex-col gap-3 border-t border-line px-6 py-4 sm:px-8 md:px-10 lg:px-12">
+        <div
+          data-tour="card-threads"
+          className="flex shrink-0 flex-col gap-3 border-t border-line px-6 py-4 sm:px-8 md:px-10 lg:px-12"
+        >
           <p className="text-xs font-medium uppercase tracking-widest text-ink-soft">
             Pull a thread
           </p>

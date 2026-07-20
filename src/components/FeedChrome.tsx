@@ -110,6 +110,7 @@ export function FeedTopBar({
         {onCrossRealm && otherRealm && (
           <button
             type="button"
+            data-tour="cross-realm"
             onClick={onCrossRealm}
             data-realm={otherRealm.id}
             aria-label={`Cross to the ${otherRealm.label}`}
@@ -126,6 +127,7 @@ export function FeedTopBar({
         </span>
         <button
           type="button"
+          data-tour="end-trail"
           onClick={onEnd}
           className="rounded-full border border-line bg-paper-raised px-3.5 py-1.5 text-sm font-medium text-ink transition hover:border-accent/50 hover:text-accent-strong"
         >
@@ -165,6 +167,7 @@ export function FeedBottomNav({
 
       <button
         type="button"
+        data-tour="advance"
         onClick={onAdvance}
         disabled={busy}
         aria-label="Advance"

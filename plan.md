@@ -191,6 +191,20 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > build+lint clean; live sample of all four sent to the owner's inbox. **Remaining = user dashboard steps** (paste
 > templates, Supabase Site URL, Vercel env vars, security toggles, live signup E2E) — see the Phase 19 section.
 >
+> 🧭 **Phase 20 (Guided Tour) — COMPLETE & verified (M-T1 + M-T2 + M-T3, 2026-07-20).** An optional, calm,
+> interactive first-run onboarding tour that walks a real "mini drift" end to end. Engine =
+> `src/lib/tour/steps.ts` (pure 16-step script +tests), `TourProvider` (cross-route controller, forced-event
+> `signal()`, once-per-account welcome gate via synced `settings.tourStatus` + sync-settle), `TourOverlay`
+> (four-panel spotlight leaving the real control tappable + coach card as a mobile bottom/top sheet,
+> reduced-motion, progress bar, always-skippable, graceful stall/target-miss). Flow: welcome → home (realms,
+> **drift-around-a-page**, **drift-within-a-field**, seeds, forced tap into `/drift`) → drift (card, **forced
+> thumbs up/down**, **forced thread pull**, **forced vertical swipe**, **forced horizontal cross into Gallery**,
+> **forced End**) → **forced Save** → **forced View in My Trails** → escorted Atlas + Interests finish ("you are
+> the algorithm"). **Take a tour** replay on Home + Account. Old `FirstRunCoach` retired. Also fixed stale
+> heart/cross wording to **thumbs up/down** across tour copy + code comments. **312 tests** (+16), build+lint
+> clean; Playwright drove all 16 steps via real actions on mobile (light+dark spot-checked), persistence + replay
+> confirmed, zero tour-caused console errors. Plan file: `~/.claude/plans/tranquil-petting-salamander.md`.
+>
 > _(Update this line whenever progress changes.)_
 
 ---
@@ -1613,6 +1627,58 @@ server-only env var in Vercel — that's independent of this phase; do it whenev
 **Phase 19 exit:** real users can sign up, confirm, and reset via branded email on your own domain; there's a
 calm way for them to send feedback; the app lives on a proper URL. Combined with this session's shipped work,
 Drift is production-ready for a 20–50 person beta.
+
+---
+
+## Phase 20 — The Guided Tour: first-run onboarding  *(started 2026-07-20)*
+
+An optional, inviting, interactive walkthrough that (if accepted) walks a real "mini drift" end to end and
+teaches every core feature in context. Calm + professional, mobile-first, always skippable; honors §2 (agency)
+and §4 (works with the cloud off). Steps are pure typed data in `src/lib/tour/steps.ts` (no DB table, same
+rationale as the static landing `EXAMPLE_TRAILS`). Full design: `~/.claude/plans/tranquil-petting-salamander.md`.
+**User decisions:** full forced loop; Interests shown near the end (after a real reaction); Friends/Inbox left
+out; welcome offered once per account (synced settings).
+
+### M-T1 — Tour engine + welcome + home steps ✅ *(DONE & verified 2026-07-20)*
+- [x] Pure `src/lib/tour/steps.ts` (the 16-step script + helpers) + `steps.test.ts` (order integrity, route
+      follow-through, "no em/en dashes in copy" guard). **+16 tests → 312 total.**
+- [x] `TourProvider` (layout-mounted inside AuthGate): context, forced-event `signal()`, route orchestration
+      (advance on forced nav; escort to a concrete route; pause on prefix mismatch), once-per-account welcome
+      gate with a sync-settle check, resume-across-reload via sessionStorage.
+- [x] `TourOverlay`: four dim panels leaving the real control tappable in the gap + a highlight ring; coach card
+      as a top/bottom sheet placed clear of the target and the swipe zone; reduced-motion; slim progress bar;
+      always "Skip tour"; graceful "Skip this step" on a stall/target-miss.
+- [x] `WelcomeModal` (first login): what Drift is + "Take the quick tour" / "Maybe later" (dismiss ⇒ done).
+- [x] `data-tour` anchors on Home (realm-tabs, drift-cta, start-options); **Take a tour** replay on Home + Account.
+- [x] `tourStatus` added to `Settings` (`storage.ts`), synced via the Phase 9 path.
+- [x] Retired `FirstRunCoach` (deleted; intro folded into the welcome + drift steps).
+- [x] **Verified:** build + lint clean, 316 tests; Playwright light+dark, mobile+desktop — welcome gate,
+      spotlight, click-through the gap → `/drift`, route advance, persistence (no re-offer), replay; 0 console errors.
+
+### M-T2 — Drift-page steps + forced interactions ✅ *(DONE & verified 2026-07-20)*
+- [x] `data-tour` on the card/threads/chrome (`card-readmore`, `card-reactions`, `card-threads`, `advance`,
+      `cross-realm`, `end-trail`).
+- [x] Guarded `signal()` calls in `drift/page.tsx` (via `pushStep` by direction + `handleReact`/`endSession`):
+      `reacted`, `threaded`, `drifted`, `crossed`, `ended`.
+- [x] Steps: card anatomy, **forced thumbs up/down**, **forced thread pull**, **forced vertical swipe**,
+      **forced horizontal cross**, **forced End**. (Per user: both swipe directions + a thread are forced.)
+
+### M-T3 — Summary → trails → atlas → interests finish ✅ *(DONE & verified 2026-07-20)*
+- [x] EndOverlay `data-tour` (`save-trail`, `view-trail`) + `saved` signal; forced Save + forced View in My Trails.
+- [x] Anchors on `/trails/:id` (`trail-view`), `/atlas` (`atlas-canvas`), `/interests` (`interests-list`).
+- [x] Steps: the trail, gently escorted Atlas + Interests finish ("you are the algorithm"); completion persists.
+
+### Follow-ups folded in (user feedback, 2026-07-20)
+- [x] Home tour now spotlights the two more-hidden directed-drift features: **drift around a page** (orbit search)
+      and **drift within a field** (auto-opens the collapsed disclosure).
+- [x] Reactions are **thumbs up/down**, not heart/cross: fixed tour copy + stale code comments
+      (`CardView`, `drift/page.tsx`, `storage.ts`, `api/wiki/topics`). (Spec's heart = trail *like*, left as is.)
+- [x] Verified the forced swipes/End now advance the tour (the earlier "nothing happened" was M-T1's missing
+      anchors/signals, as expected): full 16-step Playwright drive green, all forced actions real.
+
+**Phase 20 exit:** ✅ a new user is offered a calm optional tour once; if accepted it walks the whole loop with
+real forced actions (thumbs, thread, both swipes, End, Save, view trail) and ends on Interests; declining is one
+tap; it never nags and works fully with the cloud off.
 
 ---
 

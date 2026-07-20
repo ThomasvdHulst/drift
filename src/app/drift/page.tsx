@@ -59,9 +59,9 @@ import {
 import { CardView } from "@/components/CardView";
 import { FeedTopBar, FeedBottomNav } from "@/components/FeedChrome";
 import { FocusBanner } from "@/components/FocusBanner";
-import { FirstRunCoach } from "@/components/FirstRunCoach";
 import { TrailMap } from "@/components/TrailMap";
 import { useAuth } from "@/components/AuthProvider";
+import { useTour } from "@/components/tour/TourProvider";
 import { ShareToFriend } from "@/components/ShareToFriend";
 import { cardToSharePayload } from "@/lib/social/share";
 
@@ -130,6 +130,9 @@ function scrollRegionFrom(target: EventTarget | null): HTMLElement | null {
 
 export default function DriftPage() {
   const { user, cloudConfigured } = useAuth();
+  // The guided tour listens for real actions on this page (Phase 20). Each call
+  // is a no-op unless the tour is active and waiting on that event.
+  const { signal: tourSignal } = useTour();
   const [shareCard, setShareCard] = useState<Card | null>(null);
   const [history, setHistory] = useState<TrailStep[]>([]);
   const [pos, setPos] = useState(0);
@@ -149,7 +152,7 @@ export default function DriftPage() {
   const [advancing, setAdvancing] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Per-cardId ♥/✕ (drives the button state on each card). The interest weights
+  // Per-cardId thumbs up/down (drives the button state on each card). The interest weights
   // themselves live in a ref (in-memory truth, persisted on change).
   const [reactions, setReactions] = useState<Record<string, Reaction>>({});
   // The realm FOLLOWS the displayed card (Phase 15): a trail can now span both
@@ -512,6 +515,7 @@ export default function DriftPage() {
     dwellRef.current = { index: dwellRef.current.index, at: now };
     setEndExisting(sessionTrailRef.current);
     setEnded(true);
+    tourSignal("ended"); // the tour's forced "End" step advances on this
     // Record this drift-session for the personal stats view. Wall-clock duration
     // (start → end) is more honest than summed dwell for "time spent".
     if (sessionIdRef.current) {
@@ -541,6 +545,11 @@ export default function DriftPage() {
   function pushStep(card: Card, via: ArrivedVia, direction: Dir) {
     seenRef.current.add(cardId(card));
     persistSeen([cardId(card)]); // fire-and-forget; serialized in storage
+    // Tell the tour which real move just happened (drift onward / thread pull /
+    // realm cross), so its forced steps advance on the genuine action.
+    if (direction === "drift") tourSignal("drifted");
+    else if (direction === "thread") tourSignal("threaded");
+    else if (direction === "cross") tourSignal("crossed");
     setDir(direction);
     const step: TrailStep = {
       card,
@@ -601,7 +610,7 @@ export default function DriftPage() {
     }
 
     // At the live card → drift. By default every drift is an independent random
-    // jump (two scrolls are unrelated). The one exception: if you ♥-liked this
+    // jump (two scrolls are unrelated). The one exception: if you liked this
     // card, the next drift follows one of its related threads to "stay in the
     // stream" (instant, on-theme) — relatedness tied to an explicit signal, not
     // a blind coin flip that used to chain near-identical pages together.
@@ -822,9 +831,10 @@ export default function DriftPage() {
     }
   }
 
-  // ♥/✕ a card. Optimistically flips the button, persists the reaction, then
-  // adjusts the interest weights: undo the previous reaction (if any) and apply
-  // the new one, so switching or clearing is consistent. Threads are untouched.
+  // Thumbs up / thumbs down on a card. Optimistically flips the button, persists
+  // the reaction, then adjusts the interest weights: undo the previous reaction
+  // (if any) and apply the new one, so switching or clearing is consistent.
+  // Threads are untouched.
   async function handleReact(card: Card, signal: Reaction) {
     const id = cardId(card);
     const prev = reactions[id];
@@ -837,6 +847,7 @@ export default function DriftPage() {
       return copy;
     });
     setReaction(id, next ?? null);
+    tourSignal("reacted"); // the tour's "try a reaction" step advances on this
 
     if (!prev && !next) return;
     const topics = await resolveTopics(card.pageTitle);
@@ -1274,7 +1285,6 @@ export default function DriftPage() {
             </div>
           )}
 
-        <FirstRunCoach ready={Boolean(current) && !error} />
       </main>
 
       {current && !error && (
@@ -1320,6 +1330,7 @@ function EndOverlay({
   onSaved: (t: SessionTrail) => void;
   onClose: () => void;
 }) {
+  const { signal: tourSignal } = useTour();
   const stats = computeTrailStats(history);
   const statLine = [
     `${stats.stops} ${stats.stops === 1 ? "stop" : "stops"}`,
@@ -1378,6 +1389,7 @@ function EndOverlay({
       setName(t.name);
       setSaved(t);
       onSaved(t);
+      tourSignal("saved"); // the tour's forced "Save" step advances on this
     } finally {
       setBusy(false);
     }
@@ -1480,6 +1492,7 @@ function EndOverlay({
               </button>
               <Link
                 href={`/trails/${saved.id}`}
+                data-tour="view-trail"
                 className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-paper-raised transition hover:bg-accent-strong"
               >
                 View in My Trails →
@@ -1488,6 +1501,7 @@ function EndOverlay({
           ) : (
             <button
               type="button"
+              data-tour="save-trail"
               onClick={handleSave}
               disabled={busy || history.length === 0}
               className="rounded-full bg-accent px-5 py-2.5 text-sm font-semibold text-paper-raised transition hover:bg-accent-strong disabled:opacity-60"
