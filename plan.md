@@ -11,10 +11,10 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > in a small friends-and-colleagues beta. Two realms ship: **Encyclopedia** (Wikipedia) and
 > **Gallery** (Art Institute of Chicago, CC0).
 >
-> **Shipped:** Phases 1, 2, 4, 5, 6, 8, 9, 10, 13, 14, 15, 18, 19, 20 — the core drift loop,
+> **Shipped:** Phases 1, 2, 4, 5, 6, 8, 9, 10, 13, 14, 15, 18, 19, 20, 22 — the core drift loop,
 > directional threads, trails + the trail-map reward, the Atlas, the interest model, accounts
 > and cloud sync, friends and sharing, cross-realm doorways, focused drift (field + orbit),
-> branded email, and the guided tour.
+> branded email, the guided tour, and the contact form.
 >
 > **Behind a flag:** Phase 17 **Papers** (arXiv) — set `NEXT_PUBLIC_REALM_PAPERS=1`. Phase 21
 > **ads** — built, kill switch `NEXT_PUBLIC_ADS_ENABLED` OFF; awaiting AdSense approval.
@@ -22,10 +22,12 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > **Deferred by choice:** Phase 3 (local Ollama AI), 7 (constellations), 11 (calm social feed),
 > 12 (native app), 16 (memory & reflection), M12 (Library/Today realms), M-Ad3 (ad-free tier).
 >
-> **Baseline:** 331 unit tests green, `npm run build` + `npm run lint` clean.
+> **Baseline:** 367 unit tests green, `npm run build` + `npm run lint` clean.
 >
 > **▶ Next:** open. Phase 16 (Memory & Reflection) is the last of the three brainstorm
 > directions and the most natural continuation; ads work resumes only if AdSense approves.
+> Phase 22 needs two owner dashboard steps (a Cloudflare route for `contact@`, and a Turnstile
+> widget) before it is fully armed in production.
 >
 > _Full per-phase history is in the log below. Update BOTH when progress changes._
 
@@ -273,6 +275,30 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > Current status + this log. **331 tests** (+9), build + lint clean (the old InstallShot lint warning is
 > gone); Playwright: core loop 27/28, features 15/20 and focus 12/12 with every remaining ✗ confirmed a
 > test-harness artifact, zero console errors on any route in light + dark, desktop + mobile.
+>
+
+> ✉️ **Phase 22 — Contact & feedback — COMPLETE & verified (2026-07-21).** A public `/contact`
+> page (allowlisted in `AuthGate`, since someone who cannot sign in is exactly who needs to
+> reach us). One submission sends **two** emails via Resend: a Drift-styled **receipt** echoing
+> the sender's own message back, and a **notification** to `CONTACT_INBOX` (default
+> `noreply@usedrift.org`) whose **`reply_to` is the sender**, so the copy Cloudflare Email
+> Routing forwards to the owner's personal inbox can be answered with plain Reply. New:
+> `src/lib/contact.ts` (pure validation, +26 tests), `src/lib/turnstile.ts` (siteverify, +6),
+> `src/app/api/contact/route.ts`, `src/app/contact/page.tsx`, `src/components/ContactForm.tsx`;
+> `renderEmail` gained an escaped, newline-preserving `quote` block (its only untrusted-input
+> surface, so +5 injection tests) and `sendViaResend` gained `replyTo` + `text`.
+> **Anti-spam is layered and all of it is invisible:** honeypot, a fill-time floor, a
+> best-effort per-IP throttle (5/hr), and optional **Cloudflare Turnstile** in Invisible mode.
+> Turnstile is **fail-closed once both keys are set** and absent otherwise, matching the
+> Supabase/Ollama contract. A bot-trapped submission gets the SAME success response a human
+> does, so a script learns nothing. Note the client does NOT run the bot traps: it waits out
+> the fill-time floor instead of erroring, so a fast or autofilled visitor is never silently
+> dropped. **367 tests** (+36), build + lint clean. Verified against a stub Resend: browser flow
+> 9/9 in light + dark, desktop + mobile, zero console errors; both emails captured and visually
+> checked; honeypot and instant-submit silently dropped (200, zero mail sent); throttle returns
+> 429; Turnstile verified against the REAL siteverify with Cloudflare's always-fails key
+> (refused, zero mail) and always-passes key (full flow green). **Owner steps remain:** route
+> `contact@usedrift.org` in Cloudflare + set `CONTACT_INBOX`, and create the Turnstile widget.
 >
 
 

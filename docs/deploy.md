@@ -58,6 +58,9 @@ _and_ **Preview** (copy the values from your local `.env`):
 | `RESEND_API_KEY` | `re_…` | **server-only.** Lets the app send the welcome (after verifying) + goodbye (after deleting) emails via the Resend API. Unset ⇒ those two emails are skipped, nothing else breaks. |
 | `EMAIL_FROM` | `Drift <noreply@usedrift.org>` | From address for the app-sent emails. Defaults to this if unset. |
 | `NEXT_PUBLIC_SITE_URL` | `https://www.usedrift.org` | Canonical origin for links + the logo image inside emails. |
+| `CONTACT_INBOX` | `contact@usedrift.org` | **Optional.** Where the contact form's notification lands. Defaults to `noreply@usedrift.org`. See §Contact form below. |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | `0x4AAAAAAA…` | **Optional.** Invisible anti-spam on the contact form. Unset ⇒ no script loads. |
+| `TURNSTILE_SECRET_KEY` | `0x4AAAAAAA…` | **Optional, server-only.** Pairs with the site key. Once BOTH are set, the form is fail-closed. |
 
 > ⚠️ **`SUPABASE_SECRET_KEY` is server-only — add it WITHOUT a `NEXT_PUBLIC_` prefix.**
 > It bypasses Row-Level Security, so it must never be inlined into the browser build. It's
@@ -124,6 +127,63 @@ stable production alias). In the Supabase dashboard → **Authentication → URL
    **Add to Home screen**.
 4. Launch Drift from the new home-screen icon — it opens **standalone** (no browser bar), like
    an app. Save a trail on the phone; it appears on your desktop after signing in there too.
+
+---
+
+## Contact form (`/contact`)
+
+The page is public (it renders even signed out, like `/privacy`), because someone who
+cannot sign in is exactly the person who needs to reach you. One submission sends **two**
+emails through Resend, both from `EMAIL_FROM`:
+
+1. a **receipt** to the person who wrote, echoing their message back;
+2. a **notification** to `CONTACT_INBOX`, with **`Reply-To` set to the sender**.
+
+That `Reply-To` is the piece that makes the free Cloudflare setup work: the notification is
+forwarded to your personal inbox, and hitting **Reply** there answers the visitor, not
+yourself. You never have to expose your personal address.
+
+### Receiving the notification (Cloudflare Email Routing, free)
+
+Cloudflare → your domain → **Email → Email Routing**:
+
+1. **Destination address:** add your personal address and click the verification link
+   Cloudflare emails you. Routing rules stay disabled until you do.
+2. **Custom address:** route an address at `usedrift.org` to that destination.
+
+> ⚠️ **Prefer a different address from the one you send as.** Cloudflare's own docs warn that
+> "some providers discard messages that appear to come from the same account they are being
+> delivered to", and Gmail in particular can quietly file mail whose `From` and `To` match.
+> You already route `noreply@usedrift.org`, which is also `EMAIL_FROM`, so the notification
+> would be from **and** to the same address. The safer setup is 2 minutes of work:
+> route **`contact@usedrift.org`** → your personal address, then set
+> `CONTACT_INBOX=contact@usedrift.org` in Vercel. Leave it unset only if you have confirmed
+> the self-addressed mail actually arrives.
+
+SPF note: Email Routing (receiving) and Resend (sending) both want DNS records on the same
+domain. Keep **one** SPF TXT record with both includes rather than two separate records, or
+sending will start failing SPF.
+
+### Anti-spam
+
+Three layers work with no configuration at all: a honeypot field, a minimum fill time, and a
+best-effort per-IP throttle (5/hour). Add **Cloudflare Turnstile** on top when you want more:
+
+1. Cloudflare dashboard → **Turnstile → Add widget**.
+2. Hostname `usedrift.org` (add `localhost` too if you want to test locally),
+   widget mode **Invisible**.
+3. Copy the **site key** into `NEXT_PUBLIC_TURNSTILE_SITE_KEY` and the **secret key** into
+   `TURNSTILE_SECRET_KEY` in Vercel, then **redeploy** (the site key is inlined at build).
+
+It is free and unmetered for this scale. Once both keys are present the route is
+**fail-closed**: a missing, forged, replayed, or unverifiable token is refused. Setting only
+one of the two keys leaves Turnstile off, so add them together.
+
+### Smoke test after deploying
+
+Open `/contact` while **signed out**, send yourself a real message, then check that:
+the sent screen appears; the receipt arrives at the address you typed; the notification
+reaches your personal inbox; and **Reply** on that notification addresses the sender.
 
 ---
 

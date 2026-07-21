@@ -68,4 +68,11 @@ in `src/lib/*` (small, unit-tested, no React/DOM) so it can be reused by a futur
 - **`docs/backend.md`** — accounts, cloud sync, and scaling.
 - **`docs/deploy.md`** — going live on Vercel + installing as a phone web-app.
 
+## Contact
+
+`/contact` is a public feedback form. It emails a receipt to whoever wrote and a notification
+to the Drift inbox with `Reply-To` set to them. Anti-spam is a honeypot, a fill-time floor and
+a per-IP throttle, plus optional Cloudflare Turnstile. Setup is in
+[`docs/deploy.md`](docs/deploy.md).
+
 *A hobby project for personal use — no analytics, no engagement metrics, no dark patterns.*

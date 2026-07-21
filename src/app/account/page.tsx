@@ -74,6 +74,10 @@ export default function AccountPage() {
           Install on your phone
         </Link>
         <span aria-hidden="true">·</span>
+        <Link href="/contact" className="transition hover:text-accent-strong">
+          Contact us
+        </Link>
+        <span aria-hidden="true">·</span>
         <Link href="/privacy" className="transition hover:text-accent-strong">
           What Drift stores
         </Link>

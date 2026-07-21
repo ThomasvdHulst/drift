@@ -95,6 +95,15 @@ without them:
   fully local and the core loop never breaks. Env: `NEXT_PUBLIC_SUPABASE_URL`,
   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`. Migrations live in
   `supabase/migrations/` (pasted into Studio); `npm run verify:supabase` checks the backend.
+- **The contact form (Phase 22) has the same optional-dependency contract.** `/contact` is
+  public (allowlisted in `AuthGate`) so someone who cannot sign in can still reach you. It sends
+  two emails via Resend: a receipt to the sender, and a notification to `CONTACT_INBOX`
+  (default `noreply@usedrift.org`) whose **`reply_to` is the sender**, so replying from the
+  forwarded copy answers them. Anti-spam is layered: honeypot + fill-time + per-IP throttle need
+  no config; **Cloudflare Turnstile** is optional but **fail-closed once both keys are set**
+  (`NEXT_PUBLIC_TURNSTILE_SITE_KEY` + server-only `TURNSTILE_SECRET_KEY`). A bot-trapped
+  submission gets the SAME success response a human does, so a script learns nothing.
+
 - **Phase 10 social tables** (`profiles`, `friend_requests`, `shares`) are **live-fetched** via
   `src/lib/social/*` (NOT local-first synced), same graceful-degradation contract. Friendship is
   mutual (request→accept); discovery is **handle-only**; **sending a share is enforced

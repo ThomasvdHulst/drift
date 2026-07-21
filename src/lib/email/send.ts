@@ -23,6 +23,13 @@ export async function sendViaResend(msg: {
   to: string;
   subject: string;
   html: string;
+  /** Where a reply should go, when that isn't the From address. The contact
+   *  notification sets this to the sender's own address, so hitting Reply in the
+   *  forwarded copy answers the person instead of the noreply mailbox. */
+  replyTo?: string;
+  /** Optional plain-text alternative. Worth setting on mail that carries a
+   *  person's words, both for accessibility and for spam scoring. */
+  text?: string;
 }): Promise<SendResult> {
   const key = process.env.RESEND_API_KEY;
   if (!key) {
@@ -41,6 +48,9 @@ export async function sendViaResend(msg: {
         to: msg.to,
         subject: msg.subject,
         html: msg.html,
+        // Resend's REST API uses snake_case; omit the keys entirely when unset.
+        ...(msg.replyTo ? { reply_to: msg.replyTo } : {}),
+        ...(msg.text ? { text: msg.text } : {}),
       }),
       signal: AbortSignal.timeout(8000),
     });

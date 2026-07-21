@@ -267,12 +267,21 @@ export function Landing() {
               (public domain, CC0). Drift only reshapes it. It never invents
               facts.
             </p>
-            <a
-              href="/privacy"
-              className="text-xs text-ink-soft/80 underline-offset-2 transition hover:text-accent-strong hover:underline"
-            >
-              What Drift stores
-            </a>
+            <p className="flex items-center gap-2 text-xs text-ink-soft/80">
+              <a
+                href="/contact"
+                className="underline-offset-2 transition hover:text-accent-strong hover:underline"
+              >
+                Get in touch
+              </a>
+              <span aria-hidden="true">·</span>
+              <a
+                href="/privacy"
+                className="underline-offset-2 transition hover:text-accent-strong hover:underline"
+              >
+                What Drift stores
+              </a>
+            </p>
           </div>
         </footer>
       </main>

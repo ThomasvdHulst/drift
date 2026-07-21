@@ -1,13 +1,17 @@
-// The copy for Drift's four transactional emails, built on the shared renderer.
+// The copy for Drift's transactional emails, built on the shared renderer.
 // Two are sent by Supabase (confirm / reset) and use its {{ .ConfirmationURL }}
-// placeholder; two are sent by us at runtime (welcome / goodbye). All share one
-// calm voice, no em/en dashes.
+// placeholder; the rest are sent by us at runtime (welcome / goodbye, and the
+// contact receipt + owner notification). All share one calm voice, no em/en
+// dashes.
 
 import { renderEmail, EMAIL_SITE_URL } from "./render";
+import { notificationSubject } from "../contact";
 
 export interface EmailMessage {
   subject: string;
   html: string;
+  /** Plain-text alternative, set where the mail carries someone's own words. */
+  text?: string;
 }
 
 // Supabase substitutes this at send time. Kept verbatim (not URL-escaped) in the
@@ -78,5 +82,59 @@ export function goodbyeEmail(): EmailMessage {
       ],
       note: "You are receiving this one last email to confirm the deletion is complete.",
     }),
+  };
+}
+
+export interface ContactDetails {
+  name: string;
+  email: string;
+  topicLabel: string;
+  message: string;
+}
+
+/** The receipt sent to the person who filled in the contact form. Echoes their
+ *  own message back so they have a record of what they sent, and sets a plain,
+ *  honest expectation about a reply. */
+export function contactReceiptEmail(c: ContactDetails): EmailMessage {
+  return {
+    subject: "Thanks for writing to Drift",
+    html: renderEmail({
+      preheader: "We got your message. Here is a copy of what you sent.",
+      heading: "Thanks for writing",
+      body: [
+        c.name ? `Hello ${c.name},` : "Hello,",
+        "Your message reached us, and a real person will read it. We usually reply within a few days. If you need to add anything, just reply to this email.",
+      ],
+      quote: { label: `Your message: ${c.topicLabel}`, text: c.message },
+      note: "If you did not write to Drift, you can safely ignore this email.",
+    }),
+  };
+}
+
+/** The notification sent to the Drift inbox. Deliberately plainer than the
+ *  user-facing mail: it is a work item, so the message body and the reply address
+ *  matter more than the styling. The route sets reply_to to the sender, so
+ *  replying from the forwarded copy answers the person directly. */
+export function contactNotificationEmail(c: ContactDetails): EmailMessage {
+  const who = c.name ? `${c.name} <${c.email}>` : c.email;
+  return {
+    subject: notificationSubject(c),
+    html: renderEmail({
+      preheader: `${c.topicLabel} from ${who}`,
+      heading: "New message via Drift",
+      body: [`From: ${who}`, `Topic: ${c.topicLabel}`],
+      quote: { text: c.message },
+      // Below the message, so the reading order is who wrote, what they said,
+      // then what to do about it.
+      note: "Reply to this email to answer them directly.",
+    }),
+    text: [
+      `From: ${who}`,
+      `Topic: ${c.topicLabel}`,
+      "",
+      c.message,
+      "",
+      "Reply to this email to answer them directly.",
+    ].join("\n"),
   };
 }

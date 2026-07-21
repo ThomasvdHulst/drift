@@ -42,6 +42,10 @@ export interface EmailOptions {
   body: string[];
   /** Optional call-to-action button. */
   cta?: { label: string; url: string };
+  /** Optional quoted block, set off from the body by a sage rule. Used to echo a
+   *  person's own words back to them (the contact receipt) and to carry the
+   *  message itself in the owner's notification. Newlines are preserved. */
+  quote?: { label?: string; text: string };
   /** Optional small note under the body (e.g. "if you didn't request this..."). */
   note?: string;
 }
@@ -91,6 +95,29 @@ export function renderEmail(opts: EmailOptions): string {
       )}</td></tr>`
     : "";
 
+  // A quoted block: left sage rule, slightly inset, preserving the author's own
+  // line breaks. <br> after escaping, so the text can never inject markup.
+  const quote = opts.quote
+    ? `<tr><td style="padding:8px 40px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${
+                C.mat
+              };border-left:3px solid ${C.sage};border-radius:6px;">
+                <tr><td style="padding:14px 18px;">${
+                  opts.quote.label
+                    ? `<p style="margin:0 0 8px;font-family:${SANS};font-size:12px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:${C.soft};">${esc(
+                        opts.quote.label,
+                      )}</p>`
+                    : ""
+                }<p style="margin:0;font-family:${SANS};font-size:15px;line-height:1.65;color:${
+                  C.ink
+                };white-space:pre-wrap;">${esc(opts.quote.text).replace(
+                  /\r?\n/g,
+                  "<br>",
+                )}</p></td></tr>
+              </table>
+            </td></tr>`
+    : "";
+
   const note = opts.note
     ? `<tr><td style="padding:12px 40px 0;"><p style="margin:0;font-family:${SANS};font-size:13px;line-height:1.6;color:${C.soft};">${esc(
         opts.note,
@@ -132,6 +159,7 @@ export function renderEmail(opts: EmailOptions): string {
             ${paragraphs}
             </td>
           </tr>
+          ${quote}
           ${cta}
           ${note}
           <tr>

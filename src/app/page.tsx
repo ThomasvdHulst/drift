@@ -302,12 +302,21 @@ export default function Home() {
             {stats.stops === 1 ? "stop" : "stops"} mapped.
           </p>
         )}
-        <Link
-          href="/install"
-          className="text-xs text-ink-soft underline-offset-2 transition hover:text-accent-strong hover:underline"
-        >
-          On your phone? Add Drift to your home screen
-        </Link>
+        <p className="flex flex-wrap items-center justify-center gap-2 text-xs text-ink-soft">
+          <Link
+            href="/install"
+            className="underline-offset-2 transition hover:text-accent-strong hover:underline"
+          >
+            On your phone? Add Drift to your home screen
+          </Link>
+          <span aria-hidden="true">·</span>
+          <Link
+            href="/contact"
+            className="underline-offset-2 transition hover:text-accent-strong hover:underline"
+          >
+            Get in touch
+          </Link>
+        </p>
       </footer>
     </main>
   );
