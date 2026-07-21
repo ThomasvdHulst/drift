@@ -5,6 +5,35 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 **tested with success**. Keep the "Current status" line accurate. Full product detail is in
 `drift-spec.md`; working rules are in `CLAUDE.md`.
 
+> ## Current status — 2026-07-21
+>
+> **Drift is live** at <https://www.usedrift.org> (Vercel + Supabase) as an installable PWA,
+> in a small friends-and-colleagues beta. Two realms ship: **Encyclopedia** (Wikipedia) and
+> **Gallery** (Art Institute of Chicago, CC0).
+>
+> **Shipped:** Phases 1, 2, 4, 5, 6, 8, 9, 10, 13, 14, 15, 18, 19, 20 — the core drift loop,
+> directional threads, trails + the trail-map reward, the Atlas, the interest model, accounts
+> and cloud sync, friends and sharing, cross-realm doorways, focused drift (field + orbit),
+> branded email, and the guided tour.
+>
+> **Behind a flag:** Phase 17 **Papers** (arXiv) — set `NEXT_PUBLIC_REALM_PAPERS=1`. Phase 21
+> **ads** — built, kill switch `NEXT_PUBLIC_ADS_ENABLED` OFF; awaiting AdSense approval.
+>
+> **Deferred by choice:** Phase 3 (local Ollama AI), 7 (constellations), 11 (calm social feed),
+> 12 (native app), 16 (memory & reflection), M12 (Library/Today realms), M-Ad3 (ad-free tier).
+>
+> **Baseline:** 331 unit tests green, `npm run build` + `npm run lint` clean.
+>
+> **▶ Next:** open. Phase 16 (Memory & Reflection) is the last of the three brainstorm
+> directions and the most natural continuation; ads work resumes only if AdSense approves.
+>
+> _Full per-phase history is in the log below. Update BOTH when progress changes._
+
+---
+
+## Progress log (chronological, oldest first)
+
+
 > **Current status:** ✅ **Phases 1 & 2 complete** (M1–M5). Core loop, threads, trails, the
 > trail-map reward, localforage persistence, My Trails, homepage/seeds, extended read-more,
 > PNG/text export, the ~25-card nudge, dark mode, and the personal-stats view are all in.
@@ -215,7 +244,37 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > Search Console, crawler login, consent message, ids) are in the Phase 21 section. **320 tests**, build + lint
 > clean; Playwright verified on + off. Real ads await the owner's approved account.
 >
-> _(Update this line whenever progress changes.)_
+
+> 🧹 **Codebase & content cleanup pass — COMPLETE & verified (2026-07-21).** A whole-repo tidy: no new
+> features, no behaviour changes the user asked for. **Bugs fixed:** (1) `card.ts`'s `SOURCES` allowlist
+> omitted `"arxiv"`, so every Papers cardId was rewritten to `wikipedia:arxiv:…` on read, breaking that
+> realm's seen-set + reactions after a reload; both the type and the runtime list now derive from one
+> `SOURCE_IDS` tuple in `realms/types.ts`, with a round-trip test over every source. (2) A JSX whitespace
+> bug rendered "Encyclopediacards" on `/interests`. (3) The home page read "1 stops mapped". (4) My Trails
+> said "No liked trails yet" when a *realm* filter emptied the list. (5) The sync status reported "idle"
+> whenever the last of 12 sub-steps succeeded, masking earlier failures; it is now cycle-scoped. (6) The
+> `seen` cross-device union was O(n·m) and promoted every remote entry to newest, so FIFO decay evicted the
+> wrong titles; now a single pass (`unionSeen` in `seen.ts`, +6 tests). (7) `topicsCache` cached the
+> degraded empty result (indistinguishable from a real miss), freezing a page's topics forever, and grew
+> unbounded; now skipped + capped, and empty cached values self-heal. (8) The five `applyRemote*` blob
+> writers emitted their store event before the write settled. (9) A missing 404 page (`not-found.tsx`) meant
+> a bad URL showed Next's unstyled default. **Copy:** the landing claimed "at most one card is ever loaded
+> ahead", which the 12-card discover buffer contradicts (reworded to the true promise: nothing advances on
+> its own); `/privacy` said "everything" is stored locally when friends/shares are cloud-only; the tour's
+> one first-person line, a non-existent "Art" field, and hardcoded "Two realms" were fixed; Supabase's raw
+> "Invalid login credentials" and four other common auth errors now read in Drift's voice. **A11y:** named
+> the share dialog, made the thread-loading region a live region, matched the advance button's accessible
+> name to its visible label, fixed two `aria-label`s on unrole'd spans, bounded the focus banner. **Bounds:**
+> `maxLength` on trail-name + display-name inputs, clamps on friend-supplied names and long emails.
+> **Dead code:** `clearAllPending`, `BadRequestError`, `topicById`, `InstallShot` (+ its stale README),
+> `.m5b-test.mjs`, and three unnecessary exports; `fetchJson`/`fetchText` collapsed onto one retry core;
+> `focusToParams` is now actually used by the homepage (it and `/drift`'s parser had duplicate encodings).
+> **Stale comments** swept across 10 files. `plan.md`'s 210-line status block was split into a short
+> Current status + this log. **331 tests** (+9), build + lint clean (the old InstallShot lint warning is
+> gone); Playwright: core loop 27/28, features 15/20 and focus 12/12 with every remaining ✗ confirmed a
+> test-harness artifact, zero console errors on any route in light + dark, desktop + mobile.
+>
+
 
 ---
 

@@ -5,8 +5,7 @@ import { Monogram } from "@/components/BrandLogo";
 
 // The first-run welcome (Phase 20): a calm popup that says what Drift is and
 // offers the guided tour. Declining is one tap and it never nags (§2). Shown once
-// per account (the provider gates it on synced settings). This absorbs the old
-// FirstRunCoach intro.
+// per account (the provider gates it on synced settings).
 export function WelcomeModal({
   onStart,
   onDismiss,

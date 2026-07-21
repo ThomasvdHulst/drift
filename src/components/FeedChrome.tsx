@@ -11,7 +11,7 @@ import { DoorwayIcon } from "@/components/ThreadChips";
 
 // The trail rail: every stop as a marker, drift edges dashed/grey and thread
 // edges solid/sage, the current stop ringed. Click a marker to jump to it.
-export function TrailRail({
+function TrailRail({
   steps,
   pos,
   onJump,
@@ -170,7 +170,10 @@ export function FeedBottomNav({
         data-tour="advance"
         onClick={onAdvance}
         disabled={busy}
-        aria-label="Advance"
+        // Match the visible label (WCAG "Label in Name") so voice control can
+        // act on what the button actually says. While busy the label is the only
+        // accessible name, since the text is swapped for a spinner.
+        aria-label={busy ? "Loading" : viewingBack ? "Return" : "Drift onward"}
         className="inline-flex min-w-[9.5rem] items-center justify-center gap-2 rounded-full bg-accent px-6 py-2.5 text-sm font-semibold text-paper-raised shadow-sm transition hover:bg-accent-strong disabled:opacity-70"
       >
         {busy ? (

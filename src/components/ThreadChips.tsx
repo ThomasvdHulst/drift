@@ -118,7 +118,11 @@ export function ThreadChips({
 }) {
   if (loading) {
     return (
-      <div className="flex flex-wrap gap-2" aria-label="Loading threads">
+      <div
+        className="flex flex-wrap gap-2"
+        role="status"
+        aria-label="Loading threads"
+      >
         {[0, 1, 2].map((i) => (
           <div
             key={i}

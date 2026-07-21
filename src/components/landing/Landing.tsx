@@ -130,7 +130,7 @@ export function Landing() {
             <Step
               n={2}
               title="Steer"
-              body="Pull the visible threads to choose your own direction. You always see why the next card appeared: the thread you chose, or an honest 'drift.'"
+              body="Pull the visible threads to choose your own direction. You always see why the next card appeared: the thread you chose, or an honest “drift”."
             >
               <DirectionGlyphs />
             </Step>
@@ -176,7 +176,7 @@ export function Landing() {
             />
             <Principle
               title="Agency over autoplay"
-              body="Nothing advances on its own. At most one card is ever loaded ahead. No bottomless feed teasing 'just one more.'"
+              body="Nothing advances on its own. Every card waits for you to choose. No bottomless feed teasing “just one more”."
               icon={
                 <>
                   <path d="M8 5v14l11-7z" />
@@ -212,7 +212,7 @@ export function Landing() {
         <Reveal as="section" className="py-14 sm:py-20">
           <SectionHeading
             eyebrow="Vetted human knowledge"
-            title="Two realms, one calm reading room"
+            title="Vetted realms, one calm reading room"
           />
           <p className="mx-auto mb-8 max-w-xl text-center text-base leading-relaxed text-ink/75">
             Everything comes from sources curated by people, never scraped. AI is

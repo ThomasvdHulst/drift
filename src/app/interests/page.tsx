@@ -68,9 +68,9 @@ export default function InterestsPage() {
           <h1 className="mt-1 font-serif text-4xl text-ink">Your interests</h1>
           <p className="mt-1 max-w-md text-sm text-ink-soft">
             A thumbs up or down on{" "}
-            <span className="font-medium text-ink">Encyclopedia</span> cards
-            gently shapes which topics surface while you drift there, never which
-            threads you can pull. (Gallery isn&apos;t personalized.) Here&apos;s
+            <span className="font-medium text-ink">Encyclopedia</span>{" "}
+            cards gently shapes which topics surface while you drift there,
+            never which threads you can pull. (Gallery isn&apos;t personalized.) Here&apos;s
             the whole picture, and you can edit it.
           </p>
         </div>

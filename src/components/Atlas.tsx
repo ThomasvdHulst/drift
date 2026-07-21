@@ -114,7 +114,9 @@ export const Atlas = forwardRef<
             key={b.k}
             type="button"
             onClick={b.f}
-            aria-label={b.k === "+" ? "Zoom in" : b.k === "−" ? "Zoom out" : "Fit"}
+            aria-label={
+              b.k === "+" ? "Zoom in" : b.k === "−" ? "Zoom out" : "Fit to screen"
+            }
             className="flex h-8 w-8 items-center justify-center rounded-full border border-line bg-paper-raised text-ink-soft shadow-sm transition hover:border-accent/50 hover:text-accent-strong"
           >
             {b.k}

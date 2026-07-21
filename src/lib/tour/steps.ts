@@ -80,7 +80,7 @@ export const TOUR_STEPS: TourStep[] = [
     placement: "auto",
     spotlight: true,
     advance: "next",
-    title: "Two realms to wander",
+    title: "Realms to wander",
     body: "Encyclopedia is all of Wikipedia. Gallery is public domain art. Tap either to switch rooms.",
   },
   {
@@ -101,7 +101,7 @@ export const TOUR_STEPS: TourStep[] = [
     spotlight: true,
     advance: "next",
     title: "Or stay within a field",
-    body: "Keep a drift inside one subject, like Physics or Art. A calm way to go deep on a theme.",
+    body: "Keep a drift inside one subject, like Physics or Visual Arts. A calm way to go deep on a theme.",
   },
   {
     id: "start-options",
@@ -121,7 +121,7 @@ export const TOUR_STEPS: TourStep[] = [
     spotlight: true,
     advance: { route: TOUR_ROUTES.drift, match: "prefix" },
     title: "Start your first drift",
-    body: "Tap here to begin. I will meet you on the other side.",
+    body: "Tap here to begin. The tour picks up on the other side.",
     gestureHint: "tap",
   },
 

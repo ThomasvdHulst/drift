@@ -41,7 +41,13 @@ export function AccountButton() {
   return (
     <Link
       href="/account"
-      aria-label={user ? "Your account" : "Sign in"}
+      aria-label={
+        user
+          ? hasNew
+            ? "Your account, something new is waiting"
+            : "Your account"
+          : "Sign in"
+      }
       title={user ? (user.email ?? "Your account") : "Sign in"}
       className="fixed bottom-safe right-16 z-30 flex h-9 items-center justify-center rounded-full border border-line bg-paper-raised/90 text-ink-soft shadow-sm backdrop-blur transition hover:text-accent-strong"
     >
@@ -51,7 +57,7 @@ export function AccountButton() {
           {hasNew && (
             <span
               className="absolute right-1 top-1 h-2 w-2 rounded-full bg-accent ring-2 ring-paper-raised"
-              aria-label="Something new is waiting"
+              aria-hidden="true"
             />
           )}
         </span>

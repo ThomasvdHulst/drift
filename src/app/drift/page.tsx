@@ -432,7 +432,7 @@ export default function DriftPage() {
       } catch {
         if (!cancelled)
           setError(
-            "Couldn't reach the source. Check your connection and try again.",
+            "Couldn't load a card just now. Check your connection and try again.",
           );
       } finally {
         if (!cancelled) setInitialLoading(false);
@@ -848,11 +848,14 @@ export default function DriftPage() {
 
   // Resolve a page's tracked topics — from the client cache, else the topics API
   // (Lift Wing). Returns [] on any failure (the like still records, model just
-  // doesn't move). Cached so re-reacting costs nothing.
+  // doesn't move). Cached so re-reacting costs nothing. An empty cached value is
+  // treated as a miss and re-fetched: `[]` is also what a throttled/failed
+  // lookup returns, so trusting it would freeze that page's topics forever
+  // (older builds did cache empties; this self-heals them).
   async function resolveTopics(title: string): Promise<string[]> {
     try {
       const cached = await getCachedTopics(title);
-      if (cached) return cached;
+      if (cached && cached.length > 0) return cached;
     } catch {
       /* fall through to fetch */
     }
@@ -1364,9 +1367,9 @@ export default function DriftPage() {
   );
 }
 
-// "End & view trail" → the trail map. The reward for stopping: your journey drawn
-// as a meandering spine, with an editable name, stats, and save / like (M4).
-// Export + copy-as-text arrive in M5.
+// "End & view trail" → the trail map. The reward for stopping (§2.3): your journey
+// drawn as a meandering spine, with an editable name, stats, save / like, PNG
+// export and copy-as-text.
 function EndOverlay({
   history,
   realm,
@@ -1492,6 +1495,7 @@ function EndOverlay({
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             }}
             aria-label="Trail name"
+            maxLength={80}
             className="mt-1 w-full rounded-lg bg-transparent text-center font-serif text-2xl leading-tight text-ink outline-none transition focus:bg-paper focus:ring-1 focus:ring-accent/40 sm:text-3xl"
           />
           <p className="mt-1.5 text-sm text-ink-soft">{statLine}</p>

@@ -152,7 +152,7 @@ export function TourOverlay({
           : "bottom";
 
   // Block stray wheel/touch so the feed's gesture handler never reads a tour tap
-  // as a drift (mirrors FirstRunCoach). Only the forced-swipe steps let gestures
+  // as a drift. Only the forced-swipe steps let gestures
   // pass through to the app beneath; other non-spotlight steps (the intro card,
   // the outro) keep a calm blocking scrim so the app shows but isn't touchable.
   const passThrough =
@@ -303,7 +303,7 @@ export function TourOverlay({
                 </button>
               ) : (
                 <span className="text-xs italic text-ink-soft">
-                  {notFound ? "One moment…" : "Try it above"}
+                  {notFound ? "One moment…" : "Try it now"}
                 </span>
               )
             ) : (

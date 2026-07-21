@@ -32,4 +32,27 @@ describe("handleError", () => {
     expect(handleError("a".repeat(31))).toMatch(/30 characters/);
     expect(handleError("bad-char")).toMatch(/lowercase letters/);
   });
+
+  // handleError re-derives the rule as three separate checks rather than reusing
+  // the regex, so the two can disagree. Sign-up would then either reject a handle
+  // with no reason given, or accept one the DB constraint rejects.
+  it("agrees with isValidHandle on every case", () => {
+    const cases = [
+      "ada",
+      "thomas_01",
+      "a".repeat(30),
+      "a".repeat(31),
+      "ab",
+      "",
+      "Ada",
+      "has space",
+      "bad-char",
+      "emoji_🐙",
+      "___",
+      "123",
+    ];
+    for (const h of cases) {
+      expect(handleError(h) === null).toBe(isValidHandle(h));
+    }
+  });
 });

@@ -1,5 +1,5 @@
-// Core data model (see drift-spec.md §7). Phase 1 uses Card / RelatedCandidate /
-// Thread; TrailStep / Trail / SessionStats are defined now but exercised in Phase 2.
+// Core data model (see drift-spec.md §7). Card / RelatedCandidate / Thread drive
+// the feed; TrailStep / Trail / SessionStats drive saved trails and the stats view.
 
 import type { SourceId, RealmId } from "./realms/types";
 

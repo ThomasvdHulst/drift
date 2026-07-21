@@ -6,6 +6,7 @@ import {
   cardId,
   normalizeSeenEntry,
 } from "./card";
+import { SOURCE_IDS } from "./realms/types";
 import type { Card } from "./types";
 
 function card(partial: Partial<Card>): Card {
@@ -58,5 +59,16 @@ describe("normalizeSeenEntry (legacy migration)", () => {
     expect(normalizeSeenEntry("Blade Runner: The Final Cut")).toBe(
       "wikipedia:Blade Runner: The Final Cut",
     );
+  });
+
+  // Regression guard: a source missing from card.ts's allowlist silently turns
+  // every one of its cardIds into "wikipedia:<source>:<id>" on read, which breaks
+  // that realm's seen-set and reaction map after a reload. Deriving both from
+  // SOURCE_IDS makes this impossible; this test keeps it that way.
+  it("round-trips a cardId from EVERY known source", () => {
+    for (const source of SOURCE_IDS) {
+      const id = toCardId(source, "some-native-id");
+      expect(normalizeSeenEntry(id)).toBe(id);
+    }
   });
 });

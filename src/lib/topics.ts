@@ -57,13 +57,9 @@ export const TOPICS: Topic[] = [
   { id: "performing-arts", label: "Performing Arts", keyword: "performing-arts", oresKey: "Culture.Performing arts" },
 ];
 
-const BY_ID = new Map(TOPICS.map((t) => [t.id, t]));
 const BY_KEYWORD = new Map(TOPICS.map((t) => [t.keyword, t]));
 const BY_ORES = new Map(TOPICS.map((t) => [t.oresKey, t]));
 
-export function topicById(id: string): Topic | undefined {
-  return BY_ID.get(id);
-}
 export function topicByKeyword(keyword: string): Topic | undefined {
   return BY_KEYWORD.get(keyword);
 }

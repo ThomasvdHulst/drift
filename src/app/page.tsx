@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { listTrails, getSettings, setSettings } from "@/lib/storage";
 import { pickRandom } from "@/lib/pick";
 import { TOPICS, type Topic } from "@/lib/topics";
+import { focusToParams, type Focus } from "@/lib/focus";
 import { listRealms, getRealm } from "@/lib/realms";
 import type { RealmId, SeedTile } from "@/lib/realms/types";
 import { RealmTabs } from "@/components/RealmTabs";
@@ -70,24 +71,27 @@ export default function Home() {
   // Start a "focused drift" confined to one field (Phase 18, Encyclopedia only):
   // drift stays within this ORES topic instead of wandering the whole encyclopedia.
   function openField(topic: Topic) {
-    const params = new URLSearchParams({
-      realm: "encyclopedia",
-      focus: "field",
+    startFocusedDrift({
+      kind: "field",
       bucket: topic.keyword,
-      seed: topic.label,
+      label: topic.label,
     });
-    if (!keepTrail) params.set("mode", "endless");
-    router.push(`/drift?${params.toString()}`);
   }
 
   // Start a page orbit (Phase 18, Encyclopedia only): begin at this page and
   // drift in its widening neighbourhood.
   function openOrbit(title: string) {
+    startFocusedDrift({ kind: "orbit", seedTitle: title, seedLabel: title });
+  }
+
+  // Both focused-drift entry points share one encoding — `focusToParams` in
+  // lib/focus.ts, the same module /drift parses with. Hand-rolling the params
+  // here (as this page used to) meant the writer and the reader could silently
+  // drift apart.
+  function startFocusedDrift(focus: Focus) {
     const params = new URLSearchParams({
       realm: "encyclopedia",
-      focus: "orbit",
-      title,
-      seed: title,
+      ...focusToParams(focus),
     });
     if (!keepTrail) params.set("mode", "endless");
     router.push(`/drift?${params.toString()}`);
@@ -294,8 +298,8 @@ export default function Home() {
         {stats && (
           <p className="text-sm text-ink-soft">
             You&apos;ve saved {stats.trails}{" "}
-            {stats.trails === 1 ? "trail" : "trails"} · {stats.stops} stops
-            mapped.
+            {stats.trails === 1 ? "trail" : "trails"} · {stats.stops}{" "}
+            {stats.stops === 1 ? "stop" : "stops"} mapped.
           </p>
         )}
         <Link

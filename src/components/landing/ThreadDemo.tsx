@@ -181,8 +181,8 @@ export function ThreadDemo() {
           {pulls === 0
             ? "Tap a thread above. You choose every turn."
             : pulls < 3
-              ? `${pulls} ${pulls === 1 ? "stop" : "stops"} so far.`
-              : `${pulls} stops, and this little wander is becoming a trail.`}
+              ? `${pulls + 1} stops so far.`
+              : `${pulls + 1} stops, and this little wander is becoming a trail.`}
         </p>
       </div>
     </div>

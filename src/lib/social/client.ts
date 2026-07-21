@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import { getSupabase } from "@/lib/supabase/client";
-import { normalizeHandle, isValidHandle } from "./handles";
+import { normalizeHandle, handleError } from "./handles";
 import type { FriendRequest } from "./friends";
 
 export interface Profile {
@@ -57,7 +57,8 @@ export async function upsertProfile(
   const sb = getSupabase();
   if (!sb) return { error: "Cloud isn't set up on this device." };
   const handle = normalizeHandle(rawHandle);
-  if (!isValidHandle(handle)) return { error: "That handle isn't valid." };
+  const invalid = handleError(handle);
+  if (invalid) return { error: invalid };
   try {
     const id = await meId();
     if (!id) return { error: "You're not signed in." };

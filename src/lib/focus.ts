@@ -15,7 +15,8 @@ export type Focus =
   | { kind: "orbit"; seedTitle: string; seedLabel: string };
 
 /** The URL query params that start this focused drift (appended to /drift?…).
- *  Kept here so the homepage and any deep link agree on one encoding. */
+ *  The homepage writes with this and /drift reads with `focusFromParams` below,
+ *  so the two halves of the encoding can't drift apart. */
 export function focusToParams(focus: Focus): Record<string, string> {
   if (focus.kind === "field") {
     return { focus: "field", bucket: focus.bucket, seed: focus.label };

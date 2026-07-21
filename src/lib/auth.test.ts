@@ -45,13 +45,22 @@ describe("humanizeAuthError", () => {
     ).toMatch(/reset email/i);
   });
 
-  it("passes through informative 4xx messages unchanged", () => {
+  it("restates the common 4xx messages in Drift's voice", () => {
+    // These are the two errors a real person hits most often, so they must not
+    // reach the screen as raw Supabase strings.
     expect(
       humanizeAuthError({ status: 400, message: "Invalid login credentials" }, "generic"),
-    ).toBe("Invalid login credentials");
+    ).toMatch(/do not match/i);
     expect(
       humanizeAuthError({ status: 422, message: "User already registered" }, "signup"),
-    ).toBe("User already registered");
+    ).toMatch(/already an account/i);
+  });
+
+  it("passes through an unrecognized 4xx message unchanged", () => {
+    // A message we haven't restated must never be swallowed.
+    expect(
+      humanizeAuthError({ status: 400, message: "Some new upstream rule" }, "generic"),
+    ).toBe("Some new upstream rule");
   });
 
   it("handles empty / missing errors gracefully", () => {

@@ -36,7 +36,7 @@ const ADS = adsConfig();
 export const metadata: Metadata = {
   title: "Drift: pull a thread, see where it goes",
   description:
-    "A calm feed of Wikipedia knowledge cards where you are the algorithm. Pull threads to steer your own rabbit hole.",
+    "A calm feed of knowledge cards where you are the algorithm. Pull threads to steer your own rabbit hole.",
   applicationName: "Drift",
   // Installable-web-app hints (Phase 13). The manifest (app/manifest.ts), favicon
   // (app/icon.svg + app/favicon.ico), and Apple touch icon (app/apple-icon.png)

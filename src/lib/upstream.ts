@@ -43,14 +43,17 @@ export interface FetchJsonOptions {
 }
 
 /**
- * Fetch JSON, optionally spaced through a gate and retrying transient
+ * The one request core: optionally spaced through a gate, retrying transient
  * rate-limit / overload responses (429, 503) with jittered backoff (honoring
- * `Retry-After`). Throws on a non-retryable or exhausted error.
+ * `Retry-After`). Returns the OK response; throws on a non-retryable or
+ * exhausted error. `fetchJson` / `fetchText` are thin parsers over this, so the
+ * fiddly retry policy exists in exactly one place.
  */
-export async function fetchJson(
+async function fetchUpstream(
   url: string,
-  opts: FetchJsonOptions = {},
-): Promise<unknown> {
+  opts: FetchJsonOptions,
+  defaultHeaders: Record<string, string>,
+): Promise<Response> {
   // Keep retries shallow: deep retry × backoff compounds with the client's own
   // retry and can freeze the UI for tens of seconds under sustained throttling.
   const { headers = {}, gate, retries = 2, sleep = defaultSleep, timeoutMs } =
@@ -59,11 +62,11 @@ export async function fetchJson(
   for (let attempt = 0; ; attempt++) {
     if (gate) await gate.next(sleep);
     const res = await fetch(url, {
-      headers: { Accept: "application/json", ...headers },
+      headers: { ...defaultHeaders, ...headers },
       cache: "no-store",
       signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
     });
-    if (res.ok) return res.json();
+    if (res.ok) return res;
 
     const retryable = res.status === 429 || res.status === 503;
     if (retryable && attempt < retries) {
@@ -79,36 +82,21 @@ export async function fetchJson(
   }
 }
 
-/**
- * Like fetchJson, but returns the raw response text — for sources that speak XML
- * rather than JSON (arXiv's Atom feed). Same gate + bounded 429/503 retry.
- */
+/** Fetch JSON through the shared gate + retry core. */
+export async function fetchJson(
+  url: string,
+  opts: FetchJsonOptions = {},
+): Promise<unknown> {
+  const res = await fetchUpstream(url, opts, { Accept: "application/json" });
+  return res.json();
+}
+
+/** Fetch raw response text — for sources that speak XML rather than JSON
+ *  (arXiv's Atom feed). Same gate + bounded 429/503 retry. */
 export async function fetchText(
   url: string,
   opts: FetchJsonOptions = {},
 ): Promise<string> {
-  const { headers = {}, gate, retries = 2, sleep = defaultSleep, timeoutMs } =
-    opts;
-
-  for (let attempt = 0; ; attempt++) {
-    if (gate) await gate.next(sleep);
-    const res = await fetch(url, {
-      headers,
-      cache: "no-store",
-      signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
-    });
-    if (res.ok) return res.text();
-
-    const retryable = res.status === 429 || res.status === 503;
-    if (retryable && attempt < retries) {
-      const retryAfter = Number(res.headers.get("retry-after"));
-      const base =
-        Number.isFinite(retryAfter) && retryAfter > 0
-          ? Math.min(retryAfter * 1000, 1500)
-          : 300 * (attempt + 1);
-      await sleep(base + Math.floor(Math.random() * 200));
-      continue;
-    }
-    throw new Error(`Upstream responded ${res.status}`);
-  }
+  const res = await fetchUpstream(url, opts, {});
+  return res.text();
 }

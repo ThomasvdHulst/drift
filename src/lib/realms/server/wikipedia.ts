@@ -1,7 +1,6 @@
-// Server-side Wikipedia content adapter. This is the existing route logic
-// relocated behind functions so both the Encyclopedia and Today realms can share
-// it (Today's cards *are* Wikipedia articles). No behaviour change — the generic
-// /api/realm/[realm]/* routes call these instead of the old /api/wiki/* routes.
+// Server-side Wikipedia content adapter: the Encyclopedia realm's discover /
+// related / summary / extended implementations, behind plain functions so the
+// generic /api/realm/[realm]/* routes stay source-agnostic.
 
 import { wikiQuery, CARD_PROPS } from "@/lib/wiki-server";
 import {

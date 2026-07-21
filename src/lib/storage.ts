@@ -220,14 +220,6 @@ export async function markAllDirtyForAdoption(): Promise<void> {
   });
 }
 
-/** Account switch on one device: drop all pending so the previous account's
- *  un-pushed edits don't bleed into the new account. */
-export function clearAllPending(): Promise<void> {
-  return writeSyncState((s) => {
-    s.journal = {};
-  });
-}
-
 /** Reset every store's pull cursor (e.g. on first sign-in / account switch, to
  *  pull the account's full set). */
 export function resetAllCursors(): Promise<void> {
@@ -284,7 +276,8 @@ export async function listTrails(): Promise<Trail[]> {
 }
 
 export async function getTrail(id: string): Promise<Trail | null> {
-  const all = await listTrails();
+  // Read raw: listTrails() sorts for display, which a lookup by id doesn't need.
+  const all = (await db().getItem<Trail[]>(KEY.trails)) ?? [];
   return all.find((t) => t.id === id) ?? null;
 }
 
@@ -387,11 +380,9 @@ export function setSettings(patch: Settings): Promise<void> {
 export function applyRemoteSettings(settings: Settings): Promise<void> {
   settingsChain = settingsChain
     .then(() => db().setItem(KEY.settings, settings))
-    .then(() => {})
+    .then(() => emitStore("settings", "remote"))
     .catch(() => {});
-  const p = settingsChain;
-  emitStore("settings", "remote");
-  return p;
+  return settingsChain;
 }
 
 // ----- Interest model (M9) -----
@@ -417,11 +408,9 @@ export function setInterest(interest: Interest): Promise<void> {
 export function applyRemoteInterest(interest: Interest): Promise<void> {
   interestChain = interestChain
     .then(() => db().setItem(KEY.interests, interest))
-    .then(() => {})
+    .then(() => emitStore("interests", "remote"))
     .catch(() => {});
-  const p = interestChain;
-  emitStore("interests", "remote");
-  return p;
+  return interestChain;
 }
 
 export async function getReactions(): Promise<Record<string, Reaction>> {
@@ -461,14 +450,16 @@ export function applyRemoteReactions(
 ): Promise<void> {
   reactionChain = reactionChain
     .then(() => db().setItem(KEY.reactions, reactions))
-    .then(() => {})
+    .then(() => emitStore("reactions", "remote"))
     .catch(() => {});
-  const p = reactionChain;
-  emitStore("reactions", "remote");
-  return p;
+  return reactionChain;
 }
 
 // Per-title topic cache, so re-reacting to a page costs no extra API call.
+// Bounded like every other store: a page's topic labels are stable, but the set
+// of pages you can react to is not, so this would otherwise grow forever and be
+// rewritten in full on every reaction.
+const TOPICS_CACHE_CAP = 500;
 
 export async function getCachedTopics(
   title: string,
@@ -480,12 +471,24 @@ export async function getCachedTopics(
 
 let topicsCacheChain: Promise<void> = Promise.resolve();
 
+/** Cache a page's topic labels. Callers must NOT pass an empty array: the topics
+ *  API returns `[]` for a genuine miss AND for any upstream failure, so caching
+ *  one would permanently freeze a page's topics at "none" and stop the interest
+ *  model ever learning from it. */
 export function cacheTopics(title: string, topics: string[]): Promise<void> {
+  if (!title || topics.length === 0) return topicsCacheChain;
   topicsCacheChain = topicsCacheChain
     .then(async () => {
       const all =
         (await db().getItem<Record<string, string[]>>(KEY.topicsCache)) ?? {};
+      delete all[title]; // re-insert so a refreshed entry counts as newest
       all[title] = topics;
+      const keys = Object.keys(all);
+      if (keys.length > TOPICS_CACHE_CAP) {
+        // String keys keep insertion order, so the head is the oldest.
+        for (const k of keys.slice(0, keys.length - TOPICS_CACHE_CAP))
+          delete all[k];
+      }
       await db().setItem(KEY.topicsCache, all);
     })
     .catch(() => {});
@@ -523,11 +526,9 @@ export function persistSeen(titles: string[]): Promise<void> {
 export function applyRemoteSeen(list: string[]): Promise<void> {
   seenChain = seenChain
     .then(() => db().setItem(KEY.seen, list))
-    .then(() => {})
+    .then(() => emitStore("seen", "remote"))
     .catch(() => {});
-  const p = seenChain;
-  emitStore("seen", "remote");
-  return p;
+  return seenChain;
 }
 
 // ----- Session stats -----
@@ -559,9 +560,7 @@ export function recordSession(stats: SessionStats): Promise<void> {
 export function applyRemoteSessions(list: SessionStats[]): Promise<void> {
   sessionChain = sessionChain
     .then(() => db().setItem(KEY.sessions, list.slice(-300)))
-    .then(() => {})
+    .then(() => emitStore("sessions", "remote"))
     .catch(() => {});
-  const p = sessionChain;
-  emitStore("sessions", "remote");
-  return p;
+  return sessionChain;
 }

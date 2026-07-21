@@ -144,6 +144,7 @@ export default function TrailDetailPage() {
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             }}
             aria-label="Trail name"
+            maxLength={80}
             className="w-full rounded-lg bg-transparent font-serif text-3xl leading-tight text-ink outline-none transition focus:bg-paper-raised focus:ring-1 focus:ring-accent/40"
           />
           <p className="mt-1 text-sm text-ink-soft">{statLine}</p>

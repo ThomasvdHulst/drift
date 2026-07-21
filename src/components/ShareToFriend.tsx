@@ -76,6 +76,7 @@ export function ShareToFriend({
       onClick={onClose}
       role="dialog"
       aria-modal="true"
+      aria-label="Send to a friend"
     >
       <div
         className="w-full max-w-md rounded-2xl border border-line bg-paper-raised p-6 shadow-xl"

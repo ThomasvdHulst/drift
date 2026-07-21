@@ -1,4 +1,5 @@
 import { TOPICS, type Topic, type TopicId } from "./topics";
+import { pickRandom } from "./pick";
 
 // ---------------------------------------------------------------------------
 // Pure topic-sampling + list helpers for the "interesting random" drift buffer.
@@ -16,8 +17,7 @@ export function randomOffset(rng: () => number = Math.random, max = 400): number
 
 /** Uniformly-random topic over the whole registry (cold start / serendipity). */
 export function uniformTopic(rng: () => number = Math.random): Topic {
-  const i = Math.min(Math.floor(rng() * TOPICS.length), TOPICS.length - 1);
-  return TOPICS[i];
+  return pickRandom(TOPICS, rng)!; // TOPICS is a non-empty static registry
 }
 
 /**

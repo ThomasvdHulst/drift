@@ -36,6 +36,7 @@ npm run build            # production build — also the type-check gate
 npm run lint             # eslint
 npm run test             # vitest (pure-logic unit tests)
 npm run verify:supabase  # check the cloud backend (only if you set it up)
+npm run verify:social    # check the friends/sharing tables + RLS
 ```
 
 ## Accounts & cloud sync

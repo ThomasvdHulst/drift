@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
 // Realms — the source abstraction (Phase 5). A *realm* is a "room" the user
-// browses in (Encyclopedia / Gallery / Library / Today); a *source* is where a
-// card's content actually comes from. They're separate because one source can
-// back more than one realm (Wikipedia backs both Encyclopedia and Today).
+// browses in (Encyclopedia / Gallery / Papers); a *source* is where a card's
+// content actually comes from. They're kept separate so one source could back
+// more than one realm without the card model caring.
 //
 // This is a leaf module: it imports nothing from the rest of the app, so it can
 // be referenced by `lib/types.ts` without a cycle. Behaviour (discover
@@ -10,10 +10,16 @@
 // interest model etc.
 // ---------------------------------------------------------------------------
 
+/** Every content source, as one runtime tuple. `SourceId` is derived from it so
+ *  the type and the runtime allowlist in `card.ts` can never drift apart — a new
+ *  source added here is immediately recognised by `normalizeSeenEntry`, which
+ *  would otherwise mangle its cardIds into "wikipedia:<source>:<id>". */
+export const SOURCE_IDS = ["wikipedia", "artic", "gutenberg", "arxiv"] as const;
+
 /** Where a Card's content originates. Drives cardId, the seen-set, and which
  *  card body renders. `Card.source` is optional and defaults to "wikipedia" so
  *  every trail saved before Phase 5 still resolves. */
-export type SourceId = "wikipedia" | "artic" | "gutenberg" | "arxiv";
+export type SourceId = (typeof SOURCE_IDS)[number];
 
 /** Which room a drift session is in. Drives the homepage tab, the accent, the
  *  discover strategy, and the My-Trails badge. `Trail.realm` defaults to

@@ -30,7 +30,9 @@ export interface MergeResult<T> {
   pulledAt: string;
 }
 
-function toMs(iso: string): number {
+/** Parse a server timestamp to ms, treating anything malformed as the epoch so
+ *  a bad clock value can never win a comparison. Shared with the replicator. */
+export function toMs(iso: string): number {
   const t = Date.parse(iso);
   return Number.isNaN(t) ? 0 : t;
 }

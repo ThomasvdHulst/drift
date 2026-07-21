@@ -174,7 +174,9 @@ export default function MyTrailsPage() {
         </div>
       ) : shown.length === 0 ? (
         <p className="mt-16 text-center text-ink-soft">
-          No liked trails yet.
+          {filter === "liked"
+            ? "No liked trails yet."
+            : "No trails in that realm yet."}
         </p>
       ) : (
         <ul className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

@@ -65,5 +65,22 @@ export function humanizeAuthError(
     }
     return "Something went wrong on our end. Please try again in a little while.";
   }
-  return msg;
+  return FRIENDLY_4XX[msg] ?? msg;
 }
+
+// Supabase's own 4xx strings are accurate but clinical ("Invalid login
+// credentials"), and they are the errors a real person hits most often. Restate
+// the common ones in Drift's voice; anything unlisted still passes through
+// verbatim, so a new upstream message is never swallowed.
+const FRIENDLY_4XX: Record<string, string> = {
+  "Invalid login credentials":
+    "That email and password do not match. Try again, or reset your password below.",
+  "User already registered":
+    "There is already an account with that email. Try signing in instead.",
+  "Email not confirmed":
+    "Please confirm your email first. Check your inbox for the link we sent.",
+  "Password should be at least 6 characters":
+    "Please choose a password of at least 6 characters.",
+  "New password should be different from the old password":
+    "That is already your current password. Please choose a different one.",
+};

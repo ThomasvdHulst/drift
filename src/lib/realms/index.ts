@@ -106,7 +106,6 @@ const papers: RealmClient = {
   bucketLabel: (id) => arxivBucketById(id)?.label ?? id,
 };
 
-// Additional realms (library/today) are registered in M12.
 const REALMS: Partial<Record<RealmId, RealmClient>> = {
   encyclopedia,
   gallery,

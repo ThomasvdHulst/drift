@@ -126,11 +126,24 @@ npm run dev             # start dev server → http://localhost:3000
 npm run build           # production build — also the primary type-check gate
 npm run lint            # eslint / next lint
 npm run test            # vitest (unit tests for pure lib logic)
+npm run test:watch      # vitest in watch mode
 npm run verify:supabase # Phase 9: check the cloud backend (tables + RLS + upserts)
+npm run verify:social   # Phase 10: check the friends/sharing tables + RLS
 ```
 
-(These are established during Phase 1 scaffolding; keep this section accurate as scripts
-are added.)
+(Keep this section accurate as scripts are added.)
+
+**Testing the app in a browser while another dev server is running.** The hosted app is
+login-gated whenever Supabase env is present. To exercise the feed without signing in,
+launch an isolated instance with the cloud vars blanked (shell env wins over `.env`):
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL= NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY= npm run dev
+```
+
+Next 16 allows only one `next dev` per directory. If one is already running, copy the repo
+to a scratch dir (hard-linking `node_modules`, since Turbopack rejects a symlinked one that
+points outside the project root) and run `npx next dev -p <other-port>` there.
 
 ## 8. Working agreement — how Claude must behave here
 

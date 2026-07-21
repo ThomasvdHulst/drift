@@ -27,9 +27,6 @@ import {
   arxivExtended,
 } from "./arxiv";
 
-/** Thrown for an invalid/injection bucket so the route can answer 400. */
-export class BadRequestError extends Error {}
-
 export interface ServerRealm {
   /** Reject unknown buckets (injection guard — bucket is interpolated upstream). */
   validateBucket(bucket: string): boolean;

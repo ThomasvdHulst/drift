@@ -1,5 +1,5 @@
 import type { Card } from "./types";
-import type { SourceId } from "./realms/types";
+import { SOURCE_IDS, type SourceId } from "./realms/types";
 
 // ---------------------------------------------------------------------------
 // Card identity across realms (Phase 5). Pure helpers, unit-tested.
@@ -10,7 +10,7 @@ import type { SourceId } from "./realms/types";
 // defaults to "wikipedia" (back-compat with trails/seen saved before realms).
 // ---------------------------------------------------------------------------
 
-const SOURCES: readonly SourceId[] = ["wikipedia", "artic", "gutenberg"];
+const SOURCES: readonly string[] = SOURCE_IDS;
 
 /** The card's source, defaulting to Wikipedia for pre-Phase-5 data. */
 export function cardSource(card: Pick<Card, "source">): SourceId {
@@ -43,7 +43,7 @@ export function normalizeSeenEntry(entry: string): string {
   const idx = entry.indexOf(":");
   if (idx > 0) {
     const prefix = entry.slice(0, idx);
-    if ((SOURCES as readonly string[]).includes(prefix)) return entry;
+    if (SOURCES.includes(prefix)) return entry;
   }
   return toCardId("wikipedia", entry);
 }

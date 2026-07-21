@@ -43,11 +43,12 @@ import {
   type StoreEvent,
   type Settings,
 } from "@/lib/storage";
-import { pushSeen } from "@/lib/seen";
+import { unionSeen } from "@/lib/seen";
 import {
   mergeCollection,
   mergeSessions,
   indexBy,
+  toMs,
   type RemoteRecord,
 } from "./merge";
 import type { Interest, Reaction } from "@/lib/interest";
@@ -58,7 +59,7 @@ const PUSH_DEBOUNCE_MS = 1500;
 
 export type SyncStatus = "disabled" | "idle" | "syncing" | "offline";
 
-const newer = (a: string, b: string) => Date.parse(a) > Date.parse(b);
+const newer = (a: string, b: string) => toMs(a) > toMs(b);
 
 // ---- trail ⇄ row mapping (sync columns live only on the row) ----
 type TrailRow = {
@@ -122,6 +123,17 @@ function setStatus(s: SyncStatus) {
   }
 }
 
+// A sync cycle runs 12 sub-steps (6 pulls + 6 pushes). Each one used to set its
+// own terminal status, so a later success silently overwrote an earlier
+// failure's "offline" and the account page reported a clean sync that wasn't.
+// Sub-steps now only report failure into this cycle-scoped flag; `run()` sets the
+// one terminal status at the end.
+let cycleFailed = false;
+
+function markCycleFailed() {
+  cycleFailed = true;
+}
+
 export function getSyncStatus(): SyncStatus {
   return status;
 }
@@ -162,9 +174,8 @@ async function pullCollection<T>(spec: CollectionSpec<T>): Promise<void> {
     const merged = mergeCollection(localMap, remote, dirty, cursor);
     if (merged.changedIds.length) await spec.applyRemote(merged.next);
     if (merged.pulledAt !== cursor) await setCursor(spec.store, merged.pulledAt);
-    setStatus("idle");
   } catch {
-    setStatus("offline");
+    markCycleFailed();
   }
 }
 
@@ -201,9 +212,8 @@ async function pushCollection<T>(spec: CollectionSpec<T>): Promise<void> {
       upserts: upsertIds,
       deletes: deleteIds,
     });
-    setStatus("idle");
   } catch {
-    setStatus("offline"); // keep the journal; retry on next change / focus
+    markCycleFailed(); // keep the journal; retry on next change / focus
   }
 }
 
@@ -276,9 +286,8 @@ async function pullBlob<T>(spec: BlobSpec<T>): Promise<void> {
         await setCursor(spec.store, remoteAt);
       }
     }
-    setStatus("idle");
   } catch {
-    setStatus("offline");
+    markCycleFailed();
   }
 }
 
@@ -298,9 +307,8 @@ async function pushBlob<T>(spec: BlobSpec<T>): Promise<void> {
     if (error) throw error;
     await setBlobDirty(spec.store, false);
     if (data?.updated_at) await setCursor(spec.store, data.updated_at as string);
-    setStatus("idle");
   } catch {
-    setStatus("offline");
+    markCycleFailed();
   }
 }
 
@@ -318,11 +326,7 @@ const seenSpec: BlobSpec<string[]> = {
   store: "seen",
   loadLocal: loadSeen,
   applyRemote: applyRemoteSeen,
-  union: (local, remote) => {
-    let merged = local;
-    for (const s of remote) merged = pushSeen(merged, s);
-    return merged;
-  },
+  union: unionSeen,
 };
 const sessionsSpec: BlobSpec<SessionStats[]> = {
   store: "sessions",
@@ -357,11 +361,16 @@ async function run(withPull: boolean): Promise<void> {
     return;
   }
   inFlight = true;
+  cycleFailed = false;
   try {
     if (withPull) await pullAll();
     await pushAll();
   } finally {
     inFlight = false;
+    // One terminal status for the whole cycle: any failed sub-step means we are
+    // not actually in sync, so don't report "idle" just because the last store
+    // happened to succeed.
+    if (running) setStatus(cycleFailed ? "offline" : "idle");
     if (rerun) {
       rerun = false;
       void run(false);

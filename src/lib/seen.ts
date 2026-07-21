@@ -17,3 +17,27 @@ export function pushSeen(
   next.push(title);
   return next.length > cap ? next.slice(next.length - cap) : next;
 }
+
+/**
+ * Union another device's seen-list into this one (cloud sync, Phase 9).
+ *
+ * Deliberately NOT `remote.reduce(pushSeen)`: that is O(n·m) with a fresh array
+ * per entry, and it promotes every remote title to "most recently seen", so the
+ * other device's stale entries would outrank this device's genuinely-recent ones
+ * and the cap would decay the wrong ones. This keeps local recency order intact
+ * and appends only titles this device hasn't seen, in one pass.
+ */
+export function unionSeen(
+  local: string[],
+  remote: string[],
+  cap = SEEN_CAP,
+): string[] {
+  const known = new Set(local);
+  const merged = local.slice();
+  for (const title of remote) {
+    if (!title || known.has(title)) continue;
+    known.add(title);
+    merged.push(title);
+  }
+  return merged.length > cap ? merged.slice(merged.length - cap) : merged;
+}

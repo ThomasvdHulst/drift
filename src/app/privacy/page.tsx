@@ -62,10 +62,12 @@ export default function PrivacyPage() {
 
         <Section title="Where it lives">
           <p className="text-ink-soft">
-            Everything is stored on your device first, and (when you are signed
-            in) synced privately to a Supabase database so your trails follow you
-            between devices. Your data is yours alone: it is protected so that
-            only your account can read or change it.
+            Your trails, interests, and settings are stored on your device
+            first, and (when you are signed in) synced privately to a Supabase
+            database so they follow you between devices. Friends and anything
+            shared with you live only in that database, so they are waiting
+            whenever you sign in. Your data is yours alone: it is protected so
+            that only your account can read or change it.
           </p>
         </Section>
 

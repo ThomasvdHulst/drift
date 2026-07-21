@@ -235,7 +235,7 @@ export default function FriendsPage() {
       )}
 
       {/* Friends */}
-      <Group title={friends.length ? "Your friends" : "Your friends"}>
+      <Group title="Your friends">
         {friends.length === 0 ? (
           <p className="py-2 text-sm text-ink-soft">
             No friends yet. Search a handle above to add someone.

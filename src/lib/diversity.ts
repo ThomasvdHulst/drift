@@ -3,10 +3,12 @@ import { isJunk } from "./wiki";
 import { cardId } from "./card";
 
 // ---------------------------------------------------------------------------
-// Heuristic thread selection (the non-AI default that "always works").
-// Pick up to N candidates that are diverse from each other, so we never show
-// three biographies / three genera in a row. Phase 3 swaps this greedy class
-// heuristic for embedding-based max-min diversity behind a flag.
+// Heuristic thread selection: pick up to N candidates that are diverse from each
+// other, so we never show three biographies / three genera in a row.
+//
+// This is the general fallback. Encyclopedia cards normally go through the
+// directional classifier (lib/threads.ts) and Gallery through selectFacetThreads;
+// selectDiverseThreads runs when neither applies. Cheap, deterministic, no AI.
 // ---------------------------------------------------------------------------
 
 export interface SelectOptions {

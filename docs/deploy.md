@@ -93,7 +93,7 @@ stable production alias). In the Supabase dashboard → **Authentication → URL
    there for the exact subjects). These match Drift's look and the welcome/goodbye emails. Make sure
    the **Site URL** above is your real origin (`https://www.usedrift.org`) so the confirm/reset links
    point at the live app.
-5. **Google sign-in (optional).** Auth → Providers → **Google** → enable. In **Google Cloud
+6. **Google sign-in (optional).** Auth → Providers → **Google** → enable. In **Google Cloud
    Console** create an **OAuth Client ID (Web)** whose *Authorized redirect URI* is the **Callback
    URL** shown in that Google panel (`https://<ref>.supabase.co/auth/v1/callback`); paste the
    **Client ID + Secret** back into Supabase. Then set **`NEXT_PUBLIC_OAUTH_PROVIDERS=google`** in

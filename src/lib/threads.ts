@@ -112,7 +112,7 @@ function currentAsCandidate(current: Card): RelatedCandidate {
 
 /** The most lateral of the (inherently similar) related set: a candidate whose
  *  description-class diverges from the current's, preferring a further rank. */
-export function pickTangent(
+function pickTangent(
   current: Card,
   pool: RelatedCandidate[],
   used: Set<string>,

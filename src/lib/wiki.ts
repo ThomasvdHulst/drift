@@ -153,7 +153,8 @@ export function relatedToCandidates(raw: unknown): RelatedCandidate[] {
 /**
  * Turn a batch of random Action API pages into cards for the drift buffer.
  * Drops junk, puts imaged cards first, and lets only a limited fraction of
- * imageless "text-only gems" through (spec §5 allows ~20% imageless). If a batch
+ * imageless "text-only gems" through (spec §5 wants imageless pages to stay a
+ * small minority; the cap is 25% of the batch). If a batch
  * happens to have no imaged pages at all, we still return the imageless ones —
  * a text card beats a dead drift. Pure + unit-tested; the route just fetches.
  */

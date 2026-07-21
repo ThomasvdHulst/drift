@@ -3,48 +3,8 @@
 import { useEffect, useState } from "react";
 
 // Small client helpers for the /install guide. The page itself is a static server
-// component; these add the bits that need the browser: a graceful screenshot that
-// falls back to a labelled placeholder until the real image is added, an "already
-// installed" note, and a gentle "you're on iOS/Android" hint.
-
-// A phone screenshot that degrades to a clean, labelled placeholder (showing the
-// exact file path to drop in) until the image exists. So the page looks finished
-// both before and after the screenshots are added.
-export function InstallShot({
-  src,
-  alt,
-  caption,
-}: {
-  src: string;
-  alt: string;
-  caption: string;
-}) {
-  const [failed, setFailed] = useState(false);
-  return (
-    <figure className="flex w-full max-w-[200px] flex-col items-center">
-      {failed ? (
-        <div className="flex aspect-[9/17] w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-line bg-paper px-4 text-center">
-          <span className="text-xs font-medium uppercase tracking-wide text-ink-soft">
-            Screenshot
-          </span>
-          <code className="break-all text-[11px] leading-tight text-ink-soft/80">
-            {src}
-          </code>
-        </div>
-      ) : (
-        <img
-          src={src}
-          alt={alt}
-          onError={() => setFailed(true)}
-          className="w-full rounded-2xl border border-line shadow-sm"
-        />
-      )}
-      <figcaption className="mt-2 text-center text-xs leading-relaxed text-ink-soft">
-        {caption}
-      </figcaption>
-    </figure>
-  );
-}
+// component; these add the two bits that need the browser: an "already installed"
+// note and a gentle "you're on iOS/Android" hint.
 
 // A calm note shown only when the page is already open as an installed app.
 export function StandaloneNote() {

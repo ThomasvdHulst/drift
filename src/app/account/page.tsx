@@ -85,8 +85,11 @@ export default function AccountPage() {
 const SYNC_COPY: Record<SyncStatus, { dot: string; text: string }> = {
   idle: { dot: "bg-accent", text: "Synced" },
   syncing: { dot: "bg-accent/60", text: "Syncing…" },
-  offline: { dot: "bg-ink-soft/50", text: "Offline: saved here, will sync later" },
-  disabled: { dot: "bg-ink-soft/40", text: "Connecting…" },
+  offline: {
+    dot: "bg-ink-soft/50",
+    text: "Offline. Saved here, and it will sync when you are back.",
+  },
+  disabled: { dot: "bg-ink-soft/40", text: "Not syncing yet." },
 };
 
 function SyncStatusLine() {
@@ -193,6 +196,7 @@ function ProfileSection() {
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="How your name shows up"
+              maxLength={50}
               className="mt-1 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
             />
           </label>
@@ -436,7 +440,7 @@ function SignedIn({
       <p className="text-xs font-medium uppercase tracking-wide text-ink-soft">
         Signed in as
       </p>
-      <p className="mt-1 font-serif text-xl text-ink">{email}</p>
+      <p className="mt-1 break-all font-serif text-xl text-ink">{email}</p>
       <SyncStatusLine />
       <p className="mt-4 text-sm leading-relaxed text-ink-soft">
         Your trails sync quietly in the background. Signing out clears this

@@ -1,10 +1,6 @@
 import Link from "next/link";
 import { Monogram } from "@/components/BrandLogo";
-import {
-  InstallShot,
-  StandaloneNote,
-  PlatformHint,
-} from "@/components/InstallGuide";
+import { StandaloneNote, PlatformHint } from "@/components/InstallGuide";
 
 export const metadata = {
   title: "Install Drift on your phone",
@@ -12,9 +8,9 @@ export const metadata = {
 };
 
 // A calm guide to installing Drift as a home-screen web app (PWA). Reachable
-// signed-out too (allowlisted in AuthGate) so the link works from anywhere. iOS
-// gets screenshots (graceful placeholders until they're added); Android is a short
-// text walkthrough. Nothing pushy: this is a page you choose to visit (§2).
+// signed-out too (allowlisted in AuthGate) so the link works from anywhere. Both
+// platforms get a short text walkthrough. Nothing pushy: this is a page you
+// choose to visit (§2).
 export default function InstallPage() {
   return (
     <main className="mx-auto min-h-dvh w-full max-w-2xl px-6 py-12 sm:py-16">

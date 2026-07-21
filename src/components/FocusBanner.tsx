@@ -20,9 +20,9 @@ export function FocusBanner({
 }) {
   return (
     <div className="pointer-events-none flex justify-center px-4 pt-1.5">
-      <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-accent/12 py-1 pl-3 pr-1.5 text-xs font-medium text-accent-strong ring-1 ring-accent/25">
+      <div className="pointer-events-auto inline-flex min-w-0 max-w-full items-center gap-2 rounded-full bg-accent/12 py-1 pl-3 pr-1.5 text-xs font-medium text-accent-strong ring-1 ring-accent/25">
         <FocusIcon kind={focus.kind} />
-        <span>{describeFocus(focus)}</span>
+        <span className="truncate">{describeFocus(focus)}</span>
         {proximity && (
           <span className="text-accent-strong/70">· {proximity}</span>
         )}

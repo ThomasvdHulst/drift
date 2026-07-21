@@ -2,7 +2,7 @@
 // gesture model. The feed's wheel/touch handlers (src/app/drift/page.tsx) read
 // the card scroll region's DOM measurements and delegate the actual decision
 // here, so the fiddly edge logic stays React/DOM-free and unit-testable
-// (CLAUDE.md §5). See plan: zippy-pondering-cook.
+// (CLAUDE.md §5).
 
 /** A scroll region's edge state, derived from its scroll measurements. A region
  *  that can't scroll (content fits) is treated as being at BOTH edges, so a card

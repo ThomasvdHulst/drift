@@ -1,4 +1,5 @@
 import type { Thread } from "./types";
+import { pickRandom } from "./pick";
 
 // ---------------------------------------------------------------------------
 // "Drift" = advancing without choosing a thread. By default every drift is an
@@ -52,7 +53,5 @@ export function pickRandomThread(
   threads: Thread[],
   rng: () => number = Math.random,
 ): Thread | null {
-  if (threads.length === 0) return null;
-  const idx = Math.min(Math.floor(rng() * threads.length), threads.length - 1);
-  return threads[idx];
+  return pickRandom(threads, rng) ?? null;
 }
