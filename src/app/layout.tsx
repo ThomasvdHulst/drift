@@ -30,6 +30,9 @@ const inter = Inter({
   display: "swap",
 });
 
+// Ads config, read once at module scope from statically-inlined NEXT_PUBLIC_* env.
+const ADS = adsConfig();
+
 export const metadata: Metadata = {
   title: "Drift: pull a thread, see where it goes",
   description:
@@ -43,6 +46,14 @@ export const metadata: Metadata = {
     title: "Drift",
     statusBarStyle: "default",
   },
+  // AdSense ownership verification (Phase 21). Rendered server-side into <head> as
+  // <meta name="google-adsense-account" content="ca-pub-..."> on EVERY page (incl.
+  // the logged-out landing), so Google's verifier sees it in the static HTML. This
+  // is separate from the adsbygoogle.js loader below (which serves ads): the loader
+  // is injected after hydration, so it is not reliable for ownership verification.
+  ...(ADS.client
+    ? { other: { "google-adsense-account": ADS.client } }
+    : {}),
 };
 
 // theme-color follows the OS light/dark preference; viewportFit: "cover" lets the
@@ -62,12 +73,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   // Ads (Phase 21) are OFF by default. The AdSense loader script loads as soon as
-  // a publisher id (NEXT_PUBLIC_ADSENSE_CLIENT) is set — this is what Google needs
-  // live to review the site, and it stays independent of the ad kill switch (so
-  // the site can be "under review" with no visible ads). With no client id set, no
-  // third-party request is made and no cookies are set. The GDPR consent message is
-  // enabled in the AdSense dashboard and served by this script.
-  const ads = adsConfig();
+  // a publisher id (NEXT_PUBLIC_ADSENSE_CLIENT) is set — this is what actually
+  // serves ads later, independent of the ad kill switch (so the site can be "under
+  // review" with no visible ads). Ownership verification uses the meta tag above,
+  // not this loader. With no client id set, no third-party request is made and no
+  // cookies are set.
   return (
     <html
       lang="en"
@@ -94,10 +104,10 @@ export default function RootLayout({
           <ThemeToggle />
           <StorageNotice />
         </AuthProvider>
-        {adsenseScriptEnabled(ads) && (
+        {adsenseScriptEnabled(ADS) && (
           <Script
             id="adsbygoogle-init"
-            src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ads.client}`}
+            src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADS.client}`}
             strategy="afterInteractive"
             crossOrigin="anonymous"
           />

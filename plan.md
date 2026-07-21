@@ -1757,6 +1757,11 @@ A second flag `NEXT_PUBLIC_ADS_MODE` = `placeholder` (calm house card, local tes
   may set cookies" copy whenever the script is loaded, the "no ads / no tracking" copy intact otherwise.
   **Verified review state:** with only `NEXT_PUBLIC_ADSENSE_CLIENT` set, the loader script + `/ads.txt` are live,
   the disclosure copy shows, and no visible ad renders (kill switch off).
+  **Ownership verification = the meta tag** `<meta name="google-adsense-account" content="ca-pub-...">`, rendered
+  server-side via `metadata.other` in `layout.tsx` so it's in the STATIC HTML on every page (incl. the logged-out
+  landing). This is required because `next/script` (afterInteractive) only emits a `<link rel=preload>` in the SSR
+  HTML and injects the real loader after hydration, which AdSense's static-HTML verifier can't see. Confirmed via
+  `curl` (no JS) that the meta tag is literally present.
 - **M-Ad3 — Ad-free subscription (PARKED).** A paid tier that turns the ads flag off per account (Stripe or
   similar).
 
