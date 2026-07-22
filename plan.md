@@ -1607,6 +1607,33 @@ first-class trail attribute; an atlas tint for orbit drifts.
 
 ## Cross-cutting smaller polish (grab-bag — do anytime, not a phase)
 
+- [x] **Sitemap + robots.txt (2026-07-22).** `src/app/sitemap.ts` → `/sitemap.xml` and
+      `src/app/robots.ts` → `/robots.txt` (Next file conventions), both reading one source of truth,
+      `src/lib/site.ts`: `siteUrl()` (`NEXT_PUBLIC_SITE_URL` with the live-site fallback, trailing
+      slash stripped — `email/render.ts` now shares it instead of keeping its own copy) plus the
+      explicit `INDEXABLE_ROUTES` / `PRIVATE_ROUTES` split. **Only `/`, `/privacy`, `/install`,
+      `/contact` are submitted**: everything else is login-gated, so a crawler gets the same sign-in
+      screen at each and indexing them would burn crawl budget on duplicates and risk soft-404 flags.
+      Those are `Disallow`ed along with `/api/`. 7 unit tests, build + lint clean, both files verified
+      by fetching them. **Submit `https://www.usedrift.org/sitemap.xml` in Google Search Console.**
+- [x] **Homepage server-rendering, for that sitemap to be worth anything (2026-07-22).** `/` used to
+      server-render only the loading placeholder (AuthGate resolves the session client-side), so
+      Googlebot's first pass saw an empty shell: **~0 → 3,205 characters** of real landing copy in the
+      HTML now. `AuthGate`'s `loading` branch renders `<Landing/>` on `/` instead of a spinner, and a
+      second pre-paint script in `layout.tsx` (the same idiom as the theme one) sets
+      `<html data-session="1">` when it finds a stored session, which three rules in `globals.css`
+      use to swap in the quiet placeholder so a **signed-in visitor never glimpses the landing**.
+      It has to be CSS, not a branch: the session lives in localStorage so the server cannot know, and
+      React must hydrate the tree it server-rendered. **Not cloaking** — every visitor, crawler
+      included, receives identical HTML; only which element occupies the layout differs, exactly like
+      the theme. The storage key is now exported as `AUTH_STORAGE_KEY` from `lib/supabase/client.ts`
+      so the script and the client can't diverge. Other gated routes keep the plain placeholder
+      (they're `Disallow`ed, so there's no indexing to gain and their payload is untouched).
+      **Verified** against a real gated production build (`next start`, Supabase env present): first
+      paint with no stored session ⇒ landing `display:block` / placeholder `none`; with a stored
+      session ⇒ landing `none` / placeholder `flex`; **zero hydration warnings or console errors**;
+      `/drift` + `/trails` still plain, `/privacy` unchanged.
+
 - [x] **Install guide (`/install`, 2026-07-19).** A calm, public (AuthGate-allowlisted) page with iOS (Safari)
       + Android (Chrome) "add to home screen" steps. iOS has 3 screenshot slots that gracefully fall back to
       labelled placeholders until the images are added (`public/install/ios-{1-share,2-add,3-confirm}.png`;

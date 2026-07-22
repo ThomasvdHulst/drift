@@ -4,6 +4,7 @@ import Script from "next/script";
 import "./globals.css";
 import "katex/dist/katex.min.css";
 import { adsConfig, adsenseScriptEnabled } from "@/lib/ads";
+import { AUTH_STORAGE_KEY } from "@/lib/supabase/client";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthProvider } from "@/components/AuthProvider";
 import { AuthGate } from "@/components/AuthGate";
@@ -16,6 +17,16 @@ import { TourProvider } from "@/components/tour/TourProvider";
 // synchronous localStorage key just for this pre-paint read (documented
 // deviation from "settings live in localforage").
 const themeScript = `(function(){try{var t=localStorage.getItem('drift-theme');var d=t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.setAttribute('data-theme',d?'dark':'light');}catch(e){}})();`;
+
+// Also runs before first paint, for the same reason: no flash of the wrong thing.
+// `/` server-renders the landing page (so search engines and first-time visitors
+// get real content in the HTML instead of a spinner), but someone who is already
+// signed in would otherwise glimpse it while the session resolves. The session
+// lives in localStorage, so only a synchronous pre-paint read can know: this
+// flags <html data-session="1"> and globals.css swaps the landing for the quiet
+// placeholder until AuthGate takes over. Everyone is served identical HTML; what
+// shows depends on the visitor's own local state, exactly like the theme above.
+const sessionScript = `(function(){try{var s=localStorage.getItem('${AUTH_STORAGE_KEY}');if(s&&s.indexOf('access_token')>-1){document.documentElement.setAttribute('data-session','1');}}catch(e){}})();`;
 
 // Warm serif display for card titles; clean sans for body — see CLAUDE.md §6.
 const fraunces = Fraunces({
@@ -86,6 +97,7 @@ export default function RootLayout({
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <script dangerouslySetInnerHTML={{ __html: sessionScript }} />
       </head>
       {/* suppressHydrationWarning: browser extensions (e.g. Grammarly) inject
           attributes like data-gr-ext-installed onto <body> before React hydrates,

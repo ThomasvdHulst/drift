@@ -97,6 +97,27 @@ body {
   height: 100%;
 }
 
+/* While the session resolves, `/` server-renders the landing page so the HTML
+   search engines index (and a first-time visitor's first paint) has real content
+   rather than a spinner. A visitor who is ALREADY signed in would glimpse it, so
+   the pre-paint script in layout.tsx sets <html data-session="1"> when it finds a
+   stored session and these two rules swap in the quiet placeholder instead.
+
+   This has to be CSS rather than a branch in AuthGate: the session lives in
+   localStorage so the server cannot know, and React must hydrate the tree it
+   server-rendered. Both elements exist for everyone (identical HTML for every
+   visitor, crawlers included); only which one occupies the layout differs. Once
+   AuthGate resolves it renders neither, so these stop applying. */
+[data-auth-pending] {
+  display: none;
+}
+:root[data-session="1"] [data-landing-preview] {
+  display: none;
+}
+:root[data-session="1"] [data-auth-pending] {
+  display: flex;
+}
+
 /* Theme-toggle icon swap, driven purely by the data-theme attribute (no JS
    state, so no hydration mismatch). Moon in light mode, sun in dark mode. */
 .theme-icon-dark {

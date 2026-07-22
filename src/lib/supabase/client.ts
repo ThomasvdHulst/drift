@@ -16,6 +16,11 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
+/** localStorage key supabase-js persists the session under. Exported because the
+ *  pre-paint script in app/layout.tsx reads it synchronously to know whether a
+ *  session exists before React runs (see AuthGate); the two must never diverge. */
+export const AUTH_STORAGE_KEY = "drift-auth";
+
 /** True when the two public env vars are present (cloud features can run). */
 export function isCloudConfigured(): boolean {
   return Boolean(URL && PUBLISHABLE_KEY);
@@ -42,7 +47,7 @@ export function getSupabase(): SupabaseClient | null {
         // detectSessionInUrl performs the code→session exchange client-side, so
         // no server callback route is needed for this client-only app.
         flowType: "pkce",
-        storageKey: "drift-auth",
+        storageKey: AUTH_STORAGE_KEY,
       },
     });
   } catch {

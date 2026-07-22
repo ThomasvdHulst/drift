@@ -25,9 +25,9 @@ export function Landing() {
   const reduce = useReducedMotion();
 
   // Show a random example trail in the "reward" section on each visit, so the
-  // page feels a little fresh. Chosen after mount (the landing never renders on
-  // the server — the gate resolves client-side), so there's no hydration
-  // mismatch, and the reward section sits below the fold so there's no flash.
+  // page feels a little fresh. Chosen after mount rather than during render, so
+  // it can't cause a hydration mismatch now that `/` server-renders this page
+  // (AuthGate), and the reward section sits below the fold so there's no flash.
   const [trailIdx, setTrailIdx] = useState(0);
   useEffect(() => {
     // Defer off the synchronous effect path (React 19 forbids sync setState in

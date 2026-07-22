@@ -8,12 +8,11 @@
 // (email clients need absolute image URLs). The look mirrors the app's "quiet
 // reading room": warm cream card, ink text, one sage accent. No em/en dashes.
 
+import { siteUrl } from "../site";
+
 // Canonical site + asset origin. The logo must be an absolute HTTPS URL served by
 // the app (public/brand/drift-logo.png). Overridable for a different deployment.
-const SITE = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.usedrift.org").replace(
-  /\/$/,
-  "",
-);
+const SITE = siteUrl();
 
 const LOGO_URL = `${SITE}/brand/drift-logo.png`;
 
