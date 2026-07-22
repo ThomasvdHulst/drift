@@ -101,17 +101,7 @@ export const TOUR_STEPS: TourStep[] = [
     spotlight: true,
     advance: "next",
     title: "Or stay within a field",
-    body: "Keep a drift inside one subject, like Physics or Visual Arts. A calm way to go deep on a theme.",
-  },
-  {
-    id: "start-options",
-    route: TOUR_ROUTES.home,
-    target: "start-options",
-    placement: "auto",
-    spotlight: true,
-    advance: "next",
-    title: "Or begin somewhere set",
-    body: "Tap a seed to start on a specific idea. However you begin, you steer from there.",
+    body: "Open this for a card per field, from Physics to Visual Arts. Pick one and the drift keeps to that subject. However you begin, you steer from there.",
   },
   {
     id: "start",

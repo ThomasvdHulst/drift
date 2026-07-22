@@ -5,7 +5,7 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 **tested with success**. Keep the "Current status" line accurate. Full product detail is in
 `drift-spec.md`; working rules are in `CLAUDE.md`.
 
-> ## Current status — 2026-07-21
+> ## Current status — 2026-07-22
 >
 > **Drift is live** at <https://www.usedrift.org> (Vercel + Supabase) as an installable PWA,
 > in a small friends-and-colleagues beta. Two realms ship: **Encyclopedia** (Wikipedia) and
@@ -22,7 +22,12 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > **Deferred by choice:** Phase 3 (local Ollama AI), 7 (constellations), 11 (calm social feed),
 > 12 (native app), 16 (memory & reflection), M12 (Library/Today realms), M-Ad3 (ad-free tier).
 >
-> **Baseline:** 367 unit tests green, `npm run build` + `npm run lint` clean.
+> **Baseline:** 383 unit tests green, `npm run build` + `npm run lint` clean.
+>
+> **Latest (2026-07-22):** Phase 18 follow-up **M-FD3** — the Encyclopedia home page dropped from four
+> ways to begin to three. "Or drift within a field" is now a grid of 28 field cards (glyph, name,
+> blurb, tint) that each start a focused drift, listed alphabetically, open by default on desktop and
+> folded on mobile; "Or start somewhere" now belongs to Gallery/Papers alone.
 >
 > **▶ Next:** open. Phase 16 (Memory & Reflection) is the last of the three brainstorm
 > directions and the most natural continuation; ads work resumes only if AdSense approves.
@@ -1540,9 +1545,60 @@ Semantic Scholar API license, Harvard OGC copyright/fair-use.
       errors. _(Caveat: repeated in-session test runs self-throttle our Wikimedia IP — the documented
       burst limit — which can stall a refill mid-test; confirmed clean at human pace after a cooldown.)_
 
+### M-FD3 — Field cards: fold "Or start somewhere" into "Or drift within a field" ✅ *(user feedback; DONE & verified 2026-07-22)*
+
+> The Encyclopedia home page had grown to **four** ways to begin, and the two weakest sat side by
+> side: the field picker was a drab row of text pills, while the pretty seed cards only dropped you
+> on a single page instead of shaping the session. Four collapse into three. The **fields** inherit
+> the seed cards' look, so tapping one starts a real focused drift; losing the one-page starts is
+> fine because the focus banner's "Drift freely" releases any field mid-session.
+
+- [x] `src/lib/topics.ts`: `Topic` gained its homepage face — `glyph` / `blurb` / `tint` for all 28
+      topics, next to the taxonomy rather than in a parallel table (the way `realms/artic.buckets.ts`
+      and `arxiv.categories.ts` already carry theirs). Glyphs are typographic marks (✦ ∿ π ◈ ◭ § † ☰
+      ⇗ ⁂ ⇄ ✎ ⌂ ♪ ◎ ❝ ◫ ∴ ⚑ ▽ ¶ …), never emoji. **The array's order is the grid's order**, so two
+      layout rules live in the data (both test-enforced): it is **alphabetical by label** (28 cards
+      stay scannable with no headings), and tints **cycle through six far-apart hue families** (sand,
+      green, blue, rose, teal, violet). Six is the smallest cycle that keeps every neighbour in a 2-,
+      3- OR 4-column grid a different family, diagonals included: same-family cards land 6 apart,
+      which no layout puts side by side.
+- [x] `src/lib/topics.test.ts` (new, 10 tests): ids/keywords/labels/ORES keys, glyphs and tints
+      unique; every topic has a glyph, blurb and `#rrggbb` tint; **each glyph is one BMP code point
+      with no variation selector that doesn't match `\p{Emoji_Presentation}`** (the exact "symbol,
+      not emoji" rule — it admits ⚙, which is emoji-capable but text by default); no em/en dash in
+      any blurb; labels sorted alphabetically; and **no card resembles a neighbour** — CIE L\*a\*b\*
+      ΔE > 4 for every pair within 5 index positions, measured on the tint *blended 45% over paper*
+      the way `TileGrid` renders it, in both light and dark. (Comparing raw tints would miss that the
+      blend washes most of the difference out: the pre-2026-07-22 palette's closest neighbours were
+      **ΔE 0.6**, i.e. indistinguishable — the user-reported bug. The palette now clears ~5.)
+- [x] `src/components/TileGrid.tsx` (new): the start-card grid extracted from `app/page.tsx` verbatim,
+      so the field cards and the Gallery/Papers seed cards can never visually drift apart.
+- [x] `src/app/page.tsx`: the "Or drift within a field" `<details>` now holds a `TileGrid` of the 28
+      fields (Encyclopedia); it is **controlled** and **opens by default on desktop only** (`sm`
+      breakpoint read once at mount via `queueMicrotask`, so 28 cards aren't a long scroll on a
+      phone, and the first paint matches the server's). "Or start somewhere" now renders **only for
+      Gallery/Papers**; `src/data/seeds.json` and `realm.seeds` are untouched, just unrendered for
+      Encyclopedia.
+- [x] `src/lib/tour/steps.ts`: 17 steps → **16**. The `start-options` step folded into `field-focus`,
+      whose copy now describes the cards. `data-tour="field-focus"` moved onto the `<summary>` so the
+      spotlight hugs the label instead of a 28-card grid; `TourOverlay` now opens the `closest("details")`
+      of any target, so the cards reveal behind the scrim.
+- [x] **Test M-FD3:** build + lint clean; **383 unit tests** (+16). Real browser (1280px + 390px,
+      light + dark, zero console/page errors): desktop grid open with 28 cards and every glyph rendering
+      as a symbol; 390px folded to one line and opening on tap; Mathematics card →
+      `?realm=encyclopedia&focus=field&bucket=mathematics&seed=Mathematics` with the "Within Mathematics"
+      banner; Gallery still shows its 10 "Or start somewhere" tiles and no field section; the tour's home
+      steps run "Realms to wander" → "Drift around a page" → "Or stay within a field" with the disclosure
+      auto-opening on both widths. _(Two things were fixed by looking at the rendered page rather than the
+      data. Books ❧ rendered as a smudge at tile size, so it became ◫, an open book. And the first palette
+      was tuned to a ΔE ≥ 8 target, which came out reading like pastel sticky notes: a side-by-side render
+      of four saturation levels picked the muted one, keeping the hue separation that fixes the problem
+      while staying a quiet reading room.)_
+
 **▶ Phase 18 COMPLETE.** Both directed-drift modes shipped: stay within a field, or orbit a page and
-spiral outward. Possible follow-ups (not committed): field/orbit focus for Gallery/Papers (the engine
-is realm-generic); persist a focus as a first-class trail attribute; an atlas tint for orbit drifts.
+spiral outward — and the field picker is now the home page's card grid. Possible follow-ups (not
+committed): field/orbit focus for Gallery/Papers (the engine is realm-generic); persist a focus as a
+first-class trail attribute; an atlas tint for orbit drifts.
 
 ---
 

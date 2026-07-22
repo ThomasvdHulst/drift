@@ -99,9 +99,14 @@ export function TourOverlay({
         el = found;
         // Watch the target itself so the hole tracks it as its content loads.
         ro.observe(found);
-        // Open a collapsed disclosure (e.g. the "drift within a field" details)
-        // so its content is visible while spotlighted.
-        if (found instanceof HTMLDetailsElement) found.open = true;
+        // Open a collapsed disclosure the target sits in (the "drift within a
+        // field" details) so its content is visible while spotlighted. The
+        // target itself may be the <details> or anything inside it, e.g. the
+        // <summary> — spotlighting the summary keeps the hole small while the
+        // cards below reveal behind the scrim.
+        const disclosure =
+          found instanceof HTMLDetailsElement ? found : found.closest("details");
+        if (disclosure) disclosure.open = true;
         if (!scrolledRef.current) {
           scrolledRef.current = true;
           try {

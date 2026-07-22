@@ -11,6 +11,7 @@ import { listRealms, getRealm } from "@/lib/realms";
 import type { RealmId, SeedTile } from "@/lib/realms/types";
 import { RealmTabs } from "@/components/RealmTabs";
 import { OrbitSearch } from "@/components/OrbitSearch";
+import { TileGrid } from "@/components/TileGrid";
 import { useAuth } from "@/components/AuthProvider";
 import { useTour } from "@/components/tour/TourProvider";
 import { Wordmark } from "@/components/BrandLogo";
@@ -27,9 +28,24 @@ export default function Home() {
   // lightweight "just drift" with the trail framing removed. Remembered in
   // settings; toggled below the "Surprise me" button.
   const [keepTrail, setKeepTrail] = useState(true);
+  // The "Or drift within a field" disclosure. 28 field cards are a warm, browsable
+  // sheet on a wide screen but a long scroll on a phone, so it opens by default on
+  // desktop only. Closed for the first paint on both, so hydration always matches.
+  const [fieldsOpen, setFieldsOpen] = useState(false);
 
   const realms = useMemo(() => listRealms(), []);
   const realm = getRealm(active);
+  const fieldTiles = useMemo(
+    () =>
+      TOPICS.map((t) => ({
+        id: t.id,
+        label: t.label,
+        glyph: t.glyph,
+        blurb: t.blurb,
+        tint: t.tint,
+      })),
+    [],
+  );
 
   useEffect(() => {
     listTrails().then((ts) => {
@@ -43,6 +59,15 @@ export default function Home() {
       if (s.lastRealm && getRealm(s.lastRealm).id === s.lastRealm)
         setActive(s.lastRealm);
       setKeepTrail(s.sessionMode !== "endless");
+    });
+    // Tailwind's `sm` breakpoint — the width where the field grid stops being a
+    // long scroll. Read once, so a later toggle by hand always wins.
+    queueMicrotask(() => {
+      try {
+        setFieldsOpen(!!window.matchMedia?.("(min-width: 640px)")?.matches);
+      } catch {
+        // no matchMedia: leave the disclosure closed
+      }
     });
   }, []);
 
@@ -181,12 +206,20 @@ export default function Home() {
           </div>
         )}
 
-        {/* Focused drift (Phase 18): confine drift to one broad field. A calm
-            disclosure so it doesn't crowd the default "surprise me" flow.
+        {/* Focused drift (Phase 18): confine drift to one broad field. One card
+            per field, in the same shape as the seed cards below, inside a calm
+            disclosure so 28 of them never crowd the default "surprise me" flow.
             Encyclopedia only (fields are Wikipedia's ORES topics). */}
-        {active === "encyclopedia" && (
-          <details data-tour="field-focus" className="group mt-9 w-full">
-            <summary className="mx-auto flex w-fit cursor-pointer list-none items-center gap-1.5 text-xs font-medium uppercase tracking-widest text-ink-soft transition hover:text-accent-strong">
+        {active === "encyclopedia" ? (
+          <details
+            open={fieldsOpen}
+            onToggle={(e) => setFieldsOpen(e.currentTarget.open)}
+            className="group mt-9 w-full"
+          >
+            <summary
+              data-tour="field-focus"
+              className="mx-auto flex w-fit cursor-pointer list-none items-center gap-1.5 text-xs font-medium uppercase tracking-widest text-ink-soft transition hover:text-accent-strong"
+            >
               Or drift within a field
               <svg
                 width="12"
@@ -203,52 +236,30 @@ export default function Home() {
                 <path d="M6 9l6 6 6-6" />
               </svg>
             </summary>
-            <ul className="mx-auto mt-4 flex max-w-2xl flex-wrap justify-center gap-2">
-              {TOPICS.map((t) => (
-                <li key={t.id}>
-                  <button
-                    type="button"
-                    onClick={() => openField(t)}
-                    className="rounded-full border border-line bg-paper-raised px-3.5 py-1.5 text-sm text-ink transition hover:-translate-y-0.5 hover:border-accent/50 hover:text-accent-strong"
-                  >
-                    {t.label}
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <TileGrid
+              className="mt-4"
+              tiles={fieldTiles}
+              onPick={(id) => {
+                const topic = TOPICS.find((t) => t.id === id);
+                if (topic) openField(topic);
+              }}
+            />
           </details>
+        ) : (
+          <>
+            <h2 className="mb-4 mt-10 text-center text-xs font-medium uppercase tracking-widest text-ink-soft">
+              Or start somewhere
+            </h2>
+            <TileGrid
+              data-tour="start-options"
+              tiles={realm.seeds.map((s) => ({ ...s, id: s.label }))}
+              onPick={(id) => {
+                const tile = realm.seeds.find((s) => s.label === id);
+                if (tile) openSeed(tile);
+              }}
+            />
+          </>
         )}
-
-        <h2 className="mb-4 mt-10 text-center text-xs font-medium uppercase tracking-widest text-ink-soft">
-          Or start somewhere
-        </h2>
-        <ul
-          data-tour="start-options"
-          className="grid w-full grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
-        >
-          {realm.seeds.map((tile) => (
-            <li key={tile.label}>
-              <button
-                type="button"
-                onClick={() => openSeed(tile)}
-                style={{
-                  backgroundColor: `color-mix(in srgb, ${tile.tint} 45%, var(--paper-raised))`,
-                }}
-                className="group flex h-full w-full flex-col rounded-2xl p-5 text-left ring-1 ring-line transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-              >
-                <span className="font-serif text-2xl text-ink/70" aria-hidden="true">
-                  {tile.glyph}
-                </span>
-                <span className="mt-3 font-serif text-xl leading-tight text-ink">
-                  {tile.label}
-                </span>
-                <span className="mt-1 text-xs leading-snug text-ink/60">
-                  {tile.blurb}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
       </section>
 
       <footer className="mt-12 flex flex-col items-center gap-4">
