@@ -40,14 +40,30 @@ export type OrbitState = {
 // out"), rather than 10+ drifts before anything moves.
 export const MAX_PER_PARENT = 6;
 
-export function initOrbit(seedTitle: string, seedLabel?: string): OrbitState {
+/**
+ * Start an orbit around one page, or around SEVERAL at once.
+ *
+ * The multi-seed form (Phase 23) is how an "in the news" drift widens once its
+ * news pool runs dry: the section's news articles all become ring 0, so the
+ * widening stays in the neighbourhood of the actual stories instead of falling
+ * back to a generic field. Everything downstream already handles a many-entry
+ * frontier, so this is the only place that had to learn about it.
+ */
+export function initOrbit(
+  seed: string | string[],
+  seedLabel?: string,
+): OrbitState {
+  const seeds = (Array.isArray(seed) ? seed : [seed]).filter(Boolean);
+  const seedTitle = seeds[0] ?? "";
   return {
     seedTitle,
     seedLabel: seedLabel || seedTitle,
     pool: [],
-    frontier: [{ title: seedTitle, ring: 0 }],
+    frontier: seeds.map((title) => ({ title, ring: 0 })),
     expanded: new Set(),
-    known: new Set([toCardId("wikipedia", seedTitle)]),
+    // Seeding `known` with every seed keeps the orbit from serving a page back
+    // to you as if it were a discovery.
+    known: new Set(seeds.map((t) => toCardId("wikipedia", t))),
     maxRingServed: 0,
   };
 }

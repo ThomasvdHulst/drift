@@ -26,6 +26,32 @@ describe("initOrbit", () => {
     expect(st.known.has(id("Bauhaus"))).toBe(true);
     expect(st.maxRingServed).toBe(0);
   });
+
+  // Phase 23: an "in the news" drift widens by orbiting ALL the section's news
+  // articles at once, so the widening stays near the actual stories.
+  it("accepts several seeds, all at ring 0", () => {
+    const st = initOrbit(["2026 FIFA World Cup", "FIFA", "Lionel Messi"], "Sports");
+    expect(st.frontier).toEqual([
+      { title: "2026 FIFA World Cup", ring: 0 },
+      { title: "FIFA", ring: 0 },
+      { title: "Lionel Messi", ring: 0 },
+    ]);
+    expect(st.seedLabel).toBe("Sports");
+    for (const t of ["2026 FIFA World Cup", "FIFA", "Lionel Messi"]) {
+      expect(st.known.has(id(t)), t).toBe(true);
+    }
+  });
+
+  it("never re-serves a seed as if it were a discovery", () => {
+    let st = initOrbit(["Seed A", "Seed B"], "Sports");
+    st = ingestMorelike(st, "Seed A", 0, cands("X", "Seed B", "Y", "Z"), new Set());
+    expect(st.pool.map((p) => p.card.pageTitle)).not.toContain("Seed B");
+  });
+
+  it("ignores empty seeds", () => {
+    expect(initOrbit([]).frontier).toEqual([]);
+    expect(initOrbit(["", "Real"]).frontier).toEqual([{ title: "Real", ring: 0 }]);
+  });
 });
 
 describe("nextToExpand", () => {

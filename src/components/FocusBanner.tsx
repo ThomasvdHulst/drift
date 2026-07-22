@@ -52,8 +52,27 @@ export function FocusBanner({
 }
 
 // A field reads as a filled center held inside a ring ("you're within this");
-// an orbit reads as concentric rings with a travelling dot ("circling this").
+// an orbit reads as concentric rings with a travelling dot ("circling this"); a
+// current-events drift reads as a broadcast, waves going out from a point.
 function FocusIcon({ kind }: { kind: Focus["kind"] }) {
+  if (kind === "current") {
+    return (
+      <svg
+        width="13"
+        height="13"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="17" r="1.8" fill="currentColor" stroke="none" />
+        <path d="M8.5 13.5a5 5 0 0 1 7 0" />
+        <path d="M5.5 10a9.5 9.5 0 0 1 13 0" />
+      </svg>
+    );
+  }
   if (kind === "orbit") {
     return (
       <svg

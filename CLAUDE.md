@@ -68,6 +68,16 @@ without them:
   call — strictly better than the old two-step related+summary flow.
 - ✅ `GET /api/rest_v1/page/summary/{title}` and `GET /api/rest_v1/page/random/summary`
   work. Random returns a **303 redirect** to a summary — follow the redirect.
+- 📰 **"What's current" comes from Wikipedia, not a news API** (Phase 23). `Portal:Current events`
+  has one page per day (`Portal:Current events/2026 July 22` — **no zero padding**) whose wikitext is
+  `'''Section'''` headings over nested `*` bullets of `[[wikilinks]]`. **30 day-pages fetch in ONE
+  Action API call** (`action=query&prop=revisions&rvprop=content&rvslots=main&titles=A|B|…`, 50-title
+  limit). Ten stable sections; ~2,300 unique articles per 30 days. This is why Drift can have a
+  "current" feed with **zero new licensing exposure**: it is the same CC BY-SA corpus, we read only
+  the link targets, and no headline or publisher content is ever stored or shown. Do NOT replace this
+  with a news API — see `memory/content-licensing-realms.md` for why that path was parked.
+  Parsing/ranking lives in `src/lib/current.ts`; when fetching card props for a title list, pass
+  **`exlimit=max`** or only the first page gets an extract.
 - **Always proxy external calls through Next.js API routes** (`/api/wiki/*`, `/api/threads`),
   never call Wikipedia/Ollama directly from the browser. Reasons: (a) browsers cannot set
   the `Api-User-Agent`/`User-Agent` header Wikimedia etiquette requires; (b) it centralizes

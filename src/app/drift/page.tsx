@@ -78,6 +78,14 @@ type BufferedCard = {
   reason?: "interest" | "wildcard" | "field" | "orbit";
 };
 
+// One article from an "in the news" section (Phase 23), with how recently it was
+// linked from a news story. Matches /api/wiki/current's response shape.
+type CurrentCard = { card: Card; daysAgo: number };
+
+// How many news articles to pull per page of the pool. The Action API caps
+// extracts at 20 per request, and a page this size keeps a drift instant.
+const CURRENT_PAGE = 12;
+
 // Enough of a saved trail to update it in place (preserving id/name/like/date).
 type SessionTrail = {
   id: string;
@@ -183,7 +191,16 @@ export default function DriftPage() {
   focusRef.current = focus;
   // The live orbit engine (Phase 18, page-orbit focus): a widening BFS
   // neighbourhood of the seed, served lowest-ring-first. Null unless orbiting.
+  // Phase 23 reuses it for the widening half of an "in the news" drift, seeded
+  // with every news article the section served.
   const orbitRef = useRef<OrbitState | null>(null);
+  // The "in the news" pool (Phase 23): cards fetched from /api/wiki/current,
+  // best-first, plus how far we've paged through the section and which titles we
+  // served (the seeds the orbit widens from once the pool runs dry).
+  const currentBufferRef = useRef<CurrentCard[]>([]);
+  const currentOffsetRef = useRef(0);
+  const currentSeedsRef = useRef<string[]>([]);
+  const currentDryRef = useRef(false);
 
   const seenRef = useRef<Set<string>>(new Set());
   // The interest model (topic → weight) + whether personalization is on. Held in
@@ -344,7 +361,15 @@ export default function DriftPage() {
         }
 
         let card: Card | undefined;
-        if (title) {
+        if (parsedFocus?.kind === "current") {
+          // An "in the news" drift (Phase 23): the first page of the section's
+          // pool. The best-ranked article starts the session and the rest buffer,
+          // so the opening drifts are instant and stay on the current stories.
+          const batch = await fetchCurrentPage(parsedFocus.section);
+          if (batch.length === 0) throw new Error("no card");
+          card = batch[0].card;
+          currentBufferRef.current = batch.slice(1);
+        } else if (title) {
           const res = await fetch(summaryUrl(realmRef.current, title));
           const c = (await res.json()) as Card;
           if (!res.ok || !c?.pageTitle) throw new Error("no card");
@@ -613,6 +638,69 @@ export default function DriftPage() {
   // The real drift (focused orbit / liked-thread follow / independent random),
   // extracted so advance() can slip a calm ad in front of it every N drifts.
   async function doDrift() {
+    // "In the news" drift (Phase 23): serve the section's current articles,
+    // best-ranked first, paging deeper into the pool as it empties. Once the
+    // pool is genuinely dry we widen into the neighbourhood of the stories
+    // themselves (a multi-seed orbit over everything we served) rather than
+    // dropping you into a generic field, and the chip says so.
+    if (focusRef.current?.kind === "current") {
+      const f = focusRef.current;
+      const via = (extra: { daysAgo?: number; widened?: boolean }) =>
+        ({
+          type: "drift" as const,
+          reason: "current" as const,
+          topic: { id: f.section, label: f.label },
+          current: { section: f.section, label: f.label, ...extra },
+        });
+
+      if (!currentDryRef.current) {
+        let nc = takeCurrentCard();
+        if (!nc) {
+          busyRef.current = true;
+          setAdvancing(true);
+          try {
+            const batch = await fetchCurrentPage(f.section);
+            currentBufferRef.current.push(...batch);
+            nc = takeCurrentCard();
+            // An empty page means we've reached the end of the section's ranked
+            // pool; from here on this drift widens.
+            if (!nc) currentDryRef.current = true;
+          } finally {
+            busyRef.current = false;
+            setAdvancing(false);
+          }
+        }
+        if (nc) {
+          pushStep(nc.card, via({ daysAgo: nc.daysAgo }), "drift");
+          return;
+        }
+      }
+
+      if (!orbitRef.current) {
+        orbitRef.current = initOrbit(currentSeedsRef.current, f.label);
+      }
+      let oc = takeOrbitCard();
+      if (!oc) {
+        busyRef.current = true;
+        setAdvancing(true);
+        try {
+          await refillOrbit();
+          oc = takeOrbitCard();
+        } finally {
+          busyRef.current = false;
+          setAdvancing(false);
+        }
+      }
+      if (oc) {
+        pushStep(oc.card, via({ widened: true }), "drift");
+      } else {
+        showHint(
+          "You've read everything in this story and around it. Pull a thread, or drift freely.",
+        );
+      }
+      return;
+    }
+
     // Focused orbit drift (Phase 18): serve the seed's widening neighbourhood
     // (BFS, lowest ring first) instead of the topic buffer. Refill by expanding
     // the frontier via morelike (the healthy endpoint), on empty only.
@@ -923,6 +1011,42 @@ export default function DriftPage() {
     window.setTimeout(() => setHint(null), 3000);
   }
 
+  // ----- "in the news" pool (Phase 23) -----
+  // One page of a news section's ranked pool. Advances the paging offset by the
+  // REQUESTED size, not the returned count: the route filters junk after slicing
+  // its ranking, so a short page still means we consumed that many ranked slots.
+  // Remembers every title served as a seed for the widening orbit later.
+  // Graceful: any failure returns [] and the caller falls back (§4).
+  async function fetchCurrentPage(section: string): Promise<CurrentCard[]> {
+    const offset = currentOffsetRef.current;
+    currentOffsetRef.current = offset + CURRENT_PAGE;
+    try {
+      const res = await fetch(
+        `/api/wiki/current?section=${encodeURIComponent(section)}&offset=${offset}&limit=${CURRENT_PAGE}`,
+        { signal: AbortSignal.timeout(8000) },
+      );
+      if (!res.ok) return [];
+      const batch = (await res.json()) as CurrentCard[];
+      if (!Array.isArray(batch)) return [];
+      const fresh = batch.filter(
+        (c) => c?.card?.pageTitle && !seenRef.current.has(cardId(c.card)),
+      );
+      currentSeedsRef.current.push(...fresh.map((c) => c.card.pageTitle));
+      return fresh;
+    } catch {
+      return [];
+    }
+  }
+
+  function takeCurrentCard(): CurrentCard | null {
+    const buf = currentBufferRef.current;
+    while (buf.length > 0) {
+      const c = buf.shift()!;
+      if (c?.card?.pageTitle && !seenRef.current.has(cardId(c.card))) return c;
+    }
+    return null;
+  }
+
   // ----- page orbit (Phase 18) -----
   // Take the lowest-ring unseen card from the orbit pool (or null if dry).
   function takeOrbitCard(): OrbitCard | null {
@@ -981,12 +1105,17 @@ export default function DriftPage() {
     setFocus(f);
     orbitRef.current = initOrbit(card.pageTitle, card.displayTitle);
     randomBufferRef.current = [];
+    // Re-anchoring here also leaves any "in the news" pool behind.
+    currentBufferRef.current = [];
+    currentSeedsRef.current = [];
+    currentOffsetRef.current = 0;
+    currentDryRef.current = false;
     try {
       const u = new URL(window.location.href);
       u.searchParams.set("focus", "orbit");
       u.searchParams.set("title", card.pageTitle);
       u.searchParams.set("seed", card.displayTitle);
-      u.searchParams.delete("bucket");
+      ["bucket", "section"].forEach((k) => u.searchParams.delete(k));
       window.history.replaceState(null, "", `${u.pathname}${u.search}`);
     } catch {
       /* non-fatal */
@@ -1002,9 +1131,13 @@ export default function DriftPage() {
     setFocus(null);
     orbitRef.current = null;
     randomBufferRef.current = [];
+    currentBufferRef.current = [];
+    currentSeedsRef.current = [];
+    currentOffsetRef.current = 0;
+    currentDryRef.current = false;
     try {
       const u = new URL(window.location.href);
-      ["focus", "bucket", "seed", "title"].forEach((k) =>
+      ["focus", "bucket", "seed", "title", "section"].forEach((k) =>
         u.searchParams.delete(k),
       );
       window.history.replaceState(null, "", `${u.pathname}${u.search}`);

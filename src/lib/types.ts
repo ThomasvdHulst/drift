@@ -96,10 +96,15 @@ export type ArrivedVia =
   | {
       type: "drift";
       topic?: { id: string; label: string };
-      reason?: "interest" | "wildcard" | "field" | "orbit";
+      reason?: "interest" | "wildcard" | "field" | "orbit" | "current";
       // Set only on an orbit drift (Phase 18): the seed being orbited + the ring
       // (distance) this card sits at, for the honest "Orbiting X · nearby" chip.
       orbit?: { seedLabel: string; ring: number };
+      // Set only on an "in the news" drift (Phase 23): which news section, how
+      // recently the article was in the news, and whether the section's news
+      // pool had run out so we were widening into related pages. Drives the
+      // honest "In the news · 3 days ago" / "· wandering wider" chip.
+      current?: { section: string; label: string; daysAgo?: number; widened?: boolean };
       // Set when a horizontal swipe crossed into a new realm with no doorway (a
       // fresh wander into the other realm) — the realm you came FROM (Phase 15).
       crossedFrom?: RealmId;

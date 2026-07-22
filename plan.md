@@ -11,9 +11,9 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > in a small friends-and-colleagues beta. Two realms ship: **Encyclopedia** (Wikipedia) and
 > **Gallery** (Art Institute of Chicago, CC0).
 >
-> **Shipped:** Phases 1, 2, 4, 5, 6, 8, 9, 10, 13, 14, 15, 18, 19, 20, 22 — the core drift loop,
+> **Shipped:** Phases 1, 2, 4, 5, 6, 8, 9, 10, 13, 14, 15, 18, 19, 20, 22, 23 — the core drift loop,
 > directional threads, trails + the trail-map reward, the Atlas, the interest model, accounts
-> and cloud sync, friends and sharing, cross-realm doorways, focused drift (field + orbit),
+> and cloud sync, friends and sharing, cross-realm doorways, focused drift (field + orbit + in the news),
 > branded email, the guided tour, and the contact form.
 >
 > **Behind a flag:** Phase 17 **Papers** (arXiv) — set `NEXT_PUBLIC_REALM_PAPERS=1`. Phase 21
@@ -22,12 +22,15 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > **Deferred by choice:** Phase 3 (local Ollama AI), 7 (constellations), 11 (calm social feed),
 > 12 (native app), 16 (memory & reflection), M12 (Library/Today realms), M-Ad3 (ad-free tier).
 >
-> **Baseline:** 383 unit tests green, `npm run build` + `npm run lint` clean.
+> **Baseline:** 412 unit tests green, `npm run build` + `npm run lint` clean.
 >
-> **Latest (2026-07-22):** Phase 18 follow-up **M-FD3** — the Encyclopedia home page dropped from four
-> ways to begin to three. "Or drift within a field" is now a grid of 28 field cards (glyph, name,
-> blurb, tint) that each start a focused drift, listed alphabetically, open by default on desktop and
-> folded on mobile; "Or start somewhere" now belongs to Gallery/Papers alone.
+> **Latest (2026-07-22):** two changes to how an Encyclopedia drift starts. **M-FD3** dropped the home
+> page from four ways to begin to three: "Or drift within a field" is now a grid of 28 field cards
+> (glyph, name, blurb, tint) listed alphabetically, open by default on desktop and folded on mobile,
+> and "Or start somewhere" belongs to Gallery/Papers alone. **Phase 23** then added the third directed
+> drift, **"Or drift what's in the news"**: ten subject cards that drift the Wikipedia articles behind
+> this month's stories, sourced from Wikipedia's own `Portal:Current events` (so no news is ever
+> displayed and no new licensing exposure is taken on).
 >
 > **▶ Next:** open. Phase 16 (Memory & Reflection) is the last of the three brainstorm
 > directions and the most natural continuation; ads work resumes only if AdSense approves.
@@ -1914,6 +1917,70 @@ errors.
 **Phase 21 exit:** ✅ the owner can flip ads on (locally / in production), see a calm labeled ad every ~N stops
 that fits the reading-room look and never pollutes a trail, and flip it fully off (no script, no cookies) at will.
 Real revenue awaits the owner's AdSense account + approval (see the owner action items above).
+
+---
+
+## Phase 23 — "In the news": drift the articles behind current stories ✅ *(DONE & verified 2026-07-22)*
+
+> Born from real use: a *field* drift is how Drift actually gets used, but a field is timeless. You read a
+> great fact and it is not something anyone is talking about. This adds a third directed drift where the
+> articles are the ones behind **what is going on right now**, labelled by subject, so during a World Cup
+> "Sports" hands you 2026 FIFA World Cup, association football, Argentina national football team.
+
+**The licensing question, answered — this does NOT reopen the parked news realm.** That was parked for good
+reasons (all-rights-reserved outlets, EU Copyright Directive Art. 15 on snippets, Wikinews shut down; see
+`memory/content-licensing-realms.md`). Drift still never displays news. News is only a **signal** for which
+Wikipedia articles are current, and the signal comes from Wikipedia itself: **`Portal:Current events`**, a
+daily page where volunteers summarise world news, already grouped into ten subject sections with every
+notable entity wikilinked. Same CC BY-SA corpus the Encyclopedia realm already ships ⇒ **no new licensing
+exposure**, no scraping, no publisher images. We read only the link targets; prose and external refs are
+discarded.
+
+**What the research measured (live, 2026-07-22).** 30 day-pages fetch in ONE Action API call (the 50-title
+limit); pages are `Portal:Current events/2026 July 22` (no zero padding). Unique articles over 30 days:
+Armed conflicts 803, Law and crime 416, Politics 374, Disasters 297, Sports 222, International relations 198,
+Health and environment 180, Business 135, Science and technology 72, Arts and culture 59 — all ten viable,
+where a 7-day window starves the quiet ones (Science drops to 20).
+
+**Owner decisions:** all ten sections offered but ordered **lighter first** (a calm app should not open with
+war, and hiding sections would be curation you can't see); label "Or drift what's in the news"; once a
+section's pool is spent the drift **widens into related articles and says so**.
+
+- [x] `src/lib/current.ts` (new, pure): `CURRENT_SECTIONS` (the ten sections with glyph/blurb/tint, so they
+      render through the same `TileGrid` as the field cards), `sectionById` (the URL guard), `dayPageTitles`,
+      `parseCurrentEvents`, `rankCurrent`, `freshnessWord`. **The ranking is the whole trick:** a bullet that
+      is only a link is the story's *subject*; links inside prose are incidental. `3×header + prose + days,`
+      decayed by recency, puts 2026 FIFA World Cup and association football on top of Sports and pushes
+      "Sergeant" and "New York (state)" down.
+- [x] `src/app/api/wiki/current/route.ts` (new): `?section=&offset=&limit=` → `{ card, daysAgo }[]`, ranked
+      order preserved (deliberately NOT reshuffled imaged-first like `selectCardBatch`, since the ranking is
+      the point). Reuses `wikiQuery` + `CARD_PROPS` + `isJunkPage` + `actionPageToCard`. `exlimit=max` (without
+      it only the first page gets an extract), follows normalization/redirects, 15-min in-process memo of the
+      parsed pool so ten sections don't each refetch, one 60-day retry if a section is unusually quiet,
+      `CACHE_MEDIUM` on a real batch and `NO_STORE` on empty/error. Graceful: failures return `[]`, never a 500.
+- [x] `src/lib/focus.ts` + `types.ts`: a **third `Focus` kind** (`current`) rather than a new realm, so it
+      inherits all of Phase 18's machinery. `ArrivedVia.drift` gained `reason: "current"` + optional `current`
+      detail; both optional ⇒ every saved trail still opens (only `ModeChip` reads `reason`).
+- [x] `src/lib/orbit.ts`: `initOrbit` now accepts **several seeds**. The widening half of a news drift orbits
+      every article the section served, so it stays near the actual stories instead of falling back to a field.
+- [x] `src/app/drift/page.tsx`: a `current` branch that pages the pool, then flips to the multi-seed orbit when
+      it is dry. `clearFocus` / `startOrbitHere` reset the pool refs and strip `section` from the URL.
+- [x] `src/components/TileDisclosure.tsx` (new): the foldable card band (open on desktop, folded on mobile),
+      now shared by both Encyclopedia sections instead of being inlined once.
+- [x] `ModeChip` reads `In the news · today` / `· 3 days ago` / `· wandering wider`; `FocusBanner` gained a
+      broadcast icon; the tour gained one step (17 steps).
+- [x] **Test Phase 23:** build + lint clean; **412 unit tests** (+29: `current.test.ts` 22, focus 4, orbit 3).
+      One test caught a real gap during development (headings written with `&` did not match `and`), fixed in
+      the parser. Real browser, zero console/page errors: the news band opens on desktop and folds at 390px;
+      Sports → `?focus=current&section=sports&seed=Sports`, banner "In the news: Sports", cards 2026 FIFA World
+      Cup / Wimbledon / Argentina national football team with an `IN THE NEWS · 3 DAYS AGO` chip; **widening
+      verified by stubbing the pool to 3 articles** → cards 4+ flipped to `IN THE NEWS · WANDERING WIDER` and
+      stayed related (Belgium/Switzerland/Mexico at the FIFA World Cup); the tour reaches "Or read around the
+      news" and opens the disclosure; with the route aborted the feed shows its calm "Couldn't load a card just
+      now" retry instead of breaking (§4).
+
+**Phase 23 exit:** ✅ you can pick a subject and read the Wikipedia articles behind this month's stories in it,
+with the card always saying how current it is, and an honest hand-off to related reading when the news runs out.
 
 ---
 

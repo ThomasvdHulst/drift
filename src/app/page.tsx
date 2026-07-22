@@ -6,12 +6,14 @@ import { useEffect, useMemo, useState } from "react";
 import { listTrails, getSettings, setSettings } from "@/lib/storage";
 import { pickRandom } from "@/lib/pick";
 import { TOPICS, type Topic } from "@/lib/topics";
+import { CURRENT_SECTIONS } from "@/lib/current";
 import { focusToParams, type Focus } from "@/lib/focus";
 import { listRealms, getRealm } from "@/lib/realms";
 import type { RealmId, SeedTile } from "@/lib/realms/types";
 import { RealmTabs } from "@/components/RealmTabs";
 import { OrbitSearch } from "@/components/OrbitSearch";
 import { TileGrid } from "@/components/TileGrid";
+import { TileDisclosure } from "@/components/TileDisclosure";
 import { useAuth } from "@/components/AuthProvider";
 import { useTour } from "@/components/tour/TourProvider";
 import { Wordmark } from "@/components/BrandLogo";
@@ -28,11 +30,6 @@ export default function Home() {
   // lightweight "just drift" with the trail framing removed. Remembered in
   // settings; toggled below the "Surprise me" button.
   const [keepTrail, setKeepTrail] = useState(true);
-  // The "Or drift within a field" disclosure. 28 field cards are a warm, browsable
-  // sheet on a wide screen but a long scroll on a phone, so it opens by default on
-  // desktop only. Closed for the first paint on both, so hydration always matches.
-  const [fieldsOpen, setFieldsOpen] = useState(false);
-
   const realms = useMemo(() => listRealms(), []);
   const realm = getRealm(active);
   const fieldTiles = useMemo(
@@ -43,6 +40,17 @@ export default function Home() {
         glyph: t.glyph,
         blurb: t.blurb,
         tint: t.tint,
+      })),
+    [],
+  );
+  const newsTiles = useMemo(
+    () =>
+      CURRENT_SECTIONS.map((s) => ({
+        id: s.id,
+        label: s.label,
+        glyph: s.glyph,
+        blurb: s.blurb,
+        tint: s.tint,
       })),
     [],
   );
@@ -59,15 +67,6 @@ export default function Home() {
       if (s.lastRealm && getRealm(s.lastRealm).id === s.lastRealm)
         setActive(s.lastRealm);
       setKeepTrail(s.sessionMode !== "endless");
-    });
-    // Tailwind's `sm` breakpoint — the width where the field grid stops being a
-    // long scroll. Read once, so a later toggle by hand always wins.
-    queueMicrotask(() => {
-      try {
-        setFieldsOpen(!!window.matchMedia?.("(min-width: 640px)")?.matches);
-      } catch {
-        // no matchMedia: leave the disclosure closed
-      }
     });
   }, []);
 
@@ -107,6 +106,18 @@ export default function Home() {
   // drift in its widening neighbourhood.
   function openOrbit(title: string) {
     startFocusedDrift({ kind: "orbit", seedTitle: title, seedLabel: title });
+  }
+
+  // Start an "in the news" drift (Phase 23, Encyclopedia only): the Wikipedia
+  // articles behind this month's stories in one subject.
+  function openCurrent(sectionId: string) {
+    const section = CURRENT_SECTIONS.find((s) => s.id === sectionId);
+    if (!section) return;
+    startFocusedDrift({
+      kind: "current",
+      section: section.id,
+      label: section.label,
+    });
   }
 
   // Both focused-drift entry points share one encoding — `focusToParams` in
@@ -211,40 +222,28 @@ export default function Home() {
             disclosure so 28 of them never crowd the default "surprise me" flow.
             Encyclopedia only (fields are Wikipedia's ORES topics). */}
         {active === "encyclopedia" ? (
-          <details
-            open={fieldsOpen}
-            onToggle={(e) => setFieldsOpen(e.currentTarget.open)}
-            className="group mt-9 w-full"
-          >
-            <summary
-              data-tour="field-focus"
-              className="mx-auto flex w-fit cursor-pointer list-none items-center gap-1.5 text-xs font-medium uppercase tracking-widest text-ink-soft transition hover:text-accent-strong"
-            >
-              Or drift within a field
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-                className="transition-transform group-open:rotate-180"
-              >
-                <path d="M6 9l6 6 6-6" />
-              </svg>
-            </summary>
-            <TileGrid
-              className="mt-4"
+          <>
+            <TileDisclosure
+              className="mt-9"
+              label="Or drift within a field"
+              tourId="field-focus"
               tiles={fieldTiles}
               onPick={(id) => {
                 const topic = TOPICS.find((t) => t.id === id);
                 if (topic) openField(topic);
               }}
             />
-          </details>
+            {/* "In the news" (Phase 23): the Wikipedia articles behind this
+                month's stories, by subject. Never the news itself — the source is
+                Wikipedia's own Portal:Current events (see lib/current.ts). */}
+            <TileDisclosure
+              className="mt-9"
+              label="Or drift what's in the news"
+              tourId="news-focus"
+              tiles={newsTiles}
+              onPick={openCurrent}
+            />
+          </>
         ) : (
           <>
             <h2 className="mb-4 mt-10 text-center text-xs font-medium uppercase tracking-widest text-ink-soft">

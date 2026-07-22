@@ -54,15 +54,50 @@ describe("focusToParams → focusFromParams round-trip", () => {
     };
     expect(focusFromParams(new URLSearchParams(focusToParams(focus)))).toEqual(focus);
   });
+
+  it("survives a round-trip for a current-events focus", () => {
+    const focus: Focus = { kind: "current", section: "sports", label: "Sports" };
+    expect(focusFromParams(new URLSearchParams(focusToParams(focus)))).toEqual(focus);
+  });
+});
+
+describe("a current-events focus (Phase 23)", () => {
+  const p = (qs: string) => new URLSearchParams(qs);
+
+  it("parses a known news section", () => {
+    expect(focusFromParams(p("focus=current&section=sports&seed=Sports"))).toEqual({
+      kind: "current",
+      section: "sports",
+      label: "Sports",
+    });
+  });
+
+  it("takes the label from the registry, never from the URL", () => {
+    // The seed param is display text a link could carry anything in; the banner
+    // must show what the section actually is.
+    const focus = focusFromParams(p("focus=current&section=sports&seed=Anything"));
+    expect(focus).toEqual({ kind: "current", section: "sports", label: "Sports" });
+  });
+
+  it("rejects an unknown or injected section", () => {
+    expect(focusFromParams(p("focus=current&section=lizards"))).toBeNull();
+    expect(focusFromParams(p("focus=current"))).toBeNull();
+    expect(
+      focusFromParams(p("focus=current&section=" + encodeURIComponent("../../etc"))),
+    ).toBeNull();
+  });
 });
 
 describe("describeFocus", () => {
-  it("labels a field and an orbit", () => {
+  it("labels a field, an orbit and a current-events drift", () => {
     expect(describeFocus({ kind: "field", bucket: "mathematics", label: "Mathematics" })).toBe(
       "Within Mathematics",
     );
     expect(
       describeFocus({ kind: "orbit", seedTitle: "Bauhaus", seedLabel: "Bauhaus" }),
     ).toBe("Orbiting Bauhaus");
+    expect(describeFocus({ kind: "current", section: "sports", label: "Sports" })).toBe(
+      "In the news: Sports",
+    );
   });
 });

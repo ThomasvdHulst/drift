@@ -6,6 +6,7 @@ import type { Reaction } from "@/lib/interest";
 import type { RealmId } from "@/lib/realms/types";
 import { summaryUrl, getRealm } from "@/lib/realms";
 import { proximityWord } from "@/lib/orbit";
+import { freshnessWord } from "@/lib/current";
 import { ThreadChips, KindIcon, KIND_META, DoorwayIcon } from "./ThreadChips";
 import { ArtZoom } from "./ArtZoom";
 import { PaperCover } from "./PaperCover";
@@ -140,6 +141,14 @@ function ModeChip({ via, realmLabel }: { via: ArrivedVia; realmLabel: string }) 
     label = "Starting point";
   } else if (via.type === "drift" && crossedDrift) {
     label = via.topic ? `Crossed to ${realmLabel} · ${via.topic.label}` : `Crossed to ${realmLabel}`;
+  } else if (via.type === "drift" && via.current) {
+    // "In the news" (Phase 23). The banner already names the section, so the
+    // chip carries the part only it knows: how current this article actually is,
+    // or that the section's news pool ran out and we're now wandering its
+    // neighbourhood. Being honest about that second half matters most.
+    label = via.current.widened
+      ? "In the news · wandering wider"
+      : `In the news · ${freshnessWord(via.current.daysAgo ?? 0)}`;
   } else if (via.type === "drift" && via.orbit) {
     label = `Orbiting ${via.orbit.seedLabel} · ${proximityWord(via.orbit.ring)}`;
   } else if (via.type === "drift" && via.fromLiked) {

@@ -104,6 +104,16 @@ export const TOUR_STEPS: TourStep[] = [
     body: "Open this for a card per field, from Physics to Visual Arts. Pick one and the drift keeps to that subject. However you begin, you steer from there.",
   },
   {
+    id: "news-focus",
+    route: TOUR_ROUTES.home,
+    target: "news-focus",
+    placement: "auto",
+    spotlight: true,
+    advance: "next",
+    title: "Or read around the news",
+    body: "Pick a subject here and you get the Wikipedia articles behind what is going on right now. Not the news itself, the background to it.",
+  },
+  {
     id: "start",
     route: TOUR_ROUTES.home,
     target: "drift-cta",
