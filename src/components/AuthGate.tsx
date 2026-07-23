@@ -10,8 +10,10 @@ import { Landing } from "@/components/landing/Landing";
 // can read what Drift stores before creating an account). These expose no user
 // data, so letting them through the gate is safe.
 // `/contact` is here deliberately: someone who cannot sign in is exactly the
-// person who most needs to reach us, so it must not sit behind the gate.
-const PUBLIC_ROUTES = ["/privacy", "/install", "/contact"];
+// person who most needs to reach us, so it must not sit behind the gate. `/about`
+// is here for the same reason: who Drift is and why it exists should be readable
+// without an account.
+const PUBLIC_ROUTES = ["/about", "/privacy", "/install", "/contact"];
 
 // Phase 13: when the cloud IS configured (i.e. the hosted app), Drift requires an
 // account — a logged-out visitor sees a calm sign-in / create-account screen

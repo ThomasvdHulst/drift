@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { Monogram } from "@/components/BrandLogo";
+import { PublicFooter } from "@/components/PublicFooter";
 import { StandaloneNote, PlatformHint } from "@/components/InstallGuide";
 
 export const metadata = {
   title: "Install Drift on your phone",
-  description: "Add Drift to your home screen for a full-screen, app-like reading room.",
+  description:
+    "Add Drift to your home screen for a full-screen, app-like reading room.",
+  alternates: { canonical: "/install" },
 };
 
 // A calm guide to installing Drift as a home-screen web app (PWA). Reachable
@@ -13,92 +16,98 @@ export const metadata = {
 // choose to visit (§2).
 export default function InstallPage() {
   return (
-    <main className="mx-auto min-h-dvh w-full max-w-2xl px-6 py-12 sm:py-16">
-      <header className="mb-8">
-        <Link
-          href="/"
-          className="text-sm text-ink-soft transition hover:text-accent-strong"
-        >
-          ← Home
-        </Link>
-        <div className="mt-6 flex items-center gap-3">
-          <Monogram className="h-8" />
-          <h1 className="font-serif text-4xl text-ink">Install Drift</h1>
+    <div className="flex min-h-dvh flex-col bg-paper">
+      <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-12 sm:py-16">
+        <header className="mb-8">
+          <Link
+            href="/"
+            className="text-sm text-ink-soft transition hover:text-accent-strong"
+          >
+            ← Home
+          </Link>
+          <div className="mt-6 flex items-center gap-3">
+            <Monogram className="h-8" />
+            <h1 className="font-serif text-4xl text-ink">Install Drift</h1>
+          </div>
+          <p className="mt-3 text-sm leading-relaxed text-ink-soft">
+            Drift feels best as an app: full screen, no browser bar, its own icon
+            on your home screen. It is the same Drift, so sign in once and your
+            trails come with you. Here is how, in a few taps.
+          </p>
+        </header>
+
+        <div className="space-y-10">
+          <StandaloneNote />
+          <PlatformHint />
+
+          {/* iOS */}
+          <section>
+            <div className="mb-3 flex items-center gap-2">
+              <AppleGlyph />
+              <h2 className="font-serif text-2xl text-ink">
+                iPhone or iPad (Safari)
+              </h2>
+            </div>
+            <ol className="space-y-2 text-sm leading-relaxed text-ink">
+              <Step n={1}>
+                Open <span className="font-medium">usedrift.org</span> in{" "}
+                <span className="font-medium">Safari</span> (this only works in
+                Safari, not Chrome or in-app browsers).
+              </Step>
+              <Step n={2}>
+                Tap the <span className="font-medium">Share</span> button (the
+                square with an arrow pointing up) in the toolbar.
+              </Step>
+              <Step n={3}>
+                Scroll down and tap{" "}
+                <span className="font-medium">Add to Home Screen</span>.
+              </Step>
+              <Step n={4}>
+                Tap <span className="font-medium">Add</span> in the top right.
+                Drift appears on your home screen with its own icon.
+              </Step>
+            </ol>
+          </section>
+
+          {/* Android */}
+          <section>
+            <div className="mb-3 flex items-center gap-2">
+              <AndroidGlyph />
+              <h2 className="font-serif text-2xl text-ink">Android (Chrome)</h2>
+            </div>
+            <ol className="space-y-2 text-sm leading-relaxed text-ink">
+              <Step n={1}>
+                Open <span className="font-medium">usedrift.org</span> in{" "}
+                <span className="font-medium">Chrome</span>. You may see an
+                &ldquo;Install app&rdquo; prompt appear on its own. If so, tap it
+                and you are done.
+              </Step>
+              <Step n={2}>
+                Otherwise, tap the <span className="font-medium">⋮</span> menu in
+                the top right.
+              </Step>
+              <Step n={3}>
+                Tap <span className="font-medium">Add to Home screen</span> (or{" "}
+                <span className="font-medium">Install app</span>).
+              </Step>
+              <Step n={4}>
+                Confirm with <span className="font-medium">Add</span> /{" "}
+                <span className="font-medium">Install</span>. Drift lands on your
+                home screen with its own icon.
+              </Step>
+            </ol>
+          </section>
+
+          <p className="border-t border-line pt-6 text-sm leading-relaxed text-ink-soft">
+            Open Drift from its new icon and sign in once. It launches full
+            screen, like any other app, and your account keeps everything in sync
+            across your phone and computer.
+          </p>
         </div>
-        <p className="mt-3 text-sm leading-relaxed text-ink-soft">
-          Drift feels best as an app: full screen, no browser bar, its own icon on
-          your home screen. It is the same Drift, so sign in once and your trails
-          come with you. Here is how, in a few taps.
-        </p>
-      </header>
+      </main>
 
-      <div className="space-y-10">
-        <StandaloneNote />
-        <PlatformHint />
-
-        {/* iOS */}
-        <section>
-          <div className="mb-3 flex items-center gap-2">
-            <AppleGlyph />
-            <h2 className="font-serif text-2xl text-ink">iPhone or iPad (Safari)</h2>
-          </div>
-          <ol className="space-y-2 text-sm leading-relaxed text-ink">
-            <Step n={1}>
-              Open <span className="font-medium">usedrift.org</span> in{" "}
-              <span className="font-medium">Safari</span> (this only works in
-              Safari, not Chrome or in-app browsers).
-            </Step>
-            <Step n={2}>
-              Tap the <span className="font-medium">Share</span> button (the square
-              with an arrow pointing up) in the toolbar.
-            </Step>
-            <Step n={3}>
-              Scroll down and tap{" "}
-              <span className="font-medium">Add to Home Screen</span>.
-            </Step>
-            <Step n={4}>
-              Tap <span className="font-medium">Add</span> in the top right. Drift
-              appears on your home screen with its own icon.
-            </Step>
-          </ol>
-        </section>
-
-        {/* Android */}
-        <section>
-          <div className="mb-3 flex items-center gap-2">
-            <AndroidGlyph />
-            <h2 className="font-serif text-2xl text-ink">Android (Chrome)</h2>
-          </div>
-          <ol className="space-y-2 text-sm leading-relaxed text-ink">
-            <Step n={1}>
-              Open <span className="font-medium">usedrift.org</span> in{" "}
-              <span className="font-medium">Chrome</span>. You may see an
-              &ldquo;Install app&rdquo; prompt appear on its own. If so, tap it and
-              you are done.
-            </Step>
-            <Step n={2}>
-              Otherwise, tap the <span className="font-medium">⋮</span> menu in the
-              top right.
-            </Step>
-            <Step n={3}>
-              Tap <span className="font-medium">Add to Home screen</span> (or{" "}
-              <span className="font-medium">Install app</span>).
-            </Step>
-            <Step n={4}>
-              Confirm with <span className="font-medium">Add</span> /{" "}
-              <span className="font-medium">Install</span>. Drift lands on your home
-              screen with its own icon.
-            </Step>
-          </ol>
-        </section>
-
-        <p className="border-t border-line pt-6 text-sm leading-relaxed text-ink-soft">
-          Open Drift from its new icon and sign in once. It launches full screen,
-          like any other app, and your account keeps everything in sync across your
-          phone and computer.
-        </p>
-      </div>
-    </main>
+      <PublicFooter />
+    </div>
   );
 }
 

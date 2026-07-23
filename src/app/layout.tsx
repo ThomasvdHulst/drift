@@ -4,6 +4,7 @@ import Script from "next/script";
 import "./globals.css";
 import "katex/dist/katex.min.css";
 import { adsConfig, adsenseScriptEnabled } from "@/lib/ads";
+import { siteUrl } from "@/lib/site";
 import { AUTH_STORAGE_KEY } from "@/lib/supabase/client";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthProvider } from "@/components/AuthProvider";
@@ -45,10 +46,31 @@ const inter = Inter({
 const ADS = adsConfig();
 
 export const metadata: Metadata = {
+  // Absolute-URL base for canonical + OpenGraph links (search engines and social
+  // cards want fully-qualified URLs). Per-page `alternates.canonical` resolves
+  // against this, and `title`/`description` propagate into og:/twitter: below.
+  metadataBase: new URL(siteUrl()),
   title: "Drift: pull a thread, see where it goes",
   description:
     "A calm feed of knowledge cards where you are the algorithm. Pull threads to steer your own rabbit hole.",
   applicationName: "Drift",
+  alternates: { canonical: "/" },
+  // Only the non-text fields here: Next fills og:/twitter: title + description
+  // from the resolved page `title`/`description`, so every public page gets an
+  // accurate card without repeating itself.
+  openGraph: {
+    type: "website",
+    siteName: "Drift",
+    locale: "en_US",
+    // No static `url` here: it would report the homepage as og:url on every
+    // subpage. The per-page `alternates.canonical` already carries the correct
+    // absolute URL, which is the one search engines actually use.
+    images: [{ url: "/icon-512.png", width: 512, height: 512, alt: "Drift" }],
+  },
+  twitter: {
+    card: "summary",
+    images: ["/icon-512.png"],
+  },
   // Installable-web-app hints (Phase 13). The manifest (app/manifest.ts), favicon
   // (app/icon.svg + app/favicon.ico), and Apple touch icon (app/apple-icon.png)
   // are auto-linked by Next's file conventions; this adds the iOS standalone meta.

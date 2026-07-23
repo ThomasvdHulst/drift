@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { motion, useReducedMotion } from "motion/react";
 import { Wordmark, Monogram } from "@/components/BrandLogo";
+import { PublicFooter } from "@/components/PublicFooter";
 import { AuthForm } from "@/components/AuthForm";
 import { TrailMap } from "@/components/TrailMap";
 import { KindIcon, KIND_META } from "@/components/ThreadChips";
@@ -50,13 +52,21 @@ export function Landing() {
       <header className="sticky top-0 z-20 border-b border-line/60 bg-paper/80 backdrop-blur">
         <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-3">
           <Wordmark className="h-7" />
-          <a
-            href="#join"
-            onClick={goToJoin}
-            className="rounded-full px-4 py-1.5 text-sm font-medium text-ink-soft transition hover:text-accent-strong"
-          >
-            Sign in
-          </a>
+          <nav className="flex items-center gap-1 sm:gap-2">
+            <Link
+              href="/about"
+              className="rounded-full px-3 py-1.5 text-sm font-medium text-ink-soft transition hover:text-accent-strong sm:px-4"
+            >
+              About
+            </Link>
+            <a
+              href="#join"
+              onClick={goToJoin}
+              className="rounded-full px-3 py-1.5 text-sm font-medium text-ink-soft transition hover:text-accent-strong sm:px-4"
+            >
+              Sign in
+            </a>
+          </nav>
         </div>
       </header>
 
@@ -254,37 +264,10 @@ export function Landing() {
             <AuthForm initialMode="signup" />
           </div>
         </section>
-
-        {/* --- Footer --- */}
-        <footer className="border-t border-line py-10">
-          <div className="flex flex-col items-center gap-3 text-center">
-            <Monogram className="h-6" />
-            <p className="text-sm text-ink-soft">
-              A calm corner of the internet, for the curious.
-            </p>
-            <p className="max-w-md text-xs leading-relaxed text-ink-soft/80">
-              Content from Wikipedia (CC BY-SA) and the Art Institute of Chicago
-              (public domain, CC0). Drift only reshapes it. It never invents
-              facts.
-            </p>
-            <p className="flex items-center gap-2 text-xs text-ink-soft/80">
-              <a
-                href="/contact"
-                className="underline-offset-2 transition hover:text-accent-strong hover:underline"
-              >
-                Get in touch
-              </a>
-              <span aria-hidden="true">·</span>
-              <a
-                href="/privacy"
-                className="underline-offset-2 transition hover:text-accent-strong hover:underline"
-              >
-                What Drift stores
-              </a>
-            </p>
-          </div>
-        </footer>
       </main>
+
+      {/* Shared across every public page, so navigation is consistent everywhere. */}
+      <PublicFooter />
     </div>
   );
 }
@@ -454,6 +437,8 @@ function RealmPanel({
           alt=""
           className="h-full w-full object-cover"
           draggable={false}
+          loading="lazy"
+          decoding="async"
         />
       </div>
       <div className="p-5">

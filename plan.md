@@ -29,6 +29,11 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > opens on a story you've seen with a calm "you're all caught up · check back later" notice + a "· caught up"
 > banner marker, and keeps drifting into related reading instead of dead-ending. (Phase 23 log entry has detail.)
 >
+> **AdSense prep (2026-07-23):** added a public **/about** page, a **shared footer nav** across every public
+> page (so Contact is reachable everywhere), an About link in the landing header, and **basic SEO** (canonical
+> + OpenGraph per page, /about in the sitemap). Site is submitted for AdSense review; flip
+> `NEXT_PUBLIC_ADS_ENABLED` on once approved. (Grab-bag log entry has detail.)
+>
 > **Latest (2026-07-22):** two changes to how an Encyclopedia drift starts. **M-FD3** dropped the home
 > page from four ways to begin to three: "Or drift within a field" is now a grid of 28 field cards
 > (glyph, name, blurb, tint) listed alphabetically, open by default on desktop and folded on mobile,
@@ -1612,6 +1617,22 @@ first-class trail attribute; an atlas tint for orbit drifts.
 
 ## Cross-cutting smaller polish (grab-bag — do anytime, not a phase)
 
+- [x] **AdSense-review readiness: About page + shared nav + SEO (2026-07-23).** Prep for the Google
+      AdSense site review (which values transparency pages, clear navigation, and basic SEO). No app/feed
+      change. **New `/about` page** (`src/app/about/page.tsx`): a calm, plain-language "what Drift is / why
+      it exists / where content comes from / who makes it" (an independent, non-commercial project), public
+      (added to `AuthGate` `PUBLIC_ROUTES` + `site.ts` `INDEXABLE_ROUTES`, so it is in the sitemap and
+      crawlable). **New `PublicFooter` component** used by the landing AND every support page (about, contact,
+      privacy, install), giving all of them the SAME clear link menu (Home · About · Contact · Install ·
+      Privacy) + the licensing note + a copyright line — so **Contact is reachable from every public page**,
+      not just the landing footer. The landing header gained an **About** link beside Sign in. **SEO:** root
+      `metadata` now sets `metadataBase`, per-page `alternates.canonical`, and OpenGraph/Twitter (title +
+      description auto-propagate per page; `icon-512.png` as the card image). Below-the-fold landing images
+      got `loading="lazy"`. **Verified** on a real gated production build (`next start`): every public page is
+      statically prerendered (fast CDN delivery), `/about` HTML carries a unique title/description + correct
+      canonical + OG tags, `/sitemap.xml` lists `/about`, robots unchanged, header/footer nav links work
+      (Playwright), no mobile h-overflow, zero console errors. 419 unit tests, build + lint clean. **Owner
+      TODO after approval:** flip `NEXT_PUBLIC_ADS_ENABLED` on (Phase 21) once AdSense approves.
 - [x] **Sitemap + robots.txt (2026-07-22).** `src/app/sitemap.ts` → `/sitemap.xml` and
       `src/app/robots.ts` → `/robots.txt` (Next file conventions), both reading one source of truth,
       `src/lib/site.ts`: `siteUrl()` (`NEXT_PUBLIC_SITE_URL` with the live-site fallback, trailing

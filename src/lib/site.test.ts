@@ -23,8 +23,14 @@ describe("normalizeSiteUrl", () => {
 
 describe("what search engines are pointed at", () => {
   it("indexes only routes that render content to a signed-out visitor", () => {
-    // These four are `/` (the landing page) plus AuthGate's PUBLIC_ROUTES.
-    expect([...INDEXABLE_ROUTES]).toEqual(["/", "/privacy", "/install", "/contact"]);
+    // These five are `/` (the landing page) plus AuthGate's PUBLIC_ROUTES.
+    expect([...INDEXABLE_ROUTES]).toEqual([
+      "/",
+      "/about",
+      "/privacy",
+      "/install",
+      "/contact",
+    ]);
   });
 
   it("never lists a login-gated route as indexable", () => {

@@ -32,8 +32,14 @@ export function siteUrl(): string {
 // ---------------------------------------------------------------------------
 
 /** Routes that render real content to a signed-out visitor. `/` shows the
- *  landing page; the other three are AuthGate's PUBLIC_ROUTES allowlist. */
-export const INDEXABLE_ROUTES = ["/", "/privacy", "/install", "/contact"] as const;
+ *  landing page; the other four are AuthGate's PUBLIC_ROUTES allowlist. */
+export const INDEXABLE_ROUTES = [
+  "/",
+  "/about",
+  "/privacy",
+  "/install",
+  "/contact",
+] as const;
 
 /** Everything behind the gate: a crawler gets the sign-in screen, and the real
  *  content is one user's private data. `/api/` is machine-only. */
