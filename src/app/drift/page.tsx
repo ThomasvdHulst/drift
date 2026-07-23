@@ -85,6 +85,16 @@ type CurrentCard = { card: Card; daysAgo: number };
 // How many news articles to pull per page of the pool. The Action API caps
 // extracts at 20 per request, and a page this size keeps a drift instant.
 const CURRENT_PAGE = 12;
+// How many pages of the ranked pool to walk on the INITIAL load looking for an
+// UNSEEN article before concluding you're caught up. Re-entering a section you've
+// drifted deep into, the top of the pool is all in `seen`, so we page past it
+// instead of wrongly reporting a load error. ~8×12 ranked slots is far more than a
+// calm session covers, and it bounds the work when a heavy reader has seen most of it.
+const CURRENT_MAX_PAGES = 8;
+// Per-drift paging is kept small: the offset persists across drifts, so a caught-up
+// section climbs toward the pool's end a little each drift (widening fills the gap)
+// instead of stalling on a long multi-fetch spinner every single drift.
+const CURRENT_DRIFT_PAGES = 2;
 
 // Enough of a saved trail to update it in place (preserving id/name/like/date).
 type SessionTrail = {
@@ -201,6 +211,14 @@ export default function DriftPage() {
   const currentOffsetRef = useRef(0);
   const currentSeedsRef = useRef<string[]>([]);
   const currentDryRef = useRef(false);
+  // Already-seen current articles, kept in ranked order to gently re-show once the
+  // section's fresh pool AND its neighbourhood are read dry — so an "in the news"
+  // drift is never a broken button (the Phase 23 bug fix), only "you're caught up".
+  const currentRevisitRef = useRef<CurrentCard[]>([]);
+  // Have we surfaced the one-time "you're caught up" notice this session? The ref
+  // guards the announcement; the state drives the persistent banner suffix.
+  const caughtUpRef = useRef(false);
+  const [caughtUp, setCaughtUp] = useState(false);
 
   const seenRef = useRef<Set<string>>(new Set());
   // The interest model (topic → weight) + whether personalization is on. Held in
@@ -209,6 +227,9 @@ export default function DriftPage() {
   const interestRef = useRef<Interest>({});
   const personalizeRef = useRef(true);
   const busyRef = useRef(false);
+  // The active auto-dismiss timer for the transient hint toast, so a later hint
+  // (e.g. the longer "caught up" notice) can't be cut short by an earlier timer.
+  const hintTimerRef = useRef<number | undefined>(undefined);
   const wheelAccumRef = useRef(0);
   const wheelTsRef = useRef(0);
   const fireTsRef = useRef(0);
@@ -267,6 +288,10 @@ export default function DriftPage() {
           ? proximityWord(current.arrivedVia.orbit.ring)
           : undefined
       : undefined;
+  // The focus banner's trailing word: an orbit's distance, or — for an "in the
+  // news" drift you've read to the end — a persistent, honest "caught up" marker.
+  const bannerSuffix =
+    orbitProx ?? (focus?.kind === "current" && caughtUp ? "caught up" : undefined);
   // The displayed card's app-wide id (thread cache key) and source-native id
   // (used to fetch related/summary). Distinct because two realms can share a
   // native title string.
@@ -362,13 +387,29 @@ export default function DriftPage() {
 
         let card: Card | undefined;
         if (parsedFocus?.kind === "current") {
-          // An "in the news" drift (Phase 23): the first page of the section's
-          // pool. The best-ranked article starts the session and the rest buffer,
-          // so the opening drifts are instant and stay on the current stories.
-          const batch = await fetchCurrentPage(parsedFocus.section);
-          if (batch.length === 0) throw new Error("no card");
-          card = batch[0].card;
-          currentBufferRef.current = batch.slice(1);
+          // An "in the news" drift (Phase 23): open on the best-ranked UNSEEN
+          // article and buffer the rest, so the opening drifts are instant and stay
+          // on the current stories. Re-entering a section you've drifted before, the
+          // top of the ranked pool is all in `seen`, so page deeper to find an unseen
+          // card instead of wrongly reporting a load error (the bug this fixes).
+          const section = parsedFocus.section;
+          for (let guard = 0; guard < CURRENT_MAX_PAGES && !card; guard++) {
+            const { fresh, status } = await fetchCurrentPage(section);
+            if (fresh.length > 0) {
+              card = fresh[0].card;
+              currentBufferRef.current.push(...fresh.slice(1));
+            } else if (status !== "ok") {
+              break; // end of the ranked pool, or a transient fetch error
+            }
+          }
+          // Whole section already read: don't dead-end. Open on the best story you've
+          // seen and flag "caught up" (the drift loop keeps the section wandering).
+          if (!card) {
+            const revisit = currentRevisitRef.current[0];
+            if (!revisit) throw new Error("no card");
+            card = revisit.card;
+            enterCaughtUp();
+          }
         } else if (title) {
           const res = await fetch(summaryUrl(realmRef.current, title));
           const c = (await res.json()) as Card;
@@ -645,7 +686,11 @@ export default function DriftPage() {
     // dropping you into a generic field, and the chip says so.
     if (focusRef.current?.kind === "current") {
       const f = focusRef.current;
-      const via = (extra: { daysAgo?: number; widened?: boolean }) =>
+      const via = (extra: {
+        daysAgo?: number;
+        widened?: boolean;
+        revisit?: boolean;
+      }) =>
         ({
           type: "drift" as const,
           reason: "current" as const,
@@ -653,18 +698,26 @@ export default function DriftPage() {
           current: { section: f.section, label: f.label, ...extra },
         });
 
+      // 1) The section's own current articles, best-ranked first, paging deeper as
+      //    the buffer empties. Only a genuinely empty page (end of the ranked pool)
+      //    marks the pool dry; a transient fetch error just retries next drift. The
+      //    loop (not a single fetch) matters when a page is entirely already-seen.
       if (!currentDryRef.current) {
         let nc = takeCurrentCard();
         if (!nc) {
           busyRef.current = true;
           setAdvancing(true);
           try {
-            const batch = await fetchCurrentPage(f.section);
-            currentBufferRef.current.push(...batch);
-            nc = takeCurrentCard();
-            // An empty page means we've reached the end of the section's ranked
-            // pool; from here on this drift widens.
-            if (!nc) currentDryRef.current = true;
+            for (let guard = 0; guard < CURRENT_DRIFT_PAGES && !nc; guard++) {
+              const { fresh, status } = await fetchCurrentPage(f.section);
+              currentBufferRef.current.push(...fresh);
+              nc = takeCurrentCard();
+              if (status === "end") {
+                if (!nc) currentDryRef.current = true;
+                break;
+              }
+              if (status === "error") break;
+            }
           } finally {
             busyRef.current = false;
             setAdvancing(false);
@@ -676,6 +729,9 @@ export default function DriftPage() {
         }
       }
 
+      // 2) Pool dry: widen into the neighbourhood of the stories themselves (a
+      //    multi-seed orbit over every story we served), so you keep finding NEW,
+      //    related reading before anything is ever repeated.
       if (!orbitRef.current) {
         orbitRef.current = initOrbit(currentSeedsRef.current, f.label);
       }
@@ -693,6 +749,17 @@ export default function DriftPage() {
       }
       if (oc) {
         pushStep(oc.card, via({ widened: true }), "drift");
+        return;
+      }
+
+      // 3) Read the stories AND their neighbourhood dry: rather than dead-ending,
+      //    gently re-show current articles you've already read (best-ranked, on a
+      //    recycling ring) and say so, so the section is never a broken button.
+      //    New stories surface here over the following days.
+      const rc = takeRevisitCard();
+      if (rc) {
+        enterCaughtUp();
+        pushStep(rc.card, via({ daysAgo: rc.daysAgo, revisit: true }), "drift");
       } else {
         showHint(
           "You've read everything in this story and around it. Pull a thread, or drift freely.",
@@ -1006,18 +1073,42 @@ export default function DriftPage() {
     if (batch.length > 0) randomBufferRef.current.push(...batch);
   }
 
-  function showHint(message: string) {
+  function showHint(message: string, duration = 3000) {
     setHint(message);
-    window.setTimeout(() => setHint(null), 3000);
+    if (hintTimerRef.current) window.clearTimeout(hintTimerRef.current);
+    hintTimerRef.current = window.setTimeout(() => setHint(null), duration);
+  }
+
+  // Enter "you're caught up on this section" once per session: a persistent banner
+  // suffix (transparency, §2.1) plus a single longer-lived notice that says you've
+  // read the section's current stories and are now being shown ones you've seen.
+  // Inlines the hint (rather than calling showHint) so it stays a stable reference
+  // for the mount effect that opens a caught-up section.
+  function enterCaughtUp() {
+    if (caughtUpRef.current) return;
+    caughtUpRef.current = true;
+    setCaughtUp(true);
+    setHint(
+      "You're all caught up on this section. Showing stories you've read before. Check back later for new ones.",
+    );
+    if (hintTimerRef.current) window.clearTimeout(hintTimerRef.current);
+    hintTimerRef.current = window.setTimeout(() => setHint(null), 6000);
   }
 
   // ----- "in the news" pool (Phase 23) -----
-  // One page of a news section's ranked pool. Advances the paging offset by the
-  // REQUESTED size, not the returned count: the route filters junk after slicing
-  // its ranking, so a short page still means we consumed that many ranked slots.
-  // Remembers every title served as a seed for the widening orbit later.
-  // Graceful: any failure returns [] and the caller falls back (§4).
-  async function fetchCurrentPage(section: string): Promise<CurrentCard[]> {
+  // One page of a news section's ranked pool, split into UNSEEN cards (returned to
+  // buffer + serve) and already-seen ones (remembered for the caught-up revisit).
+  // `status` lets the caller page correctly: "ok" = a normal page (keep paging if
+  // it held no unseen card), "end" = an empty page ⇒ the ranked pool is exhausted,
+  // "error" = a transient fetch failure (stop this attempt, retry next drift).
+  // Advances the paging offset by the REQUESTED size, not the returned count: the
+  // route filters junk after slicing its ranking, so a short page still means we
+  // consumed that many ranked slots. Every valid story (read or not) becomes a
+  // widening-orbit seed, so the neighbourhood still has anchors once you're caught
+  // up. Graceful: any failure degrades to "error" and the caller falls back (§4).
+  async function fetchCurrentPage(
+    section: string,
+  ): Promise<{ fresh: CurrentCard[]; status: "ok" | "end" | "error" }> {
     const offset = currentOffsetRef.current;
     currentOffsetRef.current = offset + CURRENT_PAGE;
     try {
@@ -1025,16 +1116,27 @@ export default function DriftPage() {
         `/api/wiki/current?section=${encodeURIComponent(section)}&offset=${offset}&limit=${CURRENT_PAGE}`,
         { signal: AbortSignal.timeout(8000) },
       );
-      if (!res.ok) return [];
+      if (!res.ok) return { fresh: [], status: "error" };
       const batch = (await res.json()) as CurrentCard[];
-      if (!Array.isArray(batch)) return [];
-      const fresh = batch.filter(
-        (c) => c?.card?.pageTitle && !seenRef.current.has(cardId(c.card)),
-      );
-      currentSeedsRef.current.push(...fresh.map((c) => c.card.pageTitle));
-      return fresh;
+      if (!Array.isArray(batch)) return { fresh: [], status: "error" };
+      const fresh: CurrentCard[] = [];
+      for (const c of batch) {
+        if (!c?.card?.pageTitle) continue;
+        currentSeedsRef.current.push(c.card.pageTitle);
+        if (seenRef.current.has(cardId(c.card))) {
+          // Already read → keep it (ranked, de-duplicated) for the caught-up
+          // revisit ring. Inlined rather than calling rememberRevisit so this
+          // stays a stable reference for the mount effect (openCurrentSection).
+          const rev = currentRevisitRef.current;
+          const id = cardId(c.card);
+          if (!rev.some((r) => cardId(r.card) === id)) rev.push(c);
+        } else {
+          fresh.push(c);
+        }
+      }
+      return { fresh, status: batch.length === 0 ? "end" : "ok" };
     } catch {
-      return [];
+      return { fresh: [], status: "error" };
     }
   }
 
@@ -1043,6 +1145,32 @@ export default function DriftPage() {
     while (buf.length > 0) {
       const c = buf.shift()!;
       if (c?.card?.pageTitle && !seenRef.current.has(cardId(c.card))) return c;
+      // A buffered card that became seen (e.g. via a thread) is still a valid
+      // caught-up revisit later, so keep it rather than dropping it on the floor.
+      if (c?.card?.pageTitle) rememberRevisit(c);
+    }
+    return null;
+  }
+
+  // Remember an already-seen current article for the caught-up revisit ring,
+  // in ranked (arrival) order, de-duplicated by card id.
+  function rememberRevisit(c: CurrentCard) {
+    const buf = currentRevisitRef.current;
+    const id = cardId(c.card);
+    if (!buf.some((r) => cardId(r.card) === id)) buf.push(c);
+  }
+
+  // Recycle the revisit ring: serve the best-ranked seen card that isn't the one
+  // you're already on, rotating it to the back so a caught-up section keeps gently
+  // wandering its own current stories instead of dead-ending. Null only if the ring
+  // is empty (or holds nothing but the current card).
+  function takeRevisitCard(): CurrentCard | null {
+    const buf = currentRevisitRef.current;
+    const curId = current ? cardId(current.card) : "";
+    for (let i = buf.length; i > 0; i--) {
+      const c = buf.shift()!;
+      buf.push(c);
+      if (c.card.pageTitle && cardId(c.card) !== curId) return c;
     }
     return null;
   }
@@ -1110,6 +1238,9 @@ export default function DriftPage() {
     currentSeedsRef.current = [];
     currentOffsetRef.current = 0;
     currentDryRef.current = false;
+    currentRevisitRef.current = [];
+    caughtUpRef.current = false;
+    setCaughtUp(false);
     try {
       const u = new URL(window.location.href);
       u.searchParams.set("focus", "orbit");
@@ -1135,6 +1266,9 @@ export default function DriftPage() {
     currentSeedsRef.current = [];
     currentOffsetRef.current = 0;
     currentDryRef.current = false;
+    currentRevisitRef.current = [];
+    caughtUpRef.current = false;
+    setCaughtUp(false);
     try {
       const u = new URL(window.location.href);
       ["focus", "bucket", "seed", "title", "section"].forEach((k) =>
@@ -1335,7 +1469,7 @@ export default function DriftPage() {
       />
 
       {focus && current && (
-        <FocusBanner focus={focus} proximity={orbitProx} onRelease={clearFocus} />
+        <FocusBanner focus={focus} proximity={bannerSuffix} onRelease={clearFocus} />
       )}
 
       <main className="relative min-h-0 flex-1">

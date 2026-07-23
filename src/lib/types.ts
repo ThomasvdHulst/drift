@@ -101,10 +101,18 @@ export type ArrivedVia =
       // (distance) this card sits at, for the honest "Orbiting X · nearby" chip.
       orbit?: { seedLabel: string; ring: number };
       // Set only on an "in the news" drift (Phase 23): which news section, how
-      // recently the article was in the news, and whether the section's news
-      // pool had run out so we were widening into related pages. Drives the
-      // honest "In the news · 3 days ago" / "· wandering wider" chip.
-      current?: { section: string; label: string; daysAgo?: number; widened?: boolean };
+      // recently the article was in the news, whether the section's news pool had
+      // run out so we were widening into related pages, and whether this is an
+      // already-read article gently re-shown because you've caught up on the whole
+      // section. Drives the honest "In the news · 3 days ago" / "· wandering wider"
+      // / "· seen before" chip.
+      current?: {
+        section: string;
+        label: string;
+        daysAgo?: number;
+        widened?: boolean;
+        revisit?: boolean;
+      };
       // Set when a horizontal swipe crossed into a new realm with no doorway (a
       // fresh wander into the other realm) — the realm you came FROM (Phase 15).
       crossedFrom?: RealmId;

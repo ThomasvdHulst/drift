@@ -5,7 +5,7 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 **tested with success**. Keep the "Current status" line accurate. Full product detail is in
 `drift-spec.md`; working rules are in `CLAUDE.md`.
 
-> ## Current status — 2026-07-22
+> ## Current status — 2026-07-23
 >
 > **Drift is live** at <https://www.usedrift.org> (Vercel + Supabase) as an installable PWA,
 > in a small friends-and-colleagues beta. Two realms ship: **Encyclopedia** (Wikipedia) and
@@ -22,7 +22,12 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > **Deferred by choice:** Phase 3 (local Ollama AI), 7 (constellations), 11 (calm social feed),
 > 12 (native app), 16 (memory & reflection), M12 (Library/Today realms), M-Ad3 (ad-free tier).
 >
-> **Baseline:** 412 unit tests green, `npm run build` + `npm run lint` clean.
+> **Baseline:** 419 unit tests green, `npm run build` + `npm run lint` clean.
+>
+> **Fix (2026-07-23):** re-entering an "in the news" section you'd read deep into no longer shows a false
+> "Couldn't load a card" error. It now pages past the already-seen cards, and when a whole section is read it
+> opens on a story you've seen with a calm "you're all caught up · check back later" notice + a "· caught up"
+> banner marker, and keeps drifting into related reading instead of dead-ending. (Phase 23 log entry has detail.)
 >
 > **Latest (2026-07-22):** two changes to how an Encyclopedia drift starts. **M-FD3** dropped the home
 > page from four ways to begin to three: "Or drift within a field" is now a grid of 28 field cards
@@ -2008,6 +2013,17 @@ section's pool is spent the drift **widens into related articles and says so**.
 
 **Phase 23 exit:** ✅ you can pick a subject and read the Wikipedia articles behind this month's stories in it,
 with the card always saying how current it is, and an honest hand-off to related reading when the news runs out.
+
+- [x] **Fix (2026-07-23) — "caught up" instead of a false load error.** Re-entering an "in the news" section
+      you'd already drifted deep into showed *"Couldn't load a card just now"* because the initial load fetched
+      only page 1 of the ranked pool and filtered out already-seen cards. Now the open **pages past the seen
+      prefix** (up to `CURRENT_MAX_PAGES`) to find an unseen article, and if the *whole* section is read it opens
+      on the best story you've already seen with a one-time **"you're all caught up on this section"** notice + a
+      persistent **"· caught up"** banner marker (§2.1). A caught-up drift keeps serving new "wandering wider"
+      neighbourhood cards, then gently recycles seen stories ("In the news · seen before") — never a dead-end or
+      error. The live-drift pool loop also pages properly now (only a genuinely empty page marks the pool dry;
+      transient errors retry). Verified with build + lint + 419 unit tests, and a Playwright run reproducing the
+      exact bug (drift 8+, reopen → loads a deeper unseen card, no error) + the fully-seen caught-up path.
 
 ---
 

@@ -144,11 +144,14 @@ function ModeChip({ via, realmLabel }: { via: ArrivedVia; realmLabel: string }) 
   } else if (via.type === "drift" && via.current) {
     // "In the news" (Phase 23). The banner already names the section, so the
     // chip carries the part only it knows: how current this article actually is,
-    // or that the section's news pool ran out and we're now wandering its
-    // neighbourhood. Being honest about that second half matters most.
-    label = via.current.widened
-      ? "In the news · wandering wider"
-      : `In the news · ${freshnessWord(via.current.daysAgo ?? 0)}`;
+    // that the section's news pool ran out and we're wandering its neighbourhood,
+    // or that you've read the section dry and this is one you've seen before.
+    // Being honest about those second and third halves matters most.
+    label = via.current.revisit
+      ? "In the news · seen before"
+      : via.current.widened
+        ? "In the news · wandering wider"
+        : `In the news · ${freshnessWord(via.current.daysAgo ?? 0)}`;
   } else if (via.type === "drift" && via.orbit) {
     label = `Orbiting ${via.orbit.seedLabel} · ${proximityWord(via.orbit.ring)}`;
   } else if (via.type === "drift" && via.fromLiked) {
