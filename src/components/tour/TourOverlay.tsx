@@ -92,9 +92,15 @@ export function TourOverlay({
 
     const find = () => {
       if (cancelled) return;
-      const found = document.querySelector(
-        `[data-tour="${step.target}"]`,
-      ) as HTMLElement | null;
+      // A target may be rendered more than once with only one copy visible at a
+      // time — the card's threads are pinned beside the text on a desktop and
+      // inlined into the reading flow on a phone. Spotlighting the hidden copy
+      // would put the hole nowhere, so prefer the one that actually has a box.
+      const matches = [
+        ...document.querySelectorAll(`[data-tour="${step.target}"]`),
+      ] as HTMLElement[];
+      const found =
+        matches.find((m) => m.getClientRects().length > 0) ?? matches[0] ?? null;
       if (found) {
         el = found;
         // Watch the target itself so the hole tracks it as its content loads.

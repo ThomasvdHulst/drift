@@ -23,6 +23,12 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > loop were left untouched. The Gallery's old "Or start somewhere" tiles were retired as redundant; the
 > buckets behind them still power "Surprise me in Gallery".
 >
+> **Also (2026-07-25): the card reads much better on a phone.** The pinned "Pull a thread" bar was eating
+> 172px in the Gallery and 232px in the Encyclopedia out of a ~700px card, leaving about one line of text
+> visible before you had to scroll. On phones the threads now sit at the END of the reading flow, and a
+> small "3 threads below" pill floats above the fold until you reach them. Visible prose at first paint
+> went from ~27px to ~210px. Desktop keeps its pinned bar unchanged.
+>
 > **Shipped:** Phases 1, 2, 4, 5, 6, 8, 9, 10, 13, 14, 15, 18, 19, 20, 22, 23, 24 — the core drift loop,
 > directional threads, trails + the trail-map reward, the Atlas, the interest model, accounts
 > and cloud sync, friends and sharing, cross-realm doorways, focused drift (field + orbit + in the news),
@@ -2173,6 +2179,54 @@ wander his work".
 **Phase 24 exit:** ✅ the Gallery is as steerable as the Encyclopedia. You can confine a session to an art
 form and period, or to an artist, with every card saying honestly where it came from and the drift widening
 out loud rather than dead-ending or quietly changing the subject.
+
+---
+
+## Card layout on phones: threads follow the read ✅ *(DONE & verified 2026-07-25)*
+
+**Why.** Beta feedback: on a phone the reading area felt cramped, and the pinned "Pull a thread" bar was
+eating it. Measured on a 390x844 phone, and the numbers were worse than expected:
+
+| | scroll viewport | pinned threads bar | prose visible at first paint |
+|---|---|---|---|
+| Gallery, before | 533px | 172px | **26px** |
+| Encyclopedia, before | 473px | **232px** | **28px** |
+| **After** | **704px** | 0 (inline) | **~210px** |
+
+The Encyclopedia was the worse of the two, because its directional chips are two-line and wrap to three
+rows. Either way a reader saw roughly ONE line of text before having to scroll. As the user put it: while
+scrolling you want the image, the title and the text; the threads only matter once you have read enough to
+want to go deeper.
+
+**What changed.** `ThreadsSection` in `src/components/CardView.tsx` now renders in one of two places:
+
+- **Desktop keeps the pinned bar**, unchanged. There is height to spare, and permanently visible
+  directions are the clearest expression of "you are the algorithm".
+- **Phones inline the threads at the END of the reading flow**, after "Read more"/the source link, so the
+  order reads: read it, go deeper, or drift on. The scroll region gains the whole bar back.
+
+**Keeping the threads discoverable** (§2.2 — they are the core mechanic, so pushing them below the fold
+needed an answer): while they are off screen, a small sticky pill floats above the fold saying exactly
+what is down there, e.g. "3 threads below", and one tap scrolls to them. It clears itself the moment the
+chips are actually in view, so it is a cue and never a nag. It costs ~30px instead of the bar's 172-232px.
+
+Two details that matter and are easy to get wrong:
+- The pill uses `-mt-14` against its own `h-14` so it contributes **no scroll height**. The feed's
+  overscroll-to-advance reads this container's `scrollHeight`, and a floating hint must not move where the
+  bottom edge is.
+- It stays **inside** `[data-drift-scroll]` rather than overlaying from outside, so a swipe that starts on
+  it is still read as "scrolling to read" and not as an instant advance (`insideRegion` in `lib/gesture`).
+
+- [x] **Tour fix:** `TourOverlay` resolved its target with `querySelector`, which would have picked the
+      hidden copy of a duplicated `data-tour`. It now prefers the match that actually has a box. Verified
+      it resolves to the pinned copy on desktop (554x111) and the inline copy on mobile (310x156).
+- [x] **Verified:** build + lint clean, **476 unit tests** still green (no pure logic changed). Real
+      phone viewport (390x844, iOS UA), both realms: prose visible at first paint went from ~27px to
+      ~210px. **The gesture model is intact** — a synthetic touch swipe mid-text does NOT advance, a swipe
+      at the bottom advances (Bioluminescence → Chemiluminescence), a swipe down at the top goes back.
+      The hint appears on a long card, disappears after tapping it, and the bottom edge is still reachable.
+      Desktop confirmed byte-identical in behaviour (inline copy hidden, pinned copy 111px). Light + dark,
+      no horizontal overflow, zero console errors.
 
 ---
 

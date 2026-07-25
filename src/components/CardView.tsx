@@ -268,6 +268,53 @@ function ImagePanel({ card, onZoom }: { card: Card; onZoom?: () => void }) {
   );
 }
 
+// The "Pull a thread" block. Rendered TWICE, in two places, because the right
+// place for it genuinely differs by screen:
+//
+//   • Desktop keeps it pinned under the reading column. There is height to spare,
+//     and a permanently visible set of directions is the clearest expression of
+//     "you are the algorithm".
+//   • Phones inline it at the END of the reading flow. Pinned, it cost 172px in
+//     the Gallery and 232px in the Encyclopedia (whose chips are two-line and
+//     wrap to three rows) out of a ~700px card, which left about ONE line of
+//     prose visible before you had to scroll. Beta feedback was that while
+//     scrolling you want the image, title and text, and you only want the threads
+//     once you have read enough to go deeper. Inline, they arrive exactly then.
+//
+// Only one copy is ever visible, so `data-tour` sits on both and the tour picks
+// whichever is on screen.
+function ThreadsSection({
+  threads,
+  threadsLoading,
+  onThread,
+  variant,
+  innerRef,
+}: {
+  threads: Thread[];
+  threadsLoading: boolean;
+  onThread: (thread: Thread) => void;
+  variant: "pinned" | "inline";
+  innerRef?: React.Ref<HTMLDivElement>;
+}) {
+  const pinned = variant === "pinned";
+  return (
+    <div
+      ref={innerRef}
+      data-tour="card-threads"
+      className={
+        pinned
+          ? "hidden shrink-0 flex-col gap-3 border-t border-line px-6 py-4 sm:px-8 md:flex md:px-10 lg:px-12"
+          : "flex flex-col gap-3 border-t border-line pt-4 md:hidden"
+      }
+    >
+      <p className="text-xs font-medium uppercase tracking-widest text-ink-soft">
+        Pull a thread
+      </p>
+      <ThreadChips threads={threads} loading={threadsLoading} onThread={onThread} />
+    </div>
+  );
+}
+
 // The "from the source" link label, per realm's content source.
 function sourceLinkLabel(source?: string): string {
   if (source === "artic") return "View at the Art Institute ↗";
@@ -314,6 +361,35 @@ export function CardView({
   const [zoomOpen, setZoomOpen] = useState(false);
   const canZoom = card.source === "artic" && !!card.zoomUrl;
   const onZoom = canZoom ? () => setZoomOpen(true) : undefined;
+
+  // Phones inline the threads at the end of the reading flow (see
+  // ThreadsSection), which buys back a lot of reading height but puts the
+  // directions below the fold. So while they are off screen we float a small,
+  // honest count above the fold: you always know the threads are there and how
+  // many, and one tap takes you to them. It costs ~30px instead of ~200px, and
+  // it disappears the moment they are actually in view (no permanent nag, §2.4).
+  const inlineThreadsRef = useRef<HTMLDivElement | null>(null);
+  const [threadsInView, setThreadsInView] = useState(false);
+  useEffect(() => {
+    const el = inlineThreadsRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([entry]) => setThreadsInView(entry.isIntersecting),
+      // A sliver counts as "you can see them", so the hint clears early rather
+      // than hovering over the chips it points at.
+      { root: el.closest("[data-drift-scroll]"), threshold: 0.01 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [card.pageTitle]);
+  const showThreadHint = !threadsInView && !threadsLoading && threads.length > 0;
+
+  function scrollToThreads() {
+    inlineThreadsRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "end",
+    });
+  }
 
   async function toggleReadMore() {
     if (open) {
@@ -490,29 +566,64 @@ export function CardView({
               {sourceLinkLabel(card.source)}
             </a>
           </div>
+          {/* Phone only: the threads sit here, at the end of the read, so the
+              text above them gets the card's full height. Desktop renders the
+              pinned copy below instead. */}
+          <ThreadsSection
+            threads={threads}
+            threadsLoading={threadsLoading}
+            onThread={onThread}
+            variant="inline"
+            innerRef={inlineThreadsRef}
+          />
+
           {/* A quiet, static wayfinding cue for the overscroll-to-advance
               gesture — not a tease (no autoplay/countdown); the bottom-nav
-              Advance button stays the explicit control (§2.2). */}
+              Advance button stays the explicit control (§2.2). It comes after
+              the threads so the order reads: read it, go deeper, or drift on. */}
           <p className="pt-1 text-center text-xs text-ink-soft/70">
             ⌄ keep scrolling to drift onward
           </p>
+
+          {/* The floating "there are threads below" cue. Last in the flow and
+              sticky, so it hovers just above the fold while the chips are out of
+              sight and settles away once they are reached. Phone only.
+              `-mt-12` cancels its own `h-12` so it contributes NO scroll height:
+              the feed's overscroll-to-advance reads this container's
+              scrollHeight, and a floating hint must not move where the bottom
+              edge is. It stays inside the scroll region (rather than overlaying
+              from outside) so a swipe that starts on it is still read as
+              "scrolling to read" — see lib/gesture `insideRegion`. */}
+          <div
+            className={`pointer-events-none sticky bottom-0 z-10 -mx-6 -mt-14 flex h-14 items-end justify-center bg-gradient-to-t from-paper-raised from-55% via-paper-raised/85 to-transparent px-6 pb-1 transition-opacity duration-300 sm:-mx-8 sm:px-8 md:hidden ${
+              showThreadHint ? "opacity-100" : "opacity-0"
+            }`}
+          >
+            <button
+              type="button"
+              onClick={scrollToThreads}
+              tabIndex={showThreadHint ? 0 : -1}
+              aria-hidden={!showThreadHint}
+              className={`inline-flex items-center gap-1.5 rounded-full bg-paper-raised/92 px-3 py-1 text-xs font-medium text-accent-strong shadow-sm ring-1 ring-accent/25 backdrop-blur-sm ${
+                showThreadHint ? "pointer-events-auto" : "pointer-events-none"
+              }`}
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+              {threads.length} {threads.length === 1 ? "thread" : "threads"} below
+            </button>
+          </div>
         </div>
 
-        {/* Threads pinned below the scroll region — always reachable, and they
-            don't eat into the reading height. */}
-        <div
-          data-tour="card-threads"
-          className="flex shrink-0 flex-col gap-3 border-t border-line px-6 py-4 sm:px-8 md:px-10 lg:px-12"
-        >
-          <p className="text-xs font-medium uppercase tracking-widest text-ink-soft">
-            Pull a thread
-          </p>
-          <ThreadChips
-            threads={threads}
-            loading={threadsLoading}
-            onThread={onThread}
-          />
-        </div>
+        {/* Desktop: threads pinned below the scroll region — always reachable,
+            and there is height enough that they cost the reading nothing. */}
+        <ThreadsSection
+          threads={threads}
+          threadsLoading={threadsLoading}
+          onThread={onThread}
+          variant="pinned"
+        />
       </div>
 
       {zoomOpen && card.zoomUrl && (
