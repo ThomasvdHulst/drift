@@ -5,6 +5,7 @@
 import { makeGate, fetchJson } from "@/lib/upstream";
 import type { Card, RelatedCandidate } from "@/lib/types";
 import {
+  articImageUrl,
   articToCard,
   articToCandidate,
   isUsableArtwork,
@@ -12,6 +13,23 @@ import {
   type ArticArtwork,
 } from "../artic";
 import { articBucketById } from "../artic.buckets";
+import {
+  ARTIC_ERAS,
+  articEraById,
+  parseFormBucket,
+  worksInSlice,
+  type ArticEra,
+  type ArticForm,
+} from "../artic.forms";
+import {
+  isMovement,
+  movementHolds,
+  parseArtistBucket,
+  rankArtists,
+  type ArtistMatch,
+  type ArtistProfile,
+  type ArtistRing,
+} from "../artic.artist";
 
 const API = "https://api.artic.edu/api/v1";
 const UA =
@@ -89,14 +107,317 @@ function pdMatch(field: string, value: string, limit: number, extra: Record<stri
   };
 }
 
+// Public-domain + one art form + an optional period (Phase 24). Clause order
+// deliberately mirrors scripts/probe-artic-forms.mjs exactly — including the
+// `exists: image_id` gate — so the counts baked into artic.forms.ts describe
+// precisely the set this draws from, and a slice we promised has N works really
+// does. Form/era values come from our own registry, never from user input.
+function pdForm(
+  form: ArticForm,
+  era: ArticEra | null,
+  limit: number,
+  page: number,
+) {
+  return {
+    "query[bool][must][0][term][is_public_domain]": "true",
+    "query[bool][must][1][exists][field]": "image_id",
+    "query[bool][must][2][match_phrase][artwork_type_title]": form.aicType,
+    ...(era
+      ? {
+          "query[bool][must][3][range][date_start][gte]": String(era.from),
+          "query[bool][must][4][range][date_start][lte]": String(era.to),
+        }
+      : {}),
+    fields: ARTIC_FIELDS,
+    limit: String(limit),
+    page: String(page),
+  };
+}
+
+// How deep into a form+era slice we're willing to sample. Bigger than the
+// themed buckets' SPREAD because these slices are much bigger (7,401 prints from
+// 1850 to 1899): capping at 30 pages there would show you the same few hundred
+// works forever. Bounded so a long session still wanders rather than paging
+// linearly into the tail.
+const FORM_SPREAD = 60;
+
+async function formDiscover(
+  form: ArticForm,
+  era: ArticEra | null,
+  offset: number,
+  lim: number,
+): Promise<Card[]> {
+  // The baked count tells us how many pages exist without asking upstream first,
+  // so a small slice (134 sculptures) never wastes a request on a page past the
+  // end while a large one still gets sampled deeply.
+  const works = worksInSlice(form.id, era?.id ?? "all");
+  const maxPage = Math.max(1, Math.min(FORM_SPREAD, Math.ceil(works / lim)));
+  const page = 1 + (offset % maxPage);
+  const first = await searchMeta(pdForm(form, era, lim, page));
+  let arts = first.arts;
+  // Counts can age (AIC re-catalogues); if our page overshot the real set, retry
+  // once within the true page count rather than returning an empty drift.
+  if (arts.length === 0 && first.totalPages > 1) {
+    const retry = 1 + (offset % Math.min(FORM_SPREAD, first.totalPages));
+    if (retry !== page) {
+      arts = (await searchMeta(pdForm(form, era, lim, retry))).arts;
+    }
+  }
+  return arts.filter(isUsableArtwork).map(articToCard);
+}
+
+// ----- "drift an artist" (Phase 24, M-G3) -----
+
+type Bucket = { key: string; doc_count: number };
+
+/** A count-only search that also returns aggregations. AIC's search endpoint is
+ *  an Elasticsearch passthrough, so `aggs[...]` works — but note it aggregates
+ *  the structured `query` ONLY and ignores the free-text `q`, which is why
+ *  artist resolution below counts hits by hand instead. */
+async function searchAggs(
+  params: Record<string, string>,
+): Promise<{ total: number; aggs: Record<string, { buckets?: Bucket[] }> }> {
+  const url = `${API}/artworks/search?${new URLSearchParams({ ...params, limit: "0" })}`;
+  const raw = (await fetchJson(url, {
+    headers: headers(),
+    gate: articGate,
+    timeoutMs: 6000,
+  })) as {
+    pagination?: { total?: number };
+    aggregations?: Record<string, { buckets?: Bucket[] }>;
+  };
+  return { total: raw?.pagination?.total ?? 0, aggs: raw?.aggregations ?? {} };
+}
+
+// A `must` clause as (path, value) — e.g. ["term][artist_id", "40610"]. Built as
+// a LIST and indexed sequentially by `mustParams` below, because these queries
+// assemble a variable number of clauses (an artist may have a medium but no
+// period). Hand-numbering them left gaps like must[0], must[1], must[3], which
+// upstream parses into a sparse array.
+type Must = [path: string, value: string];
+
+const PD_MUST: Must[] = [
+  ["term][is_public_domain", "true"],
+  ["exists][field", "image_id"],
+];
+
+function mustParams(clauses: Must[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  clauses.forEach(([path, value], i) => {
+    out[`query[bool][must][${i}][${path}]`] = value;
+  });
+  return out;
+}
+
+/** Public-domain + has-image, the gate every artist query shares. */
+function pdArtistBase(): Record<string, string> {
+  return mustParams(PD_MUST);
+}
+
+const byArtist = (id: string) => mustParams([...PD_MUST, ["term][artist_id", id]]);
+
+/** Everything by this artist EXCEPT their own work is what a widened ring wants. */
+const notArtist = (id: string) => ({
+  "query[bool][must_not][0][term][artist_id]": id,
+});
+
+// Profiles are pure derived data and change only when AIC re-catalogues, but
+// every buffer refill on a widened ring needs one. A small in-process cache
+// keeps a long artist session down to a single profile lookup. Best-effort: a
+// cold serverless instance simply re-measures.
+const profileCache = new Map<string, { at: number; profile: ArtistProfile | null }>();
+const PROFILE_TTL_MS = 30 * 60 * 1000;
+
+/**
+ * Measure an artist from their own public-domain works: how many there are, the
+ * movement that actually characterises them, and the period + medium most of
+ * their work sits in. Rings 1 and 2 widen into these.
+ *
+ * The era comes from a RANGE aggregation over our own era ladder rather than
+ * min/max on `date_start`, because single outliers wreck min/max: Hokusai's
+ * minimum is the year 19, and Dürer's maximum is an 1864 later impression of a
+ * 1500s plate. Bucketing by era gives Hokusai 1800-1849 and Dürer the 1500s,
+ * which is what a reader would say.
+ */
+export async function articArtistProfile(
+  artistId: string,
+): Promise<ArtistProfile | null> {
+  const hit = profileCache.get(artistId);
+  if (hit && Date.now() - hit.at < PROFILE_TTL_MS) return hit.profile;
+
+  const params: Record<string, string> = {
+    ...byArtist(artistId),
+    "aggs[style][terms][field]": "style_title.keyword",
+    "aggs[style][terms][size]": "6",
+    "aggs[form][terms][field]": "artwork_type_title.keyword",
+    "aggs[form][terms][size]": "3",
+    "aggs[era][range][field]": "date_start",
+  };
+  ARTIC_ERAS.forEach((era, i) => {
+    params[`aggs[era][range][ranges][${i}][key]`] = era.id;
+    params[`aggs[era][range][ranges][${i}][from]`] = String(era.from);
+    params[`aggs[era][range][ranges][${i}][to]`] = String(era.to + 1); // `to` is exclusive
+  });
+
+  let profile: ArtistProfile | null = null;
+  try {
+    const { total, aggs } = await searchAggs(params);
+    if (total > 0) {
+      // One artwork gives us the artist's name as AIC spells it.
+      const sample = await search({
+        ...byArtist(artistId),
+        fields: "id,artist_title",
+        limit: "1",
+      });
+      const name = (sample[0]?.artist_title ?? "").trim();
+      const top = (key: string) =>
+        (aggs[key]?.buckets ?? []).filter((b) => b.doc_count > 0);
+      const movement = top("style").find(
+        (b) => isMovement(b.key) && movementHolds(b.doc_count, total),
+      )?.key;
+      const era = [...top("era")].sort((a, b) => b.doc_count - a.doc_count)[0]?.key;
+      const form = top("form")[0]?.key;
+      profile = {
+        id: Number(artistId),
+        name: name || "This artist",
+        works: total,
+        ...(movement ? { movement } : {}),
+        ...(era ? { era } : {}),
+        ...(form ? { form } : {}),
+      };
+    }
+  } catch {
+    return null; // transient upstream failure: don't poison the cache
+  }
+  profileCache.set(artistId, { at: Date.now(), profile });
+  return profile;
+}
+
+/**
+ * Resolve a typed name to artists we actually hold, with a true count each.
+ *
+ * Two steps because AIC's aggregations ignore the free-text `q`: sample the
+ * relevance-ranked hits for the query, tally + name-gate them in `rankArtists`
+ * (pure, tested), then count each survivor exactly. Returns [] when nothing
+ * genuinely matches, which is the honest answer for an artist still in
+ * copyright — see artic.artist.ts.
+ */
+export async function articArtistSearch(
+  query: string,
+): Promise<{ id: number; name: string; works: number; thumbnail?: string }[]> {
+  const q = query.trim();
+  if (q.length < 2) return [];
+  const hits = await search({
+    q,
+    ...pdArtistBase(),
+    fields: "id,artist_id,artist_title,image_id",
+    limit: "60",
+  });
+  const ranked: ArtistMatch[] = rankArtists(hits, q);
+  if (ranked.length === 0) return [];
+
+  return (
+    await Promise.all(
+      ranked.map(async (a) => {
+        try {
+          const { total } = await searchAggs(byArtist(String(a.id)));
+          if (total === 0) return null;
+          // Reuse a thumbnail already in hand rather than fetching again.
+          const face = hits.find(
+            (h) => h.artist_id === a.id && h.image_id,
+          )?.image_id;
+          return {
+            id: a.id,
+            name: a.name,
+            works: total,
+            ...(face ? { thumbnail: articImageUrl(face, 200) } : {}),
+          };
+        } catch {
+          return null;
+        }
+      }),
+    )
+  ).filter((a): a is NonNullable<typeof a> => !!a);
+}
+
+/**
+ * One page of an artist drift at a given ring: their own work (0), their
+ * movement (1), or their period and medium (2). Rings 1 and 2 exclude the artist
+ * themselves, so widening always shows you something new rather than recycling
+ * the oeuvre you just read.
+ */
+export async function articArtistDiscover(
+  artistId: string,
+  ring: ArtistRing,
+  offset: number,
+  limit: number,
+): Promise<Card[]> {
+  const lim = Math.min(Math.max(limit, 1), 20);
+  const must: Must[] = [...PD_MUST];
+  let exclude: Record<string, string> = {};
+
+  if (ring === 0) {
+    must.push(["term][artist_id", artistId]);
+  } else {
+    const profile = await articArtistProfile(artistId);
+    if (!profile) return [];
+    // A widened ring excludes the artist, so it always shows something NEW
+    // rather than recycling the oeuvre you have just read.
+    exclude = notArtist(artistId);
+    if (ring === 1) {
+      if (!profile.movement) return [];
+      must.push(["match_phrase][style_title", profile.movement]);
+    } else {
+      const era = articEraById(profile.era);
+      if (!profile.form && !era) return [];
+      if (profile.form) must.push(["match_phrase][artwork_type_title", profile.form]);
+      if (era) {
+        must.push(["range][date_start][gte", String(era.from)]);
+        must.push(["range][date_start][lte", String(era.to)]);
+      }
+    }
+  }
+
+  // Ring 0 is small and finite (Van Gogh is 18 works), so page through it in
+  // order and let the caller widen when it runs out. The outer rings are large,
+  // so sample them the way a form slice is sampled.
+  const params = {
+    ...mustParams(must),
+    ...exclude,
+    fields: ARTIC_FIELDS,
+    limit: String(lim),
+  };
+  const page =
+    ring === 0
+      ? 1 + Math.floor(offset / lim)
+      : 1 + (offset % FORM_SPREAD);
+  const res = await searchMeta({ ...params, page: String(page) });
+  let arts = res.arts;
+  if (arts.length === 0 && ring > 0 && res.totalPages > 1) {
+    const retry = 1 + (offset % Math.min(FORM_SPREAD, res.totalPages));
+    if (retry !== page) arts = (await searchMeta({ ...params, page: String(retry) })).arts;
+  }
+  return arts.filter(isUsableArtwork).map(articToCard);
+}
+
 export async function articDiscover(
   bucketId: string,
   offset: number,
   limit: number,
 ): Promise<Card[]> {
+  const lim = Math.min(Math.max(limit, 1), 20);
+  // An artist drift (Phase 24 M-G3) rides the same seam, carrying its ring.
+  const artist = parseArtistBucket(bucketId);
+  if (artist) {
+    return articArtistDiscover(artist.artistId, artist.ring, offset, lim);
+  }
+  // A "drift a form and a period" bucket (Phase 24) rides the same seam as the
+  // themed buckets; it just resolves through a different registry.
+  const slice = parseFormBucket(bucketId);
+  if (slice) return formDiscover(slice.form, slice.era, offset, lim);
+
   const bucket = articBucketById(bucketId);
   if (!bucket) return [];
-  const lim = Math.min(Math.max(limit, 1), 20);
   const base = bucket.filter
     ? pdMatch(bucket.filter.field, bucket.filter.value, lim)
     : pdText(bucket.q, lim);

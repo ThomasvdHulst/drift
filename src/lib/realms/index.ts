@@ -11,6 +11,8 @@ import { uniformTopic } from "../discover";
 import { pickRandom } from "../pick";
 import type { RealmId, RealmMeta, DiscoverPick, SeedTile } from "./types";
 import { ARTIC_BUCKETS, articBucketById } from "./artic.buckets";
+import { describeSlice, parseFormBucket } from "./artic.forms";
+import { parseArtistBucket } from "./artic.artist";
 import { ARXIV_BUCKETS, arxivBucketById } from "./arxiv.categories";
 import encyclopediaSeedData from "../../data/seeds.json";
 
@@ -79,7 +81,17 @@ const gallery: RealmClient = {
     const b = pickRandom(ARTIC_BUCKETS) ?? ARTIC_BUCKETS[0];
     return { id: b.id, label: b.label, bucket: b.id };
   },
-  bucketLabel: (id) => articBucketById(id)?.label ?? id,
+  // Three bucket shapes here: a themed browse bucket, a Phase 24
+  // "form:<form>:<era>" slice, or an "artist:<id>:<ring>" drift. Resolving all
+  // three means the "why this card" line never falls through to a raw slug.
+  // (An artist drift normally labels itself from the focus, which knows the
+  // name; this is the fallback when only the bucket is in hand.)
+  bucketLabel: (id) => {
+    const slice = parseFormBucket(id);
+    if (slice) return describeSlice(slice.form, slice.era);
+    if (parseArtistBucket(id)) return "This artist";
+    return articBucketById(id)?.label ?? id;
+  },
 };
 
 // Papers realm (Phase 17): arXiv preprints, read as text-forward, field-themed

@@ -5,13 +5,25 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 **tested with success**. Keep the "Current status" line accurate. Full product detail is in
 `drift-spec.md`; working rules are in `CLAUDE.md`.
 
-> ## Current status — 2026-07-23
+> ## Current status — 2026-07-25
 >
 > **Drift is live** at <https://www.usedrift.org> (Vercel + Supabase) as an installable PWA,
 > in a small friends-and-colleagues beta. Two realms ship: **Encyclopedia** (Wikipedia) and
 > **Gallery** (Art Institute of Chicago, CC0).
 >
-> **Shipped:** Phases 1, 2, 4, 5, 6, 8, 9, 10, 13, 14, 15, 18, 19, 20, 22, 23 — the core drift loop,
+> **Latest (2026-07-25): Phase 24 — the Gallery is now as steerable as the Encyclopedia.** Two new ways
+> to begin, mirroring the Encyclopedia's shape. **Drift an artist:** search a name and wander their work,
+> with the true count shown before you commit ("Katsushika Hokusai · 447 works here") and an honest empty
+> answer for anyone still in copyright. Because the Art Institute is a works-on-paper collection, a thin
+> oeuvre (Van Gogh has **18** works) **widens out loud** into their movement, then their period and medium,
+> the banner saying "wandering wider · Post-Impressionism" and each card relabelling where it really came
+> from. **Drift a form and a period:** confine a session to one of ten art forms, optionally to one period
+> (*Paintings, 1850 to 1899*), offering only periods the collection actually holds. Both ride the existing
+> opaque `bucket` seam (`form:<form>:<era>`, `artist:<id>:<ring>`), so the discover route and the refill
+> loop were left untouched. The Gallery's old "Or start somewhere" tiles were retired as redundant; the
+> buckets behind them still power "Surprise me in Gallery".
+>
+> **Shipped:** Phases 1, 2, 4, 5, 6, 8, 9, 10, 13, 14, 15, 18, 19, 20, 22, 23, 24 — the core drift loop,
 > directional threads, trails + the trail-map reward, the Atlas, the interest model, accounts
 > and cloud sync, friends and sharing, cross-realm doorways, focused drift (field + orbit + in the news),
 > branded email, the guided tour, and the contact form.
@@ -22,7 +34,7 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > **Deferred by choice:** Phase 3 (local Ollama AI), 7 (constellations), 11 (calm social feed),
 > 12 (native app), 16 (memory & reflection), M12 (Library/Today realms), M-Ad3 (ad-free tier).
 >
-> **Baseline:** 419 unit tests green, `npm run build` + `npm run lint` clean.
+> **Baseline:** 476 unit tests green, `npm run build` + `npm run lint` clean.
 >
 > **Fix (2026-07-23):** re-entering an "in the news" section you'd read deep into no longer shows a false
 > "Couldn't load a card" error. It now pages past the already-seen cards, and when a whole section is read it
@@ -42,8 +54,10 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > this month's stories, sourced from Wikipedia's own `Portal:Current events` (so no news is ever
 > displayed and no new licensing exposure is taken on).
 >
-> **▶ Next:** open. Phase 16 (Memory & Reflection) is the last of the three brainstorm
-> directions and the most natural continuation; ads work resumes only if AdSense approves.
+> **▶ Next:** open. Phase 16 (Memory & Reflection) is the last of the three brainstorm directions and the
+> most natural continuation; ads work resumes only if AdSense approves. A **second art source** (Cleveland
+> Museum of Art: CC0, no API key, 41,476 open-access works, 3,956 public-domain paintings) is the obvious
+> follow-up if artist drifts feel too shallow in practice.
 > Phase 22 needs two owner dashboard steps (a Cloudflare route for `contact@`, and a Turnstile
 > widget) before it is fully armed in production.
 >
@@ -2045,6 +2059,120 @@ with the card always saying how current it is, and an honest hand-off to related
       error. The live-drift pool loop also pages properly now (only a genuinely empty page marks the pool dry;
       transient errors retry). Verified with build + lint + 419 unit tests, and a Playwright run reproducing the
       exact bug (drift 8+, reopen → loads a deeper unseen card, no error) + the fully-seen caught-up path.
+
+---
+
+## Phase 24 — A Richer Gallery: drift a form, a period, or an artist ✅ *(DONE & verified 2026-07-25)*
+
+**Why.** The Encyclopedia had three ways to begin a directed drift (a field, a page orbit, "in the news");
+the Gallery had one, and its ten themed buckets only pick a *starting point* rather than confining the
+session. Beta feedback asked for parity: "only paintings, from year X to Y", and "search Van Gogh, then
+wander his work".
+
+**What the research found** (verified live against `api.artic.edu`, 2026-07-25):
+
+- `/artworks/search` is an Elasticsearch passthrough that accepts **range queries on `date_start`** and
+  **`match_phrase` on `artwork_type_title`**, so a form + period slice is one exact query. It also serves
+  **aggregations**, which is how the counts below were measured.
+- **AIC is a works-on-paper collection**, not a greatest-hits-of-painting museum: 24,509 public-domain
+  prints and 7,552 drawings against 2,093 paintings. Van Gogh has **18** works, Monet 46, Hokusai 447.
+  A session is ~25 cards, so thin artists must **widen** rather than dead-end (M-G3).
+- **Artists outside the public-domain collection resolve to garbage** ("Picasso" surfaces Ancient Greek
+  pottery), so M-G3 needs a real confidence gate, not a nicety — §2.1 requires it.
+- **Decided:** AIC only for now. Cleveland Museum of Art is a viable follow-up second source (CC0, no API
+  key, 41,476 open-access works with images, **3,956 public-domain paintings**, rich single-call records).
+  The Met was **rejected**: its filters are unreliable (`artistOrCulture=true` returns 0 for Monet,
+  Hokusai *and* Rembrandt) and search returns bare IDs needing one fetch per artwork, which is exactly the
+  shared-IP N+1 trap in `docs/beta-readiness.md`. Wikidata/Commons would solve depth but is uncurated.
+
+### M-G2 — Drift a form and a period ✅ *(DONE & verified 2026-07-25)*
+
+- [x] **`src/lib/realms/artic.forms.ts`** — pure registry, mirroring `artic.buckets.ts`. Ten forms
+      (alphabetical, six-family tint cycle) × a seven-step era ladder, plus the measured counts. Labels read
+      "1850 to 1899", never with an en dash (standing copy preference).
+- [x] **`scripts/probe-artic-forms.mjs`** — hand-run one-shot that measures the form × era matrix via
+      aggregations and prints a paste-ready literal. Baked rather than fetched so the homepage never offers
+      a slice that turns out to be empty, and so rendering tiles costs no upstream call.
+- [x] **`erasForForm`** hides periods a form lacks: photographs offer no century before 1800, coins offer
+      only "Before 1500". `MIN_ERA_WORKS = 60`.
+- [x] **The bucket seam carried it.** A slice rides the existing opaque `bucket` string as
+      `form:<form>:<era>`, so `/api/realm/[realm]/discover`, `discoverUrl` and the refill loop needed **no
+      change**; `parseFormBucket` doubles as `validateBucket`'s injection guard.
+- [x] **`pdForm` + `formDiscover`** in `realms/server/artic.ts`, clause-for-clause identical to the probe
+      (including the `exists: image_id` gate) so the baked counts describe exactly what discover draws from.
+      `FORM_SPREAD = 60` samples deeper than the themed buckets, since these slices are far bigger.
+- [x] **A fourth `Focus` kind** (`form`) in `lib/focus.ts`, validated by round-tripping through the
+      registry, plus `focusBucket()` so the feed never spells a slice itself. The field-focus pin in
+      `drift/page.tsx` generalized to "any bucket-pinned focus" (field in Encyclopedia, form in Gallery).
+- [x] **`src/components/FormEraPicker.tsx`** — two-step picker on the Gallery home: pick a form (which
+      reveals its real periods with counts), then a period, or "All periods". Folded on mobile, open on
+      desktop, same rule as `TileDisclosure`.
+- [x] **Caught a real UI bug:** "Textiles" appeared in *both* Gallery grids with the same glyph and a
+      near-identical blurb, so two tiles looked like duplicates while behaving differently (start here vs
+      stay here). The form tile now carries its own glyph + blurb, and a test asserts no form tile can ever
+      collide with a themed bucket tile again.
+- [x] **Test M-G2:** build + lint clean; **449 unit tests** (+30). Real browser (isolated ungated instance,
+      Playwright, real UA): era chips render with live counts (Paintings 7, Photographs 3, Coins 1);
+      **12 consecutive drifts in "Paintings, 1850 to 1899" gave 12 unique in-period paintings** (Courbet,
+      Whistler, Fantin-Latour, Cézanne, Sargent, Inness) with the banner pinned and zero console errors;
+      all five injection attempts (`form:photograph:1600s`, `form:sonnets:all`, `form:painting:1750s`,
+      `form:painting`, a quoted `OR 1=1`) return **400**; light + dark + 390px, no horizontal overflow.
+      *Note: `curl`/headless-UA requests to `artic.edu/iiif` get a Cloudflare "Just a moment" 403; a real
+      browser UA returns 200. That is a test artifact, not a product bug.*
+
+### M-G3 — Drift an artist ✅ *(DONE & verified 2026-07-25)*
+
+- [x] **`src/lib/realms/artic.artist.ts`** — `rankArtists` tallies `artist_id` over the top public-domain
+      hits, then **gates each candidate on a diacritic-folded name match** (every meaningful query token
+      must appear in the name). This is what makes "van gogh" keep Vincent and drop Rembrandt van Rijn,
+      lets "durer" match "Albrecht Dürer", and makes "Picasso" return **nothing** instead of pottery.
+- [x] **The widening ladder**, as testable data: ring 0 the oeuvre → ring 1 their movement → ring 2 their
+      period and medium. Two data traps found by probing and handled:
+      - **`isMovement`** rejects period labels. AIC files "19th century" in the same `style_title` field as
+        real movements, and for Dürer a century label is the *only* value present, so his ring 1 is
+        correctly skipped entirely.
+      - **`movementHolds`** rejects a movement attested on almost nothing: Rembrandt is filed "Renaissance"
+        on 1 of his 235 works, so he too widens straight to his period.
+- [x] **`articArtistProfile`** measures an artist by aggregation. The era comes from a **range aggregation
+      over our own era ladder, not `min`/`max` on `date_start`**, because outliers wreck min/max (Hokusai's
+      minimum is the year 19; Dürer's maximum is an 1864 later impression of a 1500s plate). Bucketing gives
+      Hokusai 1800-1849 and Dürer the 1500s. Cached in-process for 30 minutes.
+- [x] **Widening is just a bucket swap** (`artist:<id>:<ring>`), so it needed no pool of its own the way an
+      orbit does; `refillRandomBuffer` steps the ring when a refill comes back empty.
+- [x] **`/api/realm/gallery/artists`** serves both `?q=` (resolve + true counts + thumbnail) and `?id=`
+      (the profile). `validateBucket` accepts `artist:<digits>:<ring>`.
+- [x] **`src/components/ArtistSearch.tsx`**, modelled on `OrbitSearch.tsx`, showing each artist's real count
+      ("Katsushika Hokusai · 447 works here") so depth is known *before* committing, and a plain sentence
+      when nothing matches rather than leaving stale results up.
+- [x] **Caught two real bugs in verification:**
+      - **The seed path used `randomOffset()` (0..400) for a finite oeuvre**, so opening any artist drift
+        landed past the end of their work and showed *"Couldn't load a card just now"* on nearly every open.
+        An artist now seeds from offset 0 and refills continue sequentially from there.
+      - **Widened cards kept crediting the artist.** A Gauguin served from ring 1 still read "drifting ·
+        Vincent van Gogh". `artistRingLabel` now relabels provenance per ring
+        ("Post-Impressionism, around Vincent van Gogh"), which is the §2.1 requirement.
+- [x] **Test M-G3:** build + lint clean; **476 unit tests** (+27). Live API: the gate returns 0 results for
+      Picasso, Kahlo, Banksy and Warhol, and true counts for Van Gogh 18 / Hokusai 447 / Dürer 253 /
+      Cassatt 53; ring 0 pages through **exactly 18 unique Van Gogh works then empties at offset 20**; all
+      six malformed artist buckets return **400**. Real browser, 26 consecutive drifts, **26/26 unique, zero
+      console errors**: stops 1 to 18 are Van Gogh, stop 19 widens with the banner reading *"Vincent van
+      Gogh · wandering wider · Post-Impressionism"* and the provenance line changing to match (Gauguin,
+      Munch, Toulouse-Lautrec, Vuillard follow). Dürer's ring 1 is empty and his ring 2 serves 1500s prints,
+      confirming the no-movement path.
+
+### Gallery home cleanup (2026-07-25)
+
+- [x] **Retired "Or start somewhere" from the Gallery** (owner request: the two new directed entries cover
+      it and the page looked crowded). The Gallery now mirrors the Encyclopedia's shape exactly: a
+      "Surprise me" button, a search ("Or drift an artist"), and a tile grid ("Or drift a form and a
+      period"). The ten themed buckets are **not** deleted: they still power "Surprise me in Gallery" via
+      `pickDiscover`, and still resolve for any saved trail. Papers keeps its "Or start somewhere" grid.
+      Verified: "Surprise me in Gallery" still loads a card, and the tour never targeted the removed
+      section, so it is unaffected.
+
+**Phase 24 exit:** ✅ the Gallery is as steerable as the Encyclopedia. You can confine a session to an art
+form and period, or to an artist, with every card saying honestly where it came from and the drift widening
+out loud rather than dead-ending or quietly changing the subject.
 
 ---
 

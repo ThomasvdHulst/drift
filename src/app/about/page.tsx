@@ -73,7 +73,7 @@ export default function AboutPage() {
                 curiosity surprise you.
               </li>
               <li>
-                <span className="text-ink">Steer.</span> Pull the visible threads
+                <span className="text-ink">Steer.</span>  Pull the visible threads
                 to choose your own direction. You always see why the next card
                 appeared: the thread you chose, or an honest &ldquo;drift&rdquo;.
               </li>

@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { focusFromParams, focusToParams, describeFocus, type Focus } from "./focus";
+import {
+  focusFromParams,
+  focusToParams,
+  focusBucket,
+  describeFocus,
+  type Focus,
+} from "./focus";
 
 const p = (qs: string) => new URLSearchParams(qs);
 
@@ -88,7 +94,141 @@ describe("a current-events focus (Phase 23)", () => {
   });
 });
 
+describe("a Gallery form focus (Phase 24)", () => {
+  const focus: Focus = {
+    kind: "form",
+    form: "painting",
+    era: "1850-1899",
+    label: "Paintings, 1850 to 1899",
+  };
+
+  it("parses a form and a period, taking the label from the registry", () => {
+    expect(
+      focusFromParams(p("focus=form&form=painting&era=1850-1899&seed=Anything")),
+    ).toEqual(focus);
+  });
+
+  it("defaults to all periods when no era is given", () => {
+    expect(focusFromParams(p("focus=form&form=print"))).toEqual({
+      kind: "form",
+      form: "print",
+      era: "all",
+      label: "Prints",
+    });
+  });
+
+  it("survives a round-trip", () => {
+    expect(focusFromParams(p(new URLSearchParams(focusToParams(focus)).toString()))).toEqual(
+      focus,
+    );
+  });
+
+  it("carries the discover bucket so the feed never spells a slice itself", () => {
+    expect(focusBucket(focus)).toBe("form:painting:1850-1899");
+    expect(
+      focusBucket({ kind: "field", bucket: "mathematics", label: "Mathematics" }),
+    ).toBe("mathematics");
+    // Kinds that serve their own pool, not a discover bucket.
+    expect(focusBucket({ kind: "orbit", seedTitle: "X", seedLabel: "X" })).toBeNull();
+    expect(focusBucket({ kind: "current", section: "sports", label: "Sports" })).toBeNull();
+  });
+
+  it("also emits the bucket param, so /drift can seed the first card", () => {
+    expect(focusToParams(focus).bucket).toBe("form:painting:1850-1899");
+  });
+
+  it("rejects an unknown form, an unknown era, and an injected one", () => {
+    expect(focusFromParams(p("focus=form&form=sonnets&era=all"))).toBeNull();
+    expect(focusFromParams(p("focus=form&form=painting&era=1750s"))).toBeNull();
+    expect(focusFromParams(p("focus=form"))).toBeNull();
+    expect(
+      focusFromParams(
+        p("focus=form&form=" + encodeURIComponent('painting") OR 1=1')),
+      ),
+    ).toBeNull();
+  });
+
+  // The registry knows AIC holds no 17th-century photographs, so a hand-edited
+  // URL for that slice must not start a drift that can never fill.
+  it("rejects a period the form is too thin for", () => {
+    expect(focusFromParams(p("focus=form&form=photograph&era=1600s"))).toBeNull();
+    expect(
+      focusFromParams(p("focus=form&form=photograph&era=1850-1899")),
+    ).not.toBeNull();
+  });
+});
+
+describe("a Gallery artist focus (Phase 24)", () => {
+  const focus: Focus = {
+    kind: "artist",
+    artistId: "40610",
+    label: "Vincent van Gogh",
+    works: 18,
+  };
+
+  it("parses an artist, a label and a count", () => {
+    expect(
+      focusFromParams(p("focus=artist&artist=40610&seed=Vincent+van+Gogh&works=18")),
+    ).toEqual(focus);
+  });
+
+  it("survives a round-trip", () => {
+    expect(
+      focusFromParams(p(new URLSearchParams(focusToParams(focus)).toString())),
+    ).toEqual(focus);
+  });
+
+  it("starts every artist drift at ring 0, and widens by swapping the bucket", () => {
+    expect(focusToParams(focus).bucket).toBe("artist:40610:0");
+    expect(focusBucket(focus)).toBe("artist:40610:0");
+    expect(focusBucket(focus, 1)).toBe("artist:40610:1");
+    expect(focusBucket(focus, 2)).toBe("artist:40610:2");
+  });
+
+  // The id reaches a numeric term query upstream, so it is the one field that
+  // must be strictly validated here.
+  it("rejects a non-numeric or injected artist id", () => {
+    expect(focusFromParams(p("focus=artist&artist=abc"))).toBeNull();
+    expect(focusFromParams(p("focus=artist"))).toBeNull();
+    expect(
+      focusFromParams(p("focus=artist&artist=" + encodeURIComponent('40610") OR 1=1'))),
+    ).toBeNull();
+  });
+
+  it("survives a missing label or count rather than voiding the drift", () => {
+    expect(focusFromParams(p("focus=artist&artist=40610"))).toEqual({
+      kind: "artist",
+      artistId: "40610",
+      label: "This artist",
+    });
+    expect(
+      focusFromParams(p("focus=artist&artist=40610&seed=X&works=nonsense")),
+    ).toEqual({ kind: "artist", artistId: "40610", label: "X" });
+  });
+});
+
 describe("describeFocus", () => {
+  it("labels an artist drift with the artist's name alone", () => {
+    expect(
+      describeFocus({
+        kind: "artist",
+        artistId: "40610",
+        label: "Vincent van Gogh",
+      }),
+    ).toBe("Vincent van Gogh");
+  });
+
+  it("labels a form slice as a complete phrase, with no framing word", () => {
+    expect(
+      describeFocus({
+        kind: "form",
+        form: "painting",
+        era: "1850-1899",
+        label: "Paintings, 1850 to 1899",
+      }),
+    ).toBe("Paintings, 1850 to 1899");
+  });
+
   it("labels a field, an orbit and a current-events drift", () => {
     expect(describeFocus({ kind: "field", bucket: "mathematics", label: "Mathematics" })).toBe(
       "Within Mathematics",

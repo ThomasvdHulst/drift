@@ -91,12 +91,20 @@ export type ArrivedVia =
   // A drift may carry the topic it landed in (interesting-random, M8) and why
   // that topic was chosen (M9): "interest" = weighted by what you like,
   // "wildcard" = the serendipity floor. "field"/"orbit" are the Phase 18 focused
-  // drifts (confined to a field / spiraling out from a seed). Optional →
+  // drifts (confined to a field / spiraling out from a seed), and "form" is the
+  // Phase 24 Gallery slice (one art form, optionally one period). Optional →
   // back-compatible with trails saved before Phase 4.
   | {
       type: "drift";
       topic?: { id: string; label: string };
-      reason?: "interest" | "wildcard" | "field" | "orbit" | "current";
+      reason?:
+        | "interest"
+        | "wildcard"
+        | "field"
+        | "orbit"
+        | "current"
+        | "form"
+        | "artist";
       // Set only on an orbit drift (Phase 18): the seed being orbited + the ring
       // (distance) this card sits at, for the honest "Orbiting X · nearby" chip.
       orbit?: { seedLabel: string; ring: number };

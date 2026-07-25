@@ -14,6 +14,9 @@ import { RealmTabs } from "@/components/RealmTabs";
 import { OrbitSearch } from "@/components/OrbitSearch";
 import { TileGrid } from "@/components/TileGrid";
 import { TileDisclosure } from "@/components/TileDisclosure";
+import { FormEraPicker } from "@/components/FormEraPicker";
+import { ArtistSearch, type ArtistSuggestion } from "@/components/ArtistSearch";
+import { articFormById, articEraById, describeSlice, ERA_ALL } from "@/lib/realms/artic.forms";
 import { useAuth } from "@/components/AuthProvider";
 import { useTour } from "@/components/tour/TourProvider";
 import { Wordmark } from "@/components/BrandLogo";
@@ -120,13 +123,45 @@ export default function Home() {
     });
   }
 
-  // Both focused-drift entry points share one encoding — `focusToParams` in
+  // Start a Gallery slice drift (Phase 24): one art form, optionally narrowed to
+  // one period. Unlike the three above this is not an Encyclopedia focus, so it
+  // carries its own realm.
+  function openSlice(formId: string, eraId: string) {
+    const form = articFormById(formId);
+    if (!form) return;
+    const era = eraId === ERA_ALL ? null : (articEraById(eraId) ?? null);
+    startFocusedDrift(
+      {
+        kind: "form",
+        form: form.id,
+        era: era?.id ?? ERA_ALL,
+        label: describeSlice(form, era),
+      },
+      "gallery",
+    );
+  }
+
+  // Start an artist drift (Phase 24): wander this artist's work, widening into
+  // their movement and period once it runs out.
+  function openArtist(artist: ArtistSuggestion) {
+    startFocusedDrift(
+      {
+        kind: "artist",
+        artistId: String(artist.id),
+        label: artist.name,
+        works: artist.works,
+      },
+      "gallery",
+    );
+  }
+
+  // Every focused-drift entry point shares one encoding — `focusToParams` in
   // lib/focus.ts, the same module /drift parses with. Hand-rolling the params
   // here (as this page used to) meant the writer and the reader could silently
   // drift apart.
-  function startFocusedDrift(focus: Focus) {
+  function startFocusedDrift(focus: Focus, realmId: RealmId = "encyclopedia") {
     const params = new URLSearchParams({
-      realm: "encyclopedia",
+      realm: realmId,
       ...focusToParams(focus),
     });
     if (!keepTrail) params.set("mode", "endless");
@@ -243,6 +278,26 @@ export default function Home() {
               tiles={newsTiles}
               onPick={openCurrent}
             />
+          </>
+        ) : active === "gallery" ? (
+          /* Directed drift for the Gallery (Phase 24), mirroring the two
+             Encyclopedia entry points above: search an artist, or confine the
+             session to an art form and period. The ten themed "Or start
+             somewhere" tiles were retired here — they only picked a *starting
+             point* and then let the drift wander off, which these two both do
+             better and more legibly. The buckets themselves still power
+             "Surprise me in Gallery" (see realms/index.ts pickDiscover). */
+          <>
+            <div
+              data-tour="artist-search"
+              className="mt-9 flex w-full flex-col items-center gap-2"
+            >
+              <p className="text-xs font-medium uppercase tracking-widest text-ink-soft">
+                Or drift an artist
+              </p>
+              <ArtistSearch onPick={openArtist} />
+            </div>
+            <FormEraPicker onStart={openSlice} />
           </>
         ) : (
           <>

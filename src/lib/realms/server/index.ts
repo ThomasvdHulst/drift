@@ -7,6 +7,8 @@ import type { Card, RelatedCandidate } from "@/lib/types";
 import type { RealmId } from "../types";
 import { topicByKeyword } from "@/lib/topics";
 import { articBucketById } from "../artic.buckets";
+import { parseFormBucket } from "../artic.forms";
+import { parseArtistBucket } from "../artic.artist";
 import { arxivBucketById } from "../arxiv.categories";
 import {
   wikiRelated,
@@ -50,7 +52,12 @@ const encyclopedia: ServerRealm = {
 };
 
 const gallery: ServerRealm = {
-  validateBucket: (b) => !!articBucketById(b),
+  // Three bucket shapes: a themed browse bucket, a Phase 24 "form:<form>:<era>"
+  // slice, or an "artist:<id>:<ring>" drift. Each resolves through its own
+  // parser, so an unknown or hand-edited value is rejected before it can reach
+  // the upstream query.
+  validateBucket: (b) =>
+    !!articBucketById(b) || !!parseFormBucket(b) || !!parseArtistBucket(b),
   discover: ({ bucket, offset, limit }) => articDiscover(bucket, offset, limit),
   related: (id) => articRelated(id),
   summary: (id) => articSummary(id),

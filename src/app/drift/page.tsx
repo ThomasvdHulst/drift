@@ -23,7 +23,15 @@ import {
 } from "@/lib/gesture";
 import { randomOffset, interleave } from "@/lib/discover";
 import { applyFeedback, type Interest, type Reaction } from "@/lib/interest";
-import { focusFromParams, type Focus } from "@/lib/focus";
+import { focusFromParams, focusBucket, type Focus } from "@/lib/focus";
+import {
+  artistRingLabel,
+  describeArtistRing,
+  nextArtistRing,
+  type ArtistProfile,
+  type ArtistRing,
+} from "@/lib/realms/artic.artist";
+import { articEraById } from "@/lib/realms/artic.forms";
 import {
   initOrbit,
   nextToExpand,
@@ -75,7 +83,7 @@ type Dir = "drift" | "thread" | "back" | "cross";
 type BufferedCard = {
   card: Card;
   topic?: { id: string; label: string };
-  reason?: "interest" | "wildcard" | "field" | "orbit";
+  reason?: "interest" | "wildcard" | "field" | "orbit" | "form" | "artist";
 };
 
 // One article from an "in the news" section (Phase 23), with how recently it was
@@ -219,6 +227,17 @@ export default function DriftPage() {
   // guards the announcement; the state drives the persistent banner suffix.
   const caughtUpRef = useRef(false);
   const [caughtUp, setCaughtUp] = useState(false);
+  // An artist drift (Phase 24 M-G3). The ring is how far we've had to widen out
+  // of the artist's own work: 0 = their oeuvre, 1 = their movement, 2 = their
+  // period and medium. Bumping it just swaps the discover bucket, so widening
+  // needs no pool of its own (unlike an orbit). The ref is the live truth read
+  // inside fetches; the state drives the banner. The profile (what the artist's
+  // movement/period/medium actually ARE) is measured server-side once on entry.
+  const artistRingRef = useRef<ArtistRing>(0);
+  const [artistRing, setArtistRing] = useState<ArtistRing>(0);
+  const artistProfileRef = useRef<ArtistProfile | null>(null);
+  // Ring 0 is finite and ordered, so it is paged through in sequence.
+  const artistOffsetRef = useRef(0);
 
   const seenRef = useRef<Set<string>>(new Set());
   // The interest model (topic → weight) + whether personalization is on. Held in
@@ -288,10 +307,24 @@ export default function DriftPage() {
           ? proximityWord(current.arrivedVia.orbit.ring)
           : undefined
       : undefined;
-  // The focus banner's trailing word: an orbit's distance, or — for an "in the
-  // news" drift you've read to the end — a persistent, honest "caught up" marker.
+  // An artist drift names where it has wandered to once it leaves the artist's
+  // own work: "wandering wider · Post-Impressionism", then their period and
+  // medium. Nothing at ring 0, where you are simply with the artist.
+  const artistProx =
+    focus?.kind === "artist" && artistProfileRef.current
+      ? describeArtistRing(
+          artistProfileRef.current,
+          artistRing,
+          articEraById(artistProfileRef.current.era)?.label,
+        )
+      : undefined;
+  // The focus banner's trailing word: an orbit's distance, how far an artist
+  // drift has widened, or — for an "in the news" drift you've read to the end —
+  // a persistent, honest "caught up" marker.
   const bannerSuffix =
-    orbitProx ?? (focus?.kind === "current" && caughtUp ? "caught up" : undefined);
+    orbitProx ??
+    artistProx ??
+    (focus?.kind === "current" && caughtUp ? "caught up" : undefined);
   // The displayed card's app-wide id (thread cache key) and source-native id
   // (used to fetch related/summary). Distinct because two realms can share a
   // native title string.
@@ -385,6 +418,27 @@ export default function DriftPage() {
           }
         }
 
+        // An artist drift (Phase 24 M-G3) measures the artist up front, so the
+        // feed knows which widening rings exist before it needs one. Best-effort:
+        // no profile just means we serve their own work and cannot widen, which
+        // is exactly the right degradation (§4).
+        if (parsedFocus?.kind === "artist") {
+          artistRingRef.current = 0;
+          artistOffsetRef.current = 0;
+          try {
+            const res = await fetch(
+              `/api/realm/gallery/artists?id=${encodeURIComponent(parsedFocus.artistId)}`,
+              { signal: AbortSignal.timeout(6000) },
+            );
+            const p = (await res.json()) as ArtistProfile | null;
+            if (res.ok && p && typeof p.works === "number") {
+              artistProfileRef.current = p;
+            }
+          } catch {
+            /* profile is optional; the oeuvre still drifts */
+          }
+        }
+
         let card: Card | undefined;
         if (parsedFocus?.kind === "current") {
           // An "in the news" drift (Phase 23): open on the best-ranked UNSEEN
@@ -416,32 +470,50 @@ export default function DriftPage() {
           if (!res.ok || !c?.pageTitle) throw new Error("no card");
           card = c;
         } else if (bucketParam) {
-          // Seed a bucket drift (Gallery/Library seed tile): fetch that specific
-          // bucket's batch — first card is the starting point, the rest seed the
-          // buffer so the first drifts stay on-theme and instant.
+          // Seed a bucket drift (Gallery/Papers seed tile, or a Phase 24 focus):
+          // fetch that specific bucket's batch — first card is the starting
+          // point, the rest seed the buffer so the first drifts stay on-theme and
+          // instant.
+          //
+          // An artist's own work is a FINITE, ordered set, so it must be seeded
+          // from the top: a themed bucket has hundreds of pages and a random
+          // offset is variety, but Van Gogh has 18 works and offsets run to 400,
+          // so a random one would land past the end and report a load error on
+          // nearly every open.
+          const SEED_LIMIT = 12;
+          const artistSeed = parsedFocus?.kind === "artist";
           const res = await fetch(
             discoverUrl(realmRef.current, {
               bucket: bucketParam,
-              offset: randomOffset(),
-              limit: 12,
+              offset: artistSeed ? 0 : randomOffset(),
+              limit: SEED_LIMIT,
             }),
           );
           const cards = (await res.json()) as Card[];
           if (!res.ok || !Array.isArray(cards) || cards.length === 0)
             throw new Error("no card");
           card = cards[0];
-          // A field focus pins the buffer to this topic; use its friendly label
-          // + tag drifts "field" (vs. a Gallery/Papers one-off bucket seed tile).
-          const fieldFocus =
-            parsedFocus?.kind === "field" ? parsedFocus : null;
-          const bLabel = fieldFocus
-            ? fieldFocus.label
+          // The seed consumed the first page of the oeuvre; refills continue from
+          // where it stopped rather than re-serving it.
+          if (artistSeed) artistOffsetRef.current = SEED_LIMIT;
+          // A bucket-pinned focus keeps the buffer on this bucket for the whole
+          // session; use its friendly label and tag the drifts with its kind, so
+          // the "why this card" line distinguishes a focused drift from a
+          // Gallery/Papers one-off seed tile that merely started here.
+          const pinnedFocus =
+            parsedFocus?.kind === "field" ||
+            parsedFocus?.kind === "form" ||
+            parsedFocus?.kind === "artist"
+              ? parsedFocus
+              : null;
+          const bLabel = pinnedFocus
+            ? pinnedFocus.label
             : getRealm(realmRef.current).bucketLabel(bucketParam);
           randomBufferRef.current.push(
             ...cards.slice(1).map((c) => ({
               card: c,
               topic: { id: bucketParam, label: bLabel },
-              ...(fieldFocus ? { reason: "field" as const } : {}),
+              ...(pinnedFocus ? { reason: pinnedFocus.kind } : {}),
             })),
           );
         } else {
@@ -953,32 +1025,69 @@ export default function DriftPage() {
     rid: RealmId = realmRef.current,
   ): Promise<BufferedCard[]> {
     const rm = getRealm(rid);
-    // A field focus (Phase 18) pins every pick to one topic, so a refill stays
-    // entirely within the chosen field (Encyclopedia only; each pick still uses a
-    // fresh random offset for variety). Otherwise the normal interest-weighted /
+    // A bucket-pinned focus makes every pick in the refill the SAME bucket, so
+    // the whole batch stays inside the chosen area. Three kinds pin this way: a
+    // field focus in the Encyclopedia (Phase 18), and a form+era slice or an
+    // artist in the Gallery (Phase 24). Otherwise the normal interest-weighted /
     // uniform topic mix (personalization is suspended while focused).
     const focus = focusRef.current;
-    const fieldFocus =
-      focus?.kind === "field" && rid === "encyclopedia" ? focus : null;
+    const pinned =
+      focus &&
+      ((focus.kind === "field" && rid === "encyclopedia") ||
+        ((focus.kind === "form" || focus.kind === "artist") &&
+          rid === "gallery"))
+        ? focus
+        : null;
+    const pinnedBucket = pinned
+      ? focusBucket(pinned, artistRingRef.current)
+      : null;
     const personalize =
-      personalizeRef.current && rm.hasInterestModel && !fieldFocus;
-    const picks = fieldFocus
-      ? Array.from({ length: REFILL_TOPICS }, () => ({
-          id: fieldFocus.bucket,
-          label: fieldFocus.label,
-          bucket: fieldFocus.bucket,
-          reason: "field" as const,
-        }))
-      : Array.from({ length: REFILL_TOPICS }, () =>
-          rm.pickDiscover({ interest: interestRef.current, personalize }),
-        );
+      personalizeRef.current && rm.hasInterestModel && !pinned;
+    const pinnedReason = (
+      pinned?.kind === "form"
+        ? "form"
+        : pinned?.kind === "artist"
+          ? "artist"
+          : "field"
+    ) as "form" | "artist" | "field";
+    // Once an artist drift widens, the cards are no longer BY that artist, so
+    // the "why this card" line has to say where they really came from
+    // ("Post-Impressionism, around Vincent van Gogh") rather than keep crediting
+    // the artist (§2.1).
+    const profile = artistProfileRef.current;
+    const pinnedLabel =
+      pinned?.kind === "artist" && profile
+        ? artistRingLabel(
+            profile,
+            artistRingRef.current,
+            articEraById(profile.era)?.label,
+          )
+        : (pinned?.label ?? "");
+    const picks =
+      pinned && pinnedBucket
+        ? Array.from({ length: REFILL_TOPICS }, () => ({
+            id: pinnedBucket,
+            label: pinnedLabel,
+            bucket: pinnedBucket,
+            reason: pinnedReason,
+          }))
+        : Array.from({ length: REFILL_TOPICS }, () =>
+            rm.pickDiscover({ interest: interestRef.current, personalize }),
+          );
+    // An artist's own work is a small, FINITE, ordered set (18 works for Van
+    // Gogh), so it has to be paged through in sequence: a random offset would
+    // land past the end and look like an exhausted oeuvre after one drift. The
+    // widened rings are large, so they sample randomly like everything else.
+    const sequential = pinned?.kind === "artist" && artistRingRef.current === 0;
+    const base = artistOffsetRef.current;
+    if (sequential) artistOffsetRef.current += REFILL_TOPICS * DISCOVER_LIMIT;
     const batches = await Promise.all(
-      picks.map(async (pick): Promise<BufferedCard[]> => {
+      picks.map(async (pick, i): Promise<BufferedCard[]> => {
         try {
           const res = await fetch(
             discoverUrl(rid, {
               bucket: pick.bucket,
-              offset: randomOffset(),
+              offset: sequential ? base + i * DISCOVER_LIMIT : randomOffset(),
               limit: DISCOVER_LIMIT,
             }),
             { signal: AbortSignal.timeout(6000) },
@@ -1070,7 +1179,30 @@ export default function DriftPage() {
   // failure; the caller handles that.
   async function refillRandomBuffer(): Promise<void> {
     const batch = await fetchDiscoverBatch();
-    if (batch.length > 0) randomBufferRef.current.push(...batch);
+    if (batch.length > 0) {
+      randomBufferRef.current.push(...batch);
+      return;
+    }
+    // An artist drift that comes back empty has read the current ring dry (an
+    // oeuvre is finite: Van Gogh is 18 works here). Step outward — their
+    // movement, then their period and medium — and try again, rather than
+    // dead-ending on an artist we simply hold little of. Widening is announced
+    // on the banner, never silent (§2.1). Threads stay untouched.
+    const focus = focusRef.current;
+    if (focus?.kind !== "artist") return;
+    const profile = artistProfileRef.current;
+    if (!profile) return;
+    while (true) {
+      const next = nextArtistRing(profile, artistRingRef.current);
+      if (next === null) return; // ladder exhausted: the caller falls back
+      artistRingRef.current = next;
+      setArtistRing(next);
+      const wider = await fetchDiscoverBatch();
+      if (wider.length > 0) {
+        randomBufferRef.current.push(...wider);
+        return;
+      }
+    }
   }
 
   function showHint(message: string, duration = 3000) {
