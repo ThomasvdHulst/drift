@@ -2166,6 +2166,28 @@ wander his work".
       Munch, Toulouse-Lautrec, Vuillard follow). Dürer's ring 1 is empty and his ring 2 serves 1500s prints,
       confirming the no-movement path.
 
+### Period picker: the choice appears where you tapped (2026-07-25)
+
+- [x] **Problem (user report):** picking a form on a phone rendered its periods *below the whole grid*.
+      Ten tiles in two columns is five rows tall, so choosing "Coins" opened its periods somewhere below
+      the fold: nothing visibly happened, and a first-time user had no reason to scroll looking for it.
+- [x] **Fix, chosen over auto-scrolling:** `TileGrid` gained optional `selectedId` + `panel` props, and
+      slots the panel into the grid as a full-width row **at the end of the row holding the selected
+      tile**. The periods now open directly under what you just tapped, on every breakpoint, so no
+      scrolling is needed at all and the grid never jumps under you. The chosen tile also takes an accent
+      ring, so the two-step pick shows its state. Column count is read from the resolved
+      `grid-template-columns` (via `ResizeObserver`) rather than duplicating the Tailwind breakpoints in
+      JS, so the two cannot disagree.
+- [x] **Safety net:** a `scrollIntoView({ block: "nearest" })` for the one remaining edge case, a tile
+      sitting at the very bottom of the viewport. `nearest` scrolls the minimum needed and does nothing
+      when the panel is already visible, so it never yanks the page.
+- [x] **Verified:** build + lint clean, 476 tests green. Measured on a 390x844 phone AND a 1280x1000
+      desktop: for all of Ceramics / Coins / Paintings / Textiles / Vessels the panel is **fully inside
+      the viewport**, 12 to 14px under the selected tile's row, with the right tile marked. Light + dark,
+      no overflow, zero console errors. The Encyclopedia's field grid (28 tiles) and news grid pass no
+      `panel`/`selectedId` and were confirmed unchanged (no panel node, no `aria-pressed`, a field tile
+      still starts a focused drift).
+
 ### Gallery home cleanup (2026-07-25)
 
 - [x] **Retired "Or start somewhere" from the Gallery** (owner request: the two new directed entries cover
