@@ -12,6 +12,7 @@
 // "threaded" = a thread pull; "reacted" = a thumbs up/down.
 export type TourEvent =
   | "reacted"
+  | "orbited"
   | "threaded"
   | "drifted"
   | "crossed"
@@ -151,17 +152,31 @@ export const TOUR_STEPS: TourStep[] = [
   {
     // The orbit control sits right beside the two reaction buttons and reads as
     // an eye, so it invites a tap without explaining itself. Named here so the
-    // one unlabelled icon on the card stops being a mystery. Not forced: tapping
-    // it would re-anchor the whole session to this page, which is a bigger
-    // commitment than a tour step should ask for.
+    // one unlabelled icon on the card stops being a mystery.
     id: "orbit",
     route: TOUR_ROUTES.drift,
     target: "card-orbit",
     placement: "auto",
     spotlight: true,
-    advance: "next",
+    advance: "orbited",
     title: "Circle one idea",
-    body: "The eye keeps you near a single page: drift stays in its neighbourhood and spirals slowly outward, instead of wandering off. Handy when a subject has you.",
+    body: "The eye keeps you near a single page: drift stays in its neighbourhood and spirals slowly outward, instead of wandering off. Give it a tap.",
+    gestureHint: "tap",
+  },
+  {
+    // The pay-off for that tap: the spotlight moves to the banner, which is the
+    // thing that actually tells you a focus is on and how to end it. Without
+    // this the reader tapped an icon and had to notice a small pill appear
+    // somewhere else on their own. Skipped automatically when the reader skipped
+    // the tap (no banner in the DOM, so TourProvider.skipStep steps over it).
+    id: "orbit-banner",
+    route: TOUR_ROUTES.drift,
+    target: "focus-banner",
+    placement: "auto",
+    spotlight: true,
+    advance: "next",
+    title: "You are circling it",
+    body: "This banner is on whenever your drift is focused, and it says how far from the centre you have wandered. Tap the eye again, or Drift freely here, to let go.",
   },
   {
     id: "threads",

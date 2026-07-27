@@ -18,6 +18,7 @@ import {
 const KNOWN_ROUTES = Object.values(TOUR_ROUTES) as string[];
 const EVENTS: TourEvent[] = [
   "reacted",
+  "orbited",
   "threaded",
   "drifted",
   "crossed",
@@ -172,16 +173,33 @@ describe("tour steps — the card's controls are all explained", () => {
     expect(orbit!.spotlight).toBe(true);
   });
 
-  // Tapping it re-anchors the whole session to that page, which is a bigger
-  // commitment than a walkthrough should demand of someone before they have
-  // understood it. So it explains, it does not insist.
-  it("does not force the user to tap the orbit control", () => {
-    expect(stepById("orbit")!.advance).toBe("next");
+  it("asks the reader to actually tap it", () => {
+    expect(stepById("orbit")!.advance).toBe("orbited");
   });
 
   it("introduces it right after the reactions it sits beside", () => {
     expect(ids.indexOf("orbit")).toBe(ids.indexOf("react") + 1);
     expect(ids.indexOf("orbit")).toBeLessThan(ids.indexOf("threads"));
+  });
+
+  // The pay-off for the tap: tapping an icon and being left to notice a small
+  // pill appear elsewhere taught nothing, so the spotlight follows the result.
+  it("follows the tap by spotlighting the focus banner it just turned on", () => {
+    const banner = stepById("orbit-banner");
+    expect(banner).toBeDefined();
+    expect(banner!.target).toBe("focus-banner");
+    expect(ids.indexOf("orbit-banner")).toBe(ids.indexOf("orbit") + 1);
+    // Explanatory, so a reader who skipped the tap is not asked for anything.
+    expect(banner!.advance).toBe("next");
+  });
+
+  // Crossing realms is a single-realm intent, so the feed disables it whenever a
+  // focus is set. The orbit step turns a focus ON a few steps earlier, so the
+  // cross step MUST come later than the banner step that explains letting go,
+  // and the feed releases the focus as it opens (see drift/page.tsx). Without
+  // that the tour asks for a swipe it has itself just disabled.
+  it("puts the cross-realm step after the orbit steps, never before", () => {
+    expect(ids.indexOf("try-horizontal")).toBeGreaterThan(ids.indexOf("orbit-banner"));
   });
 });
 

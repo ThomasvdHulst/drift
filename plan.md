@@ -40,7 +40,7 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > **Deferred by choice:** Phase 3 (local Ollama AI), 7 (constellations), 11 (calm social feed),
 > 12 (native app), 16 (memory & reflection), M12 (Library/Today realms), M-Ad3 (ad-free tier).
 >
-> **Baseline:** 505 unit tests green, `npm run build` + `npm run lint` clean.
+> **Baseline:** 507 unit tests green, `npm run build` + `npm run lint` clean.
 >
 > **Friends + sharing are HIDDEN** (2026-07-27, owner decision) behind `NEXT_PUBLIC_SOCIAL=1`.
 > Nothing was deleted; set that env var to bring the whole layer back. See the entry near the bottom.
@@ -2457,6 +2457,47 @@ where outside the tour you often swipe over the image (not scrollable, never cla
       second tap with the banner gone. Then the whole tour happy path again, **11/11 including a
       deliberately CANCELLED sideways swipe** at the step that was failing. 505 unit tests, build +
       lint clean, zero page errors.
+
+---
+
+## Tour follow-ups: the eye hands off to the banner, and the cross swipe works ✅ *(2026-07-27)*
+
+**1. "After you click the eye in the tour, could the focus shift to the banner?"**
+
+- [x] "Circle one idea" now asks the reader to actually tap the eye (`advance: "orbited"`, a new
+      `TourEvent` the feed signals when the toggle turns an orbit ON), and a new step
+      **"You are circling it"** spotlights the focus banner it just switched on, naming what a focus
+      is and both ways to let go. Tapping an icon and being left to notice a small pill appear
+      elsewhere taught nothing.
+- [x] A reader who skips the tap never sees the banner step: no banner exists in the DOM, and
+      `TourProvider.skipStep` already steps over targets that are not on screen. No extra machinery.
+
+**2. "The horizontal swipe still seems to block in the tour sometimes."**
+
+Two separate causes, both found by driving the tour rather than reading the code. A run that tapped
+the eye and a run that did not failed at *different* points, which is what made it look random.
+
+- [x] **Tapping the eye disabled the cross swipe outright.** `crossEnabled = canCross && !focus`,
+      because crossing is a deliberately single-realm intent. So the step that had just invited the
+      reader to start an orbit was followed by a step asking for a gesture that orbit had disabled:
+      the swipe was ignored, silently, every time. Verified directly (tapped the eye ⇒ BLOCKED; did
+      not tap ⇒ reached the step). The feed now **releases any focus as the cross step opens**, so
+      the instruction is honest, and the banner step immediately before has already explained
+      letting go. A unit test pins the step order this depends on.
+- [x] **The swipe-up pre-scroll was itself flaky**, which stranded the tour one step earlier. It
+      scrolled and then checked the result *in the same tick*, but a smooth scroll has not moved yet
+      at that moment, so "have we arrived" was never true. It now measures **before** scrolling,
+      glides once then corrects instantly, and keeps watching for the whole ~5s window instead of
+      stopping once it looks settled: this step is normally reached by tapping a thread, so the card
+      is still loading and a late image lifts it off its end again.
+      *An intermediate version of this fix stopped early on "settled" and made it worse (12/20 to
+      16/20 on the walk); the tests caught it.*
+
+- [x] **Verified**: three full tour runs on an iPhone viewport, 20/20 — tapping the eye moves the
+      spotlight to the banner and the banner is really on screen; skipping the tap skips the banner
+      step; swipe-up advances in every run; the focus is released before the cross step; and the
+      sideways swipe crosses realms, including with a **deliberately cancelled** drag. 507 unit
+      tests, build + lint clean, zero page errors.
 
 ---
 

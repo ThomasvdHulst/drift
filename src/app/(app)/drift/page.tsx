@@ -167,7 +167,12 @@ export default function DriftPage() {
   // is a no-op unless the tour is active and waiting on that event. `holdNav` is
   // true while the user is "looking around" in the tour: navigation is frozen so
   // they can read without drifting off the card they're studying.
-  const { signal: tourSignal, holdNav, active: tourActive } = useTour();
+  const {
+    signal: tourSignal,
+    holdNav,
+    active: tourActive,
+    step: tourStep,
+  } = useTour();
   const [shareCard, setShareCard] = useState<Card | null>(null);
   // Ad interstitial (Phase 21): `showAd` renders a calm ad card in place of the
   // knowledge card; `driftsSinceAdRef` counts drift-scrolls toward the next one.
@@ -1379,6 +1384,7 @@ export default function DriftPage() {
       return;
     }
     startOrbitHere(card);
+    tourSignal("orbited"); // the tour's "Circle one idea" step advances on this
   }
 
   function startOrbitHere(card: Card) {
@@ -1487,7 +1493,25 @@ export default function DriftPage() {
   const keyExtrasRef = useRef<{ pull: (i: number) => void; escape: () => void }>(
     { pull: () => {}, escape: () => {} },
   );
+  // The tour's "swipe sideways to cross realms" step cannot possibly work while a
+  // focus is set: crossing is a deliberately single-realm intent, so `crossEnabled`
+  // is false and the swipe is ignored. The step just before it now invites the
+  // reader to start an orbit, so without this the tour would ask for a gesture it
+  // had itself just disabled, and the swipe would look broken for no visible
+  // reason. Releasing here keeps the instruction honest; the banner step directly
+  // above has already explained what a focus is and how to let one go.
+  const focusedRef = useRef(false);
+  focusedRef.current = !!focus;
   useEffect(() => {
+    if (tourStep?.id !== "try-horizontal") return;
+    if (focusedRef.current) queueMicrotask(() => clearFocusRef.current());
+    // `clearFocus` is redefined every render; the ref keeps this effect keyed to
+    // the step alone, so it fires once when that step opens.
+  }, [tourStep?.id]);
+  const clearFocusRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    clearFocusRef.current = clearFocus;
     advanceRef.current = advance;
     backRef.current = goBack;
     keyExtrasRef.current = {

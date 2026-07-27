@@ -182,17 +182,26 @@ export function TourOverlay({
       el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
     let tries = 0;
     const id = window.setInterval(() => {
+      // Keep watching for the WHOLE window rather than stopping once it looks
+      // settled. The card is still loading when this step opens (it is normally
+      // reached by tapping a thread), and an image landing late grows the
+      // content and quietly lifts the card off its end again. Stopping early
+      // left the reader mid-text being told to swipe up, where swiping up
+      // correctly does nothing: the "sometimes it just sticks" flakiness.
+      if (++tries > 25) return window.clearInterval(id); // ~5s
       const region = document.querySelector<HTMLElement>("[data-drift-scroll]");
-      if (region && region.scrollHeight > region.clientHeight) {
-        region.scrollTo({ top: region.scrollHeight, behavior: "smooth" });
-        // One extra tick after arriving absorbs late layout (an image landing).
-        if (atEnd(region) && tries > 1) {
-          window.clearInterval(id);
-          return;
-        }
-      }
-      if (++tries >= 12) window.clearInterval(id); // ~3s
-    }, 250);
+      if (!region || region.scrollHeight <= region.clientHeight) return;
+      // Measured BEFORE scrolling, so a smooth scroll still in flight is not
+      // mistaken for having arrived. Only correct when actually off the end, so
+      // this never fights a reader who scrolls back up to look at something.
+      if (atEnd(region)) return;
+      // Glide the first time (it reads as the card presenting its end), then
+      // correct instantly, which cannot lose a race with late layout.
+      region.scrollTo({
+        top: region.scrollHeight,
+        behavior: tries <= 1 ? "smooth" : "auto",
+      });
+    }, 200);
     return () => window.clearInterval(id);
   }, [step.gestureHint, step.id]);
 
