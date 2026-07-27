@@ -85,15 +85,33 @@ function ShareButton({ onShare }: { onShare: () => void }) {
 
 // "Drift around this" (Phase 18): re-anchor the drift as an orbit of THIS page.
 // Same calm register as the reaction / share buttons — a small orbit mark.
-function OrbitButton({ onOrbit }: { onOrbit: () => void }) {
+//
+// It is a TOGGLE, and it shows its state the way the reaction buttons do: sage
+// and filled while the session is orbiting, plain otherwise. Before this the only
+// sign anything had happened was the focus banner above the card, so the control
+// read as inert and people did not realise they had switched modes.
+function OrbitButton({
+  onOrbit,
+  active,
+}: {
+  onOrbit: () => void;
+  active: boolean;
+}) {
   return (
     <button
       type="button"
       onClick={onOrbit}
       data-tour="card-orbit"
-      aria-label="Drift around this page"
-      title="Drift around this"
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-line text-ink-soft transition hover:border-accent/40 hover:text-accent-strong"
+      aria-label={
+        active ? "Stop drifting around this page" : "Drift around this page"
+      }
+      aria-pressed={active}
+      title={active ? "Drifting around this. Tap to stop." : "Drift around this"}
+      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition ${
+        active
+          ? "border-accent/50 bg-accent/15 text-accent-strong"
+          : "border-line text-ink-soft hover:border-accent/40 hover:text-accent-strong"
+      }`}
     >
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
         <circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none" />
@@ -336,6 +354,7 @@ export function CardView({
   onReact,
   onShare,
   onOrbit,
+  orbiting = false,
 }: {
   card: Card;
   realm: RealmId;
@@ -348,6 +367,9 @@ export function CardView({
   onReact?: (signal: Reaction) => void;
   onShare?: () => void;
   onOrbit?: () => void;
+  /** True while the session is orbiting THIS card's page, so the control can
+   *  show it (see OrbitButton). */
+  orbiting?: boolean;
 }) {
   // "Read more" reveals the first several BODY paragraphs (fetched lazily, once).
   // Local state resets per card because the parent re-keys CardView by pageTitle.
@@ -458,9 +480,19 @@ export function CardView({
           handler reads this region's edges (via [data-drift-scroll]) to tell
           "scroll to read" from "overscroll to drift on" — see lib/gesture. */}
       <div className="flex min-h-0 flex-1 flex-col">
+        {/* `touch-pan-y`: this region pans VERTICALLY only. Without it the
+            browser treats a sideways drag over scrollable prose as a possible
+            vertical scroll, claims the gesture, and fires `touchcancel` — so the
+            cross-realm swipe silently vanished and the gesture felt like it "got
+            stuck in the text". Reading scroll stays native and fast; horizontal
+            drags are left to the feed's own handler, which is the only thing
+            that wants them (there is nothing to scroll sideways). Most visible
+            during the guided tour, where the coach card pushes your thumb into
+            the middle of the prose. drift/page.tsx also handles `touchcancel`,
+            as a fallback for a genuinely diagonal drag. */}
         <div
           data-drift-scroll
-          className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-y-contain px-6 pb-4 pt-6 sm:px-8 sm:pt-8 md:px-10 md:pt-10 lg:px-12 lg:pt-12"
+          className="flex min-h-0 flex-1 touch-pan-y flex-col gap-3 overflow-y-auto overscroll-y-contain px-6 pb-4 pt-6 sm:px-8 sm:pt-8 md:px-10 md:pt-10 lg:px-12 lg:pt-12"
         >
           {/* Phone-only hero, full-bleed to the card's rounded top; it scrolls
               up out of the way as you read. */}
@@ -473,7 +505,7 @@ export function CardView({
             <ModeChip via={arrivedVia} realmLabel={getRealm(realm).label} />
             <div className="flex shrink-0 items-center gap-1.5">
               {onReact && <ReactionButtons reaction={reaction} onReact={onReact} />}
-              {onOrbit && <OrbitButton onOrbit={onOrbit} />}
+              {onOrbit && <OrbitButton onOrbit={onOrbit} active={orbiting} />}
               {onShare && <ShareButton onShare={onShare} />}
             </div>
           </div>

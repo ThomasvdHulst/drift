@@ -2420,6 +2420,46 @@ of which were outright broken behaviour rather than polish.
 
 ---
 
+## Bug fix: the cross-realm swipe could vanish, and the orbit control looked inert ✅ *(2026-07-27)*
+
+**1. "In the tour the side swipe does not always work; outside it works perfectly."**
+
+Root cause, and it was never really about the tour. The card's reading region is vertically
+scrollable with the default `touch-action: auto`, so a sideways drag over the prose is a gesture the
+BROWSER may decide to claim for scrolling. When it does, it fires **`touchcancel`** and stops sending
+`touchmove`/`touchend`. The feed only listened for `touchend`, so a claimed swipe was **silently
+dropped** and the gesture felt like it "got stuck in the text". It showed up in the tour because the
+coach card occupies the top of the screen and pushes your thumb down into the middle of the prose,
+where outside the tour you often swipe over the image (not scrollable, never claimed).
+
+- [x] **`touch-pan-y` on the reading region** — the primary fix. The browser now only claims vertical
+      pans, so a horizontal drag is never stolen. Reading scroll stays native and fast; nothing scrolls
+      sideways, so nothing is lost. Applied as the Tailwind utility on the element: the same rule
+      written as plain CSS in `globals.css` lost to Tailwind's layers and computed `auto`, which the
+      test caught.
+- [x] **`touchcancel` is handled** as a fallback for a genuinely diagonal drag, resolving from the last
+      `touchmove` position. A cancelled gesture can only ever CROSS, never advance: the browser
+      cancelled it because it was scrolling the text, so treating it as an overscroll would advance the
+      card while someone was reading.
+
+**2. "The fixating button should light up when you click it, like the like/dislike."**
+
+- [x] The orbit control is now a **toggle that shows its state**: sage and filled while the session is
+      orbiting, plain otherwise, exactly matching the reaction buttons (`aria-pressed` too). Tapping it
+      again releases the focus, so the control that lit it can un-light it. Lit only when orbiting
+      **this card's** page, so once the orbit carries you outward the neighbour's control is unlit and
+      tapping it re-anchors there. Previously the sole feedback was the focus banner, so the button
+      read as doing nothing.
+
+- [x] **Verified** on an iPhone viewport: `touch-action` really resolves to `pan-y`; a
+      browser-cancelled horizontal drag still crosses realms; a cancelled vertical drag correctly does
+      NOT advance; the orbit button starts unlit, lights on tap (banner agrees), and unlights on a
+      second tap with the banner gone. Then the whole tour happy path again, **11/11 including a
+      deliberately CANCELLED sideways swipe** at the step that was failing. 505 unit tests, build +
+      lint clean, zero page errors.
+
+---
+
 ## Out of scope for v1 (do not build unless asked)
 
 Accounts / social / comments, mobile packaging, non-Wikipedia sources, and all

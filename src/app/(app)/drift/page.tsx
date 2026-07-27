@@ -256,6 +256,9 @@ export default function DriftPage() {
   // The vertical start of a touch + the card scroll region's edge state at that
   // moment (measured at start so iOS momentum after touchend can't cause a false
   // advance). Read by onTouchEnd via resolveSwipe.
+  // The last touchmove position, so a browser-cancelled gesture can still be
+  // read (see onTouchCancel).
+  const lastTouchRef = useRef<{ x: number; y: number } | null>(null);
   const touchStartRef = useRef<{
     x: number;
     y: number;
@@ -298,6 +301,14 @@ export default function DriftPage() {
   // swipe is inert: a focus is a single-realm intent (Phase 18). Release it
   // ("Drift freely") to cross again.
   const crossEnabled = canCross && !focus;
+  // Is the session orbiting the page this card shows? Drives the lit state of
+  // the orbit control, so it reads as a toggle rather than a button that seems
+  // to do nothing. Matched on the seed title, not merely "a focus exists": once
+  // an orbit carries you to a neighbouring page, that page is not the centre and
+  // its control should be unlit, so tapping it re-anchors here.
+  const orbitingThisCard =
+    focus?.kind === "orbit" && !!current &&
+    focus.seedTitle === current.card.pageTitle;
   // The orbit banner's "how far from the seed" word: the seed is the center, an
   // orbit drift carries its ring, a thread mid-orbit has no defined distance.
   const orbitProx =
@@ -1356,6 +1367,20 @@ export default function DriftPage() {
   // "Drift around this" (Phase 18): re-anchor a page orbit on the current card
   // mid-session. Doesn't navigate — the card you're on becomes the new seed; the
   // next drift begins spiraling out from it. Threads stay free (the way out).
+  /** The orbit control is a toggle: tapping it while already circling THIS page
+   *  releases the focus (the same thing the banner's "Drift freely" does), so the
+   *  lit button can always be un-lit by the control that lit it. */
+  function toggleOrbitHere(card: Card) {
+    if (
+      focusRef.current?.kind === "orbit" &&
+      focusRef.current.seedTitle === card.pageTitle
+    ) {
+      clearFocus();
+      return;
+    }
+    startOrbitHere(card);
+  }
+
   function startOrbitHere(card: Card) {
     const f: Focus = {
       kind: "orbit",
@@ -1551,11 +1576,20 @@ export default function DriftPage() {
       atTop: edges.atTop,
       atBottom: edges.atBottom,
     };
+    lastTouchRef.current = null;
   }
-  function onTouchEnd(e: React.TouchEvent) {
+  // Remember where the finger actually got to. A gesture the BROWSER decides to
+  // take over (to scroll the text) ends in `touchcancel`, which carries no useful
+  // coordinates, so without this a cancelled swipe would be unreadable.
+  function onTouchMove(e: React.TouchEvent) {
+    const t = e.changedTouches[0];
+    lastTouchRef.current = { x: t.clientX, y: t.clientY };
+  }
+
+  function resolveTouch(x: number, y: number, cancelled: boolean) {
     const start = touchStartRef.current;
-    const deltaX = e.changedTouches[0].clientX - start.x;
-    const deltaY = start.y - e.changedTouches[0].clientY;
+    const deltaX = x - start.x;
+    const deltaY = start.y - y;
     // Axis-lock: a clearly-horizontal swipe crosses realms (only where crossing
     // applies and no focus is set); otherwise it's the vertical read/advance
     // gesture. Never both.
@@ -1563,6 +1597,9 @@ export default function DriftPage() {
       crossRealm();
       return;
     }
+    // A cancelled gesture was the browser scrolling the text, so it is a read,
+    // never an advance. Only the horizontal decision above survives a cancel.
+    if (cancelled) return;
     const action = resolveSwipe({
       deltaY,
       insideRegion: start.insideRegion,
@@ -1573,13 +1610,33 @@ export default function DriftPage() {
     else if (action === "back") goBack();
   }
 
+  function onTouchEnd(e: React.TouchEvent) {
+    resolveTouch(e.changedTouches[0].clientX, e.changedTouches[0].clientY, false);
+  }
+
+  /**
+   * The browser cancelled the gesture, which it does the moment it claims the
+   * drag for native scrolling. `touch-action: pan-y` on the reading region makes
+   * that rare (the browser no longer claims horizontal drags at all), but it can
+   * still happen on a diagonal one, and when it did the cross-realm swipe simply
+   * vanished: the app only listened for `touchend`, so the swipe felt like it
+   * "got stuck in the text". This is most visible during the guided tour, where
+   * the coach card pushes your thumb down into the middle of the prose.
+   */
+  function onTouchCancel() {
+    const last = lastTouchRef.current;
+    if (last) resolveTouch(last.x, last.y, true);
+  }
+
   return (
     <div
       className="flex h-dvh flex-col overflow-hidden bg-paper"
       data-realm={realm}
       onWheel={onWheel}
       onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
+      onTouchCancel={onTouchCancel}
     >
       <FeedTopBar
         steps={history}
@@ -1663,9 +1720,10 @@ export default function DriftPage() {
                   }
                   onOrbit={
                     realm === "encyclopedia"
-                      ? () => startOrbitHere(current.card)
+                      ? () => toggleOrbitHere(current.card)
                       : undefined
                   }
+                  orbiting={orbitingThisCard}
                 />
               )}
             </motion.div>
