@@ -8,10 +8,7 @@ import { siteUrl } from "@/lib/site";
 import { AUTH_STORAGE_KEY } from "@/lib/supabase/client";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthProvider } from "@/components/AuthProvider";
-import { AuthGate } from "@/components/AuthGate";
-import { AccountButton } from "@/components/AccountButton";
 import { StorageNotice } from "@/components/StorageNotice";
-import { TourProvider } from "@/components/tour/TourProvider";
 
 // Runs before first paint to set the theme with no flash of the wrong one.
 // IndexedDB (our settings store) is async, so the theme is mirrored to a
@@ -126,15 +123,12 @@ export default function RootLayout({
           which otherwise trips a false-positive hydration mismatch. */}
       <body className="min-h-full" suppressHydrationWarning>
         <AuthProvider>
-          <AuthGate>
-            {/* The guided tour (Phase 20) is mounted inside the gate, so it never
-                renders on the signed-out Landing, and it survives client-side
-                route changes so one tour can flow across pages. */}
-            <TourProvider>
-              {children}
-              <AccountButton />
-            </TourProvider>
-          </AuthGate>
+          {/* The login gate lives in `(app)/layout.tsx`, one level down, so that
+              it wraps the real pages but NOT `not-found.tsx` / the error
+              boundaries, which are siblings of that group. Gating the 404 meant
+              a signed-out visitor who mistyped a URL saw the landing page under
+              a "Page not found" tab title. */}
+          {children}
           <ThemeToggle />
           <StorageNotice />
         </AuthProvider>

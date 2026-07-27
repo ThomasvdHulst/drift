@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
+import { socialEnabled } from "@/lib/social/enabled";
 import {
   listInbox,
   markShareRead,
@@ -31,7 +32,23 @@ function importSnapshot(snap: TrailSnapshot): Trail {
   return sharePayloadToLocalTrail(snap, crypto.randomUUID(), Date.now());
 }
 
+// The friends + sharing layer is behind one switch (lib/social/enabled.ts) and is
+// currently OFF. Nothing here is deleted, so flipping NEXT_PUBLIC_SOCIAL=1 brings
+// the whole page back; while it is off this URL quietly sends you home rather
+// than sitting around as an orphan. The guard is a wrapper, not an early return
+// inside the page, so the page's own hooks keep running unconditionally when it
+// IS mounted (rules of hooks).
 export default function InboxPage() {
+  const router = useRouter();
+  const enabled = socialEnabled();
+  useEffect(() => {
+    if (!enabled) router.replace("/");
+  }, [enabled, router]);
+  if (!enabled) return null;
+  return <InboxPageInner />;
+}
+
+function InboxPageInner() {
   const router = useRouter();
   const { user, loading, cloudConfigured } = useAuth();
   const [shares, setShares] = useState<InboxShare[] | null>(null);

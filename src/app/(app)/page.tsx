@@ -18,6 +18,7 @@ import { FormEraPicker } from "@/components/FormEraPicker";
 import { ArtistSearch, type ArtistSuggestion } from "@/components/ArtistSearch";
 import { articFormById, articEraById, describeSlice, ERA_ALL } from "@/lib/realms/artic.forms";
 import { useAuth } from "@/components/AuthProvider";
+import { socialEnabled } from "@/lib/social/enabled";
 import { useTour } from "@/components/tour/TourProvider";
 import { Wordmark } from "@/components/BrandLogo";
 
@@ -343,7 +344,7 @@ export default function Home() {
           >
             Take a tour
           </button>
-          {cloudConfigured && (
+          {cloudConfigured && socialEnabled() && (
             <>
               <Link
                 href="/friends"

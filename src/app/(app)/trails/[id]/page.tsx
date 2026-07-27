@@ -18,6 +18,7 @@ import { trailRealms } from "@/lib/crossrealm";
 import { TrailMap } from "@/components/TrailMap";
 import { useAuth } from "@/components/AuthProvider";
 import { ShareToFriend } from "@/components/ShareToFriend";
+import { socialEnabled } from "@/lib/social/enabled";
 import { trailToSharePayload } from "@/lib/social/share";
 
 export default function TrailDetailPage() {
@@ -183,7 +184,7 @@ export default function TrailDetailPage() {
         >
           {copied ? "Copied ✓" : "Copy as text"}
         </button>
-        {cloudConfigured && user && (
+        {cloudConfigured && user && socialEnabled() && (
           <button
             type="button"
             onClick={() => setSharing(true)}

@@ -71,6 +71,7 @@ import { TrailMap } from "@/components/TrailMap";
 import { useAuth } from "@/components/AuthProvider";
 import { useTour } from "@/components/tour/TourProvider";
 import { ShareToFriend } from "@/components/ShareToFriend";
+import { socialEnabled } from "@/lib/social/enabled";
 import { cardToSharePayload } from "@/lib/social/share";
 import { AdCard } from "@/components/AdCard";
 import { adsConfig, shouldShowAd } from "@/lib/ads";
@@ -1656,7 +1657,7 @@ export default function DriftPage() {
                       : undefined
                   }
                   onShare={
-                    cloudConfigured && user
+                    cloudConfigured && user && socialEnabled()
                       ? () => setShareCard(current.card)
                       : undefined
                   }

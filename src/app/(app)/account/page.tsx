@@ -12,6 +12,7 @@ import {
 } from "@/lib/sync/replicator";
 import { getMyProfile, upsertProfile } from "@/lib/social/client";
 import { normalizeHandle, handleError } from "@/lib/social/handles";
+import { socialEnabled } from "@/lib/social/enabled";
 
 // The account screen (Phase 9, extended Phase 13). Calm, on-brand handle setup +
 // sign-out when signed in, and the shared email+password AuthForm when signed
@@ -54,7 +55,7 @@ export default function AccountPage() {
         <div className="space-y-4">
           <SignedIn email={user.email ?? "your account"} onSignOut={signOut} />
           <ChangePassword />
-          <ProfileSection />
+          {socialEnabled() && <ProfileSection />}
           <DeleteAccount />
         </div>
       ) : (

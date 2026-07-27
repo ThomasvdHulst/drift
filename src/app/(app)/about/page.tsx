@@ -79,8 +79,7 @@ export default function AboutPage() {
               </li>
               <li>
                 <span className="text-ink">Arrive.</span> When you stop, your
-                wander becomes a trail map you can keep, export as an image, or
-                share with a friend.
+                wander becomes a trail map you can keep or export as an image.
               </li>
             </ul>
           </Section>

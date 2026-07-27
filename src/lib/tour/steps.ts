@@ -228,7 +228,9 @@ export const TOUR_STEPS: TourStep[] = [
     spotlight: true,
     advance: "next",
     title: "A trail you can revisit",
-    body: "Come back to any trail, or send it to a friend. Every trail you keep also joins your Atlas.",
+    // Sending a trail to a friend is behind the social switch (currently off,
+    // see lib/social/enabled.ts), so the tour no longer promises it.
+    body: "Come back to any trail whenever you like. Every trail you keep also joins your Atlas.",
   },
 
   // ----- Atlas + Interests (gently escorted) -----

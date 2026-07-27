@@ -40,7 +40,10 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > **Deferred by choice:** Phase 3 (local Ollama AI), 7 (constellations), 11 (calm social feed),
 > 12 (native app), 16 (memory & reflection), M12 (Library/Today realms), M-Ad3 (ad-free tier).
 >
-> **Baseline:** 498 unit tests green, `npm run build` + `npm run lint` clean.
+> **Baseline:** 500 unit tests green, `npm run build` + `npm run lint` clean.
+>
+> **Friends + sharing are HIDDEN** (2026-07-27, owner decision) behind `NEXT_PUBLIC_SOCIAL=1`.
+> Nothing was deleted; set that env var to bring the whole layer back. See the entry near the bottom.
 >
 > **🔴 Action needed (2026-07-27):** a bug where confirmation and password-reset links only worked in
 > the browser you signed up in is fixed in code, but the fix lives in the **email templates** and they
@@ -2316,6 +2319,58 @@ whichever browser actually opened the email.
 > the link lives, so until they are re-pasted the old `?code=` links keep going out (they now fail
 > with a helpful message rather than in silence, but they still fail cross-browser). Also confirm
 > **Site URL** is `https://www.usedrift.org`, since the links are built from `{{ .SiteURL }}`.
+
+---
+
+## Friends + sharing hidden behind one switch ✅ *(2026-07-27)*
+
+**Why.** Owner decision: the social surface was pulling attention away from the core reading loop,
+and the priority is to perfect the main content first. Explicitly **hidden, not deleted** so it can
+come back.
+
+- [x] **`src/lib/social/enabled.ts`** — one opt-IN flag, `NEXT_PUBLIC_SOCIAL=1`. Only the literal
+      `"1"` enables it, so an unset or malformed env var can never switch it on by accident (pure +
+      unit-tested, mirroring `adsConfig()`).
+- [x] **Hidden while off:** the Friends and Inbox buttons on the home page; the "send this card"
+      control on a drift card; "Send to a friend" on a trail; the handle picker and "find & add
+      friends" link on the account screen. `/friends` and `/inbox` quietly send you home instead of
+      sitting there as orphan URLs (a guard *wrapper*, so the pages' own hooks still run
+      unconditionally when they are mounted).
+- [x] **Copy that promised it was corrected:** the guided tour no longer says a trail can be sent to
+      a friend, and /about no longer offers to "share with a friend".
+- [x] **Nothing removed:** the pages, `src/lib/social/*`, the `profiles` / `friend_requests` /
+      `shares` tables and their RLS are all untouched.
+- [x] **Verified both ways** in a real signed-in browser. Off: 8/8 surfaces gone and both URLs
+      redirect home. On (`NEXT_PUBLIC_SOCIAL=1`): the Friends and Inbox buttons, the /friends page
+      and the handle picker all return, no console errors. Turning it back on is a one-line env change.
+
+> **Note:** there was never any *atlas* sharing to hide. Share kinds are only `trail` and `card`
+> (`ShareKind` in `src/lib/social/client.ts`); the Atlas page's only button is a local
+> "Export image" PNG download, which is unaffected.
+
+## Bug fix: the 404 page showed the landing page to signed-out visitors ✅ *(2026-07-27)*
+
+**The report.** Typing a random URL showed the home page. The browser tab said "Page not found", but
+the page itself did not change.
+
+**Root cause.** `AuthGate` lived in the ROOT layout, so it wrapped `app/not-found.tsx` too. For a
+signed-out visitor any route outside its small public allowlist renders `<Landing />` — including
+the 404. Reproduced exactly: **signed out**, `/definitely-not-a-real-page` gave title "Page not
+found" with the landing page in the body; **signed in**, the same URL rendered the real 404. So the
+custom 404 had been invisible to precisely the visitors most likely to hit it.
+
+**The fix.** Every real page moved into an `(app)` route group whose layout now holds the gate, so
+`not-found.tsx` and the error boundaries are siblings of the group rather than children of the gate.
+A route group's name is in parentheses, so **no URL changed** (verified against the build's route
+list). `AccountButton` and `TourProvider` moved down with the gate; `ThemeToggle` and
+`StorageNotice` stay at the root so they also render on the 404.
+
+- [x] **Verified 18 route/auth combinations in a browser.** Signed out: bogus URLs (one and three
+      segments deep) render the real 404; `/` still shows the landing; **`/drift`, `/trails`,
+      `/atlas`, `/interests`, `/friends`, `/inbox` and `/account` all still show the landing and
+      never the app** (the gate is intact, which was the thing to get wrong here); the five public
+      routes still render their own content. Signed in: bogus URLs render the 404, and `/`, `/drift`
+      and `/trails` render the app. Light and dark checked.
 
 ---
 
