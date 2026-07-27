@@ -1,5 +1,5 @@
 // The copy for Drift's transactional emails, built on the shared renderer.
-// Two are sent by Supabase (confirm / reset) and use its {{ .ConfirmationURL }}
+// Two are sent by Supabase (confirm / reset) and use its {{ .TokenHash }}
 // placeholder; the rest are sent by us at runtime (welcome / goodbye, and the
 // contact receipt + owner notification). All share one calm voice, no em/en
 // dashes.
@@ -14,9 +14,23 @@ export interface EmailMessage {
   text?: string;
 }
 
-// Supabase substitutes this at send time. Kept verbatim (not URL-escaped) in the
-// generated template files.
-const CONFIRMATION_URL = "{{ .ConfirmationURL }}";
+// The link Supabase fills in at send time. Kept verbatim (the renderer does not
+// escape URLs), so the `&` is written as `&amp;` here for valid HTML.
+//
+// WHY NOT `{{ .ConfirmationURL }}` (what these used to use): that variable sends
+// the reader through Supabase's /verify endpoint, which bounces back to the app
+// with a PKCE `?code=`. Exchanging that code needs a `code_verifier` stored in
+// the localStorage of the browser that STARTED the sign-up, so the link only
+// worked in that one browser profile: opening it on a phone after signing up on
+// a laptop, or in a private tab, or in a mail app's in-app browser, landed the
+// reader on the homepage silently signed out.
+//
+// `{{ .TokenHash }}` carries a token our /auth/confirm page redeems with
+// `verifyOtp`, which needs nothing from local storage and therefore works in
+// whatever browser actually opened the email.
+function confirmUrl(type: "signup" | "recovery"): string {
+  return `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=${type}`;
+}
 
 /** Confirm-signup template for Supabase (Auth → Email Templates → Confirm signup). */
 export function confirmSignupTemplate(): EmailMessage {
@@ -29,7 +43,7 @@ export function confirmSignupTemplate(): EmailMessage {
         "Welcome to Drift. You are one step away from wandering.",
         "Confirm your email address to finish setting up your account.",
       ],
-      cta: { label: "Confirm email", url: CONFIRMATION_URL },
+      cta: { label: "Confirm email", url: confirmUrl("signup") },
       note: "If you did not create a Drift account, you can safely ignore this email.",
     }),
   };
@@ -46,7 +60,7 @@ export function resetPasswordTemplate(): EmailMessage {
         "We received a request to reset the password for your Drift account.",
         "Choose a new password with the button below. For your safety, the link expires after a little while.",
       ],
-      cta: { label: "Reset password", url: CONFIRMATION_URL },
+      cta: { label: "Reset password", url: confirmUrl("recovery") },
       note: "If you did not request this, you can ignore this email and your password stays the same.",
     }),
   };

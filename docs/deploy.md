@@ -91,11 +91,18 @@ stable production alias). In the Supabase dashboard → **Authentication → URL
    it. Auth → **Emails → SMTP Settings**: create a free **Resend** account (or SendGrid/SES),
    verify a sending domain, then paste the SMTP host/port/user/password + a From address. (For your
    *own* testing the built-in sender is fine.)
-5. **Branded email templates.** Auth → **Emails → Templates**: for **Confirm signup** and **Reset
-   password**, set the Subject and paste the HTML from `supabase/email-templates/` (see the README
-   there for the exact subjects). These match Drift's look and the welcome/goodbye emails. Make sure
-   the **Site URL** above is your real origin (`https://www.usedrift.org`) so the confirm/reset links
-   point at the live app.
+5. **Branded email templates — REQUIRED, not cosmetic.** Auth → **Emails → Templates**: for
+   **Confirm signup** and **Reset password**, set the Subject and paste the HTML from
+   `supabase/email-templates/` (see the README there for the exact subjects). These match Drift's
+   look and the welcome/goodbye emails. Make sure the **Site URL** above is your real origin
+   (`https://www.usedrift.org`), because the links are built from `{{ .SiteURL }}`.
+
+   > ⚠️ **These templates carry the fix for a real bug.** Supabase's stock templates use
+   > `{{ .ConfirmationURL }}`, which returns a PKCE `?code=` that only the browser which *started*
+   > the sign-up can exchange. Sign up on a laptop, open the email on your phone (or in a private
+   > tab, or in Gmail's in-app browser) and you land on the homepage **silently signed out**. Drift's
+   > templates point at `/auth/confirm?token_hash={{ .TokenHash }}` instead, which works in any
+   > browser. If you ever revert a template to the Supabase default, the bug comes back.
 6. **Google sign-in (optional).** Auth → Providers → **Google** → enable. In **Google Cloud
    Console** create an **OAuth Client ID (Web)** whose *Authorized redirect URI* is the **Callback
    URL** shown in that Google panel (`https://<ref>.supabase.co/auth/v1/callback`); paste the

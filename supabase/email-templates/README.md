@@ -13,6 +13,28 @@ set the Subject and paste the HTML into the message body, then Save.
 | Confirm signup | Confirm your email for Drift | confirm-signup.html |
 | Reset password | Reset your Drift password | reset-password.html |
 
-Both use Supabase's `{{ .ConfirmationURL }}` variable, so the confirm / reset links
-are filled in automatically at send time. Make sure the Auth "Site URL" is set to your
-production origin (https://www.usedrift.org) so those links point at the live app.
+## The link, and why it is not `{{ .ConfirmationURL }}`
+
+Both buttons point at:
+
+```
+{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=signup   (or type=recovery)
+```
+
+**Do not change this back to `{{ .ConfirmationURL }}`.** That variable routes the
+reader through Supabase's `/verify`, which bounces back to the app carrying a PKCE
+`?code=`. Exchanging that code needs a `code_verifier` held in the localStorage of the
+browser that *started* the sign-up, so the link only worked in that one browser
+profile. Anyone who signed up on a laptop and opened the email on their phone, or used
+a private tab, or tapped the link inside a mail app's in-app browser, landed on the
+homepage **silently signed out**. That was a real bug, reported 2026-07-27.
+
+`{{ .TokenHash }}` carries a token that Drift's `/auth/confirm` page redeems with
+`verifyOtp`, which needs nothing from local storage and therefore works in whichever
+browser actually opened the email.
+
+Make sure the Auth **Site URL** is your production origin (`https://www.usedrift.org`),
+because `{{ .SiteURL }}` is what these links are built from.
+
+`src/lib/email/templates.test.ts` asserts these files still match `messages.ts` and
+still use the token_hash link, so neither can rot unnoticed.

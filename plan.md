@@ -40,7 +40,12 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > **Deferred by choice:** Phase 3 (local Ollama AI), 7 (constellations), 11 (calm social feed),
 > 12 (native app), 16 (memory & reflection), M12 (Library/Today realms), M-Ad3 (ad-free tier).
 >
-> **Baseline:** 476 unit tests green, `npm run build` + `npm run lint` clean.
+> **Baseline:** 498 unit tests green, `npm run build` + `npm run lint` clean.
+>
+> **🔴 Action needed (2026-07-27):** a bug where confirmation and password-reset links only worked in
+> the browser you signed up in is fixed in code, but the fix lives in the **email templates** and they
+> must be re-pasted into Supabase (Auth → Emails → Templates) from `supabase/email-templates/`. See
+> the bug-fix entry at the bottom of this file.
 >
 > **Fix (2026-07-23):** re-entering an "in the news" section you'd read deep into no longer shows a false
 > "Couldn't load a card" error. It now pages past the already-seen cards, and when a whole section is read it
@@ -2249,6 +2254,68 @@ Two details that matter and are easy to get wrong:
       The hint appears on a long card, disappears after tapping it, and the bottom edge is still reachable.
       Desktop confirmed byte-identical in behaviour (inline copy hidden, pinned copy 111px). Light + dark,
       no horizontal overflow, zero console errors.
+
+---
+
+## Bug fix: confirmation links only worked in the browser you signed up in ✅ *(2026-07-27)*
+
+**The report.** A friend created an account, clicked "verify" in the email, and landed on the
+homepage **signed out**, with `?code=<uuid>` in the URL. Signing in then said their credentials did
+not match. The owner reproduced it: clicking the link on a phone after signing up on a laptop
+failed, but pasting that same URL into the laptop's browser signed them in instantly, and doing the
+whole flow inside one non-private tab worked fine.
+
+**Root cause (confirmed against the live project).** Drift used Supabase's **PKCE** flow. `signUp`
+stores a `code_verifier` in the localStorage of the browser that starts the sign-up, and the emailed
+link returns to the app with `?code=`; redeeming that code REQUIRES the verifier. So the link only
+ever worked in that one browser profile. A diagnostic against the real project made it explicit:
+after `signUp`, browser storage held exactly one key, `drift-auth-code-verifier`, and exchanging the
+code in a second client without it failed. **Anyone who signs up on a laptop and opens the mail on a
+phone, uses a private tab, or taps the link inside a mail app's in-app browser hits this** — and it
+failed *silently*, which is why it looked random. **Password-reset links had the same flaw.**
+
+The "credentials didn't match" half is a separate, honest message: Supabase returns
+`invalid_credentials` (a genuinely wrong password) and `email_not_confirmed` as *different* errors,
+and clicking the link **does** confirm the address server-side even when the exchange then fails.
+So the account was live and the password simply did not match. Nothing in the code produces that
+message for a correct password on a confirmed account, verified directly against the API.
+
+**The fix.** Email links now carry `{{ .TokenHash }}` and land on a new **`/auth/confirm`** page,
+which redeems them with `verifyOtp`. That call needs nothing from local storage, so it works in
+whichever browser actually opened the email.
+
+- [x] `src/lib/auth.ts` — `parseAuthLink` (pure, unit-tested) classifies every shape a link can
+      arrive in: `token_hash`, legacy `?code=`, implicit `#access_token=`, a Supabase error, or
+      nothing. Plus `describeLinkError` and `destinationFor`.
+- [x] `src/app/auth/confirm/page.tsx` — redeems a token_hash; watches for the session on the older
+      shapes; and when a legacy `?code=` link cannot be exchanged it **says so plainly** ("opened in
+      a different browser… your email is confirmed, so you can sign in with your password") instead
+      of dropping the reader on a signed-out homepage. Added to `AuthGate`'s `PUBLIC_ROUTES`, since
+      the person opening a confirmation link is by definition not signed in yet.
+- [x] `AuthProvider` — new `verifyEmailToken`; sign-up, resend and password-reset all now point at
+      `/auth/confirm`.
+- [x] **Email templates** (`supabase/email-templates/*.html`, generated from
+      `src/lib/email/messages.ts`) rewritten to
+      `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=…`.
+      `templates.test.ts` now asserts the committed HTML matches the renderer AND still uses the
+      token_hash link, so this cannot silently regress. An old test that *asserted the buggy
+      `{{ .ConfirmationURL }}`* was updated.
+- [x] **Verified against the real Supabase project**, every case in a BRAND NEW browser context with
+      no storage and no verifier (i.e. exactly the situation that used to fail):
+      signup token_hash → signed in, lands on `/`, email confirmed; recovery token_hash → signed in,
+      lands on `/account/reset`; a reused token, an invalid token and an expired-link redirect each
+      fail with clear copy instead of hanging; a legacy `?code=` link explains itself; the page
+      renders while signed out. Then the **actual committed templates** were substituted the way
+      Supabase substitutes them and the extracted `href` was clicked in a fresh browser: both work.
+      Ordinary sign-in, the gate, and the wrong-password message were regression-tested through the
+      real UI. 498 unit tests, build + lint clean. Test users were created and deleted via the admin
+      API, so no inboxes were spammed.
+
+> **⚠️ One owner step, or the fix stays inert.** Supabase → Auth → **Emails → Templates** → re-paste
+> **Confirm signup** and **Reset password** from `supabase/email-templates/`. The templates are where
+> the link lives, so until they are re-pasted the old `?code=` links keep going out (they now fail
+> with a helpful message rather than in silence, but they still fail cross-browser). Also confirm
+> **Site URL** is `https://www.usedrift.org`, since the links are built from `{{ .SiteURL }}`.
 
 ---
 

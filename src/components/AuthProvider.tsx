@@ -11,7 +11,11 @@ import {
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { getSupabase, isCloudConfigured } from "@/lib/supabase/client";
-import { humanizeAuthError, type OAuthProvider } from "@/lib/auth";
+import {
+  humanizeAuthError,
+  type EmailOtpType,
+  type OAuthProvider,
+} from "@/lib/auth";
 import { setSyncRecording, clearAllLocalData } from "@/lib/storage";
 import { startSync, stopSync, flushSync } from "@/lib/sync/replicator";
 
@@ -37,6 +41,13 @@ interface AuthContextValue {
   requestPasswordReset: (email: string) => Promise<AuthResult>;
   updatePassword: (newPassword: string) => Promise<AuthResult>;
   resendConfirmation: (email: string) => Promise<AuthResult>;
+  /** Redeem an email link's `token_hash` (see /auth/confirm). Unlike the PKCE
+   *  code flow this needs nothing from local storage, so it signs the user in
+   *  even when the link is opened in a different browser or on another device. */
+  verifyEmailToken: (
+    tokenHash: string,
+    type: EmailOtpType,
+  ) => Promise<AuthResult>;
   deleteAccount: () => Promise<AuthResult>;
   signOut: () => Promise<void>;
 }
@@ -133,7 +144,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { data, error } = await sb.auth.signUp({
           email,
           password,
-          options: { emailRedirectTo: window.location.origin },
+          // Land on /auth/confirm, which redeems the link in ANY browser (see
+          // lib/auth.ts). The old target was the bare origin, which only worked
+          // in the profile that started the sign-up.
+          options: { emailRedirectTo: `${window.location.origin}/auth/confirm` },
         });
         if (error) {
           // Log the raw error (its message may be an opaque "{}" for 5xx; the
@@ -178,7 +192,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!sb) return NOT_CONFIGURED;
       try {
         const { error } = await sb.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/account/reset`,
+          // Recovery links land on /auth/confirm too; it redeems the token and
+          // then forwards to /account/reset (see destinationFor).
+          redirectTo: `${window.location.origin}/auth/confirm`,
         });
         if (error) {
           console.error("[auth] password reset failed", error);
@@ -206,6 +222,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    // Redeem an email link's token_hash. This is the whole point of
+    // /auth/confirm: verifyOtp is stateless on the client, so a confirmation or
+    // recovery link works in whatever browser actually opened it.
+    async function verifyEmailToken(
+      tokenHash: string,
+      type: EmailOtpType,
+    ): Promise<AuthResult> {
+      const sb = getSupabase();
+      if (!sb) return NOT_CONFIGURED;
+      try {
+        const { error } = await sb.auth.verifyOtp({ token_hash: tokenHash, type });
+        if (error) {
+          console.error("[auth] verifyOtp failed", error);
+          return { error: humanizeAuthError(error, "generic") };
+        }
+        return { error: null };
+      } catch {
+        return { error: "Couldn't reach the cloud. Please try again." };
+      }
+    }
+
     // Re-send the sign-up confirmation email (rate-limited by Supabase).
     async function resendConfirmation(email: string): Promise<AuthResult> {
       const sb = getSupabase();
@@ -214,7 +251,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { error } = await sb.auth.resend({
           type: "signup",
           email,
-          options: { emailRedirectTo: window.location.origin },
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth/confirm`,
+          },
         });
         if (error) {
           console.error("[auth] resend confirmation failed", error);
@@ -315,6 +354,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       requestPasswordReset,
       updatePassword,
       resendConfirmation,
+      verifyEmailToken,
       deleteAccount,
       signOut,
     };
@@ -339,6 +379,7 @@ export function useAuth(): AuthContextValue {
       requestPasswordReset: async () => NOT_CONFIGURED,
       updatePassword: async () => NOT_CONFIGURED,
       resendConfirmation: async () => NOT_CONFIGURED,
+      verifyEmailToken: async () => NOT_CONFIGURED,
       deleteAccount: async () => NOT_CONFIGURED,
       signOut: async () => {},
     };

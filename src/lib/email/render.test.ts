@@ -121,9 +121,17 @@ describe("email messages", () => {
     }
   });
 
-  it("the Supabase templates carry the ConfirmationURL placeholder verbatim", () => {
-    expect(confirmSignupTemplate().html).toContain("{{ .ConfirmationURL }}");
-    expect(resetPasswordTemplate().html).toContain("{{ .ConfirmationURL }}");
+  // These used to assert `{{ .ConfirmationURL }}`, which was the bug: that link
+  // hands back a PKCE `?code=` only the signing-up browser can exchange, so the
+  // email failed for anyone who opened it on another device or in a private tab.
+  // The placeholders must still reach the file verbatim, just different ones.
+  // (templates.test.ts covers the shape of the link itself.)
+  it("the Supabase templates carry their placeholders verbatim", () => {
+    for (const html of [confirmSignupTemplate().html, resetPasswordTemplate().html]) {
+      expect(html).toContain("{{ .SiteURL }}");
+      expect(html).toContain("{{ .TokenHash }}");
+      expect(html).not.toContain("{{ .ConfirmationURL }}");
+    }
   });
 
   it("no em or en dashes in any subject or body copy (user preference)", () => {

@@ -44,6 +44,9 @@ export const INDEXABLE_ROUTES = [
 /** Everything behind the gate: a crawler gets the sign-in screen, and the real
  *  content is one user's private data. `/api/` is machine-only. */
 export const PRIVATE_ROUTES = [
+  // Where email links land. Public so a signed-out visitor can redeem one, but
+  // it is a one-time landing strip with nothing to index.
+  "/auth/",
   "/drift",
   "/trails",
   "/atlas",

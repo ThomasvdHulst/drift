@@ -13,7 +13,11 @@ import { Landing } from "@/components/landing/Landing";
 // person who most needs to reach us, so it must not sit behind the gate. `/about`
 // is here for the same reason: who Drift is and why it exists should be readable
 // without an account.
-const PUBLIC_ROUTES = ["/about", "/privacy", "/install", "/contact"];
+// `/auth/confirm` MUST be here: it is where confirmation and password-reset
+// links land, and the person opening one is by definition not signed in yet.
+// Behind the gate it would render the landing page and silently swallow the
+// token, which is the bug it was built to fix.
+const PUBLIC_ROUTES = ["/about", "/privacy", "/install", "/contact", "/auth/confirm"];
 
 // Phase 13: when the cloud IS configured (i.e. the hosted app), Drift requires an
 // account — a logged-out visitor sees a calm sign-in / create-account screen

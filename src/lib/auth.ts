@@ -68,6 +68,116 @@ export function humanizeAuthError(
   return FRIENDLY_4XX[msg] ?? msg;
 }
 
+// ---------------------------------------------------------------------------
+// Email-link landing (the /auth/confirm route).
+//
+// THE BUG THIS EXISTS TO FIX. Drift signs up with the PKCE flow, which stores a
+// `code_verifier` in the localStorage of the browser that started the sign-up
+// and returns the user to `/?code=<uuid>`. Exchanging that code REQUIRES the
+// verifier, so the confirmation link only works in the exact browser profile
+// that signed up. Click it on your phone after signing up on a laptop, or in a
+// private tab, or in Gmail's in-app browser, and the exchange fails: you land
+// signed out with no explanation. (Password-reset links had the same flaw.)
+//
+// The fix is Supabase's documented one: email links carry a `token_hash`, which
+// `verifyOtp` redeems with NO client-side state, so it works in ANY browser.
+// This parser is what /auth/confirm uses to tell the link shapes apart, and it
+// is pure so every shape can be unit-tested without a browser.
+// ---------------------------------------------------------------------------
+
+/** The `type` an email link declares (Supabase's EmailOtpType). */
+export type EmailOtpType =
+  | "signup"
+  | "recovery"
+  | "invite"
+  | "magiclink"
+  | "email_change";
+
+const OTP_TYPES: readonly EmailOtpType[] = [
+  "signup",
+  "recovery",
+  "invite",
+  "magiclink",
+  "email_change",
+];
+
+export type AuthLink =
+  /** The good shape: redeemable anywhere via verifyOtp. */
+  | { kind: "token_hash"; tokenHash: string; type: EmailOtpType }
+  /** PKCE. supabase-js auto-exchanges it, but only where the verifier lives. */
+  | { kind: "code" }
+  /** Implicit flow: tokens in the fragment, picked up by detectSessionInUrl. */
+  | { kind: "tokens"; type?: EmailOtpType }
+  /** Supabase said no (expired link, already used, denied). */
+  | { kind: "error"; code?: string; message: string }
+  | { kind: "none" };
+
+function asOtpType(raw: string | null): EmailOtpType | undefined {
+  return OTP_TYPES.find((t) => t === raw);
+}
+
+/**
+ * Classify an email link's landing URL. Supabase puts its answer in the query
+ * string OR the fragment depending on the flow, and errors can arrive in either,
+ * so both are searched. Order matters: an explicit error wins over everything,
+ * then the redeemable token, then the flow-specific shapes.
+ */
+export function parseAuthLink(input: {
+  search?: string | null;
+  hash?: string | null;
+}): AuthLink {
+  const q = new URLSearchParams((input.search ?? "").replace(/^\?/, ""));
+  const h = new URLSearchParams((input.hash ?? "").replace(/^#/, ""));
+  const get = (key: string) => q.get(key) ?? h.get(key);
+
+  const errorCode = get("error_code") ?? get("error") ?? undefined;
+  if (errorCode) {
+    return {
+      kind: "error",
+      code: errorCode,
+      message: describeLinkError(errorCode, get("error_description")),
+    };
+  }
+
+  const tokenHash = get("token_hash");
+  if (tokenHash) {
+    return {
+      kind: "token_hash",
+      tokenHash,
+      // A link without a usable type is still redeemable as a signup, which is
+      // the overwhelmingly common case and what Supabase's own default assumes.
+      type: asOtpType(get("type")) ?? "signup",
+    };
+  }
+
+  if (get("access_token")) return { kind: "tokens", type: asOtpType(get("type")) };
+  if (q.get("code")) return { kind: "code" };
+  return { kind: "none" };
+}
+
+/** Calm, plain copy for the errors Supabase puts in an email-link redirect. */
+export function describeLinkError(
+  code: string | null | undefined,
+  description?: string | null,
+): string {
+  const c = (code ?? "").toLowerCase();
+  if (c.includes("expired") || c === "otp_expired") {
+    return "This link has expired. Links are only good for a short while, so please request a new one.";
+  }
+  if (c === "access_denied") {
+    return "This link is no longer valid. It may already have been used. Please request a new one.";
+  }
+  // `error_description` arrives URL-encoded with "+" for spaces.
+  const desc = (description ?? "").replace(/\+/g, " ").trim();
+  return desc || "This link could not be used. Please request a new one.";
+}
+
+/** Where a successfully-redeemed link should land. A recovery link is the one
+ *  that goes somewhere other than the feed: it exists to set a new password. */
+export function destinationFor(type: EmailOtpType | undefined): string {
+  return type === "recovery" ? "/account/reset" : "/";
+}
+
 // Supabase's own 4xx strings are accurate but clinical ("Invalid login
 // credentials"), and they are the errors a real person hits most often. Restate
 // the common ones in Drift's voice; anything unlisted still passes through
