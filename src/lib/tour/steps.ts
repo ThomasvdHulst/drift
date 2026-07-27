@@ -149,6 +149,21 @@ export const TOUR_STEPS: TourStep[] = [
     gestureHint: "tap",
   },
   {
+    // The orbit control sits right beside the two reaction buttons and reads as
+    // an eye, so it invites a tap without explaining itself. Named here so the
+    // one unlabelled icon on the card stops being a mystery. Not forced: tapping
+    // it would re-anchor the whole session to this page, which is a bigger
+    // commitment than a tour step should ask for.
+    id: "orbit",
+    route: TOUR_ROUTES.drift,
+    target: "card-orbit",
+    placement: "auto",
+    spotlight: true,
+    advance: "next",
+    title: "Circle one idea",
+    body: "The eye keeps you near a single page: drift stays in its neighbourhood and spirals slowly outward, instead of wandering off. Handy when a subject has you.",
+  },
+  {
     id: "threads",
     route: TOUR_ROUTES.drift,
     target: "card-threads",

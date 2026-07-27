@@ -90,6 +90,7 @@ function OrbitButton({ onOrbit }: { onOrbit: () => void }) {
     <button
       type="button"
       onClick={onOrbit}
+      data-tour="card-orbit"
       aria-label="Drift around this page"
       title="Drift around this"
       className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-line text-ink-soft transition hover:border-accent/40 hover:text-accent-strong"

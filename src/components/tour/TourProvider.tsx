@@ -154,6 +154,53 @@ export function TourProvider({ children }: { children: ReactNode }) {
 
   const stop = useCallback(() => finishTour(), [finishTour]);
   const next = useCallback(() => advance(), [advance]);
+
+  /**
+   * "Skip this step" — the escape hatch on a forced step. It cannot just call
+   * `advance()`, because some later steps are anchored to a route you can only
+   * REACH by doing the thing that was skipped: the trail view needs a trail you
+   * saved and opened. Those steps are marked `match: "prefix"`, and the route
+   * orchestrator below deliberately pauses instead of navigating to them, so the
+   * overlay would simply stop rendering and the tour would appear to end early
+   * (it really did: skipping "open your trail" swallowed the trail, Atlas,
+   * Interests and outro steps). So a skip walks forward to the next step we can
+   * actually show.
+   */
+  const skipStep = useCallback(() => {
+    if (!stepId) return;
+
+    // Can this step actually be shown from where we now stand?
+    const showable = (s: TourStep): boolean => {
+      // Anchored to a route only the skipped action could have reached.
+      if ((s.routeMatch ?? "exact") === "prefix" && !isOnStepRoute(s, pathname)) {
+        return false;
+      }
+      // On THIS route but pointing at something that is not on screen, because
+      // the action that would have revealed it is the one just skipped: skipping
+      // "End when you like" leaves "Your trail" and "Keep it close" describing a
+      // trail map the user never opened. Only checked for the current route;
+      // a step on another route gets its chance once we navigate there (its
+      // target may legitimately still be loading).
+      if (s.target && isOnStepRoute(s, pathname)) {
+        return !!document.querySelector(`[data-tour="${s.target}"]`);
+      }
+      return true;
+    };
+
+    let cursor = stepId;
+    for (let guard = 0; guard < totalSteps + 1; guard++) {
+      const nxt = nextStepAfter(cursor, { cloud: cloudConfigured });
+      if (!nxt) break;
+      if (showable(nxt)) {
+        setPeeking(false);
+        setStepId(nxt.id);
+        writeSession(nxt.id);
+        return;
+      }
+      cursor = nxt.id;
+    }
+    finishTour();
+  }, [stepId, cloudConfigured, pathname, finishTour]);
   const peek = useCallback(() => setPeeking(true), []);
   const resumePeek = useCallback(() => setPeeking(false), []);
 
@@ -222,6 +269,18 @@ export function TourProvider({ children }: { children: ReactNode }) {
     };
   }, [loading, user, cloudConfigured]);
 
+  // Flag the tour on <html> for the length of it. globals.css uses this to step
+  // the storage notice aside: both are bottom-anchored on a phone, and the notice
+  // was landing on top of the very controls the tour spotlights. An attribute
+  // rather than context because the notice is mounted in the ROOT layout, outside
+  // this provider (it has to appear on the signed-out landing too).
+  useEffect(() => {
+    const root = document.documentElement;
+    if (active || welcomeOpen) root.setAttribute("data-tour-active", "");
+    else root.removeAttribute("data-tour-active");
+    return () => root.removeAttribute("data-tour-active");
+  }, [active, welcomeOpen]);
+
   // ----- route orchestration -----
   // Keep the user on the active step's route: advance on a forced navigation,
   // otherwise escort back to a concrete route if they've strayed. A prefix-route
@@ -271,6 +330,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
           index={stepId ? indexOf(stepId) : 0}
           total={totalSteps}
           onNext={next}
+          onSkipStep={skipStep}
           onSkip={stop}
           onPeek={step.explore ? peek : undefined}
         />

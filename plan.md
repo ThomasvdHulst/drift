@@ -40,7 +40,7 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > **Deferred by choice:** Phase 3 (local Ollama AI), 7 (constellations), 11 (calm social feed),
 > 12 (native app), 16 (memory & reflection), M12 (Library/Today realms), M-Ad3 (ad-free tier).
 >
-> **Baseline:** 500 unit tests green, `npm run build` + `npm run lint` clean.
+> **Baseline:** 505 unit tests green, `npm run build` + `npm run lint` clean.
 >
 > **Friends + sharing are HIDDEN** (2026-07-27, owner decision) behind `NEXT_PUBLIC_SOCIAL=1`.
 > Nothing was deleted; set that env var to bring the whole layer back. See the entry near the bottom.
@@ -2371,6 +2371,52 @@ list). `AccountButton` and `TourProvider` moved down with the gate; `ThemeToggle
       never the app** (the gate is intact, which was the thing to get wrong here); the five public
       routes still render their own content. Signed in: bogus URLs render the 404, and `/`, `/drift`
       and `/trails` render the app. Light and dark checked.
+
+---
+
+## The guided tour, made usable on a phone ✅ *(2026-07-27)*
+
+**Why.** After the card relayout the reading area scrolls further, so "swipe up to drift on" needed a
+much longer scroll first, and the tour became hard to follow on a phone. The storage notice piling on
+top made it worse. Walking the whole tour at 390x844 and measuring turned up four real defects, two
+of which were outright broken behaviour rather than polish.
+
+- [x] **The storage notice sat on top of the thing being taught.** It is ~150px (18% of a phone
+      screen), bottom-anchored, and stayed up for **every step of the tour**. During "Pull a thread to
+      steer" it literally covered the thread chips the step points at (screenshotted). It now steps
+      aside for the length of the welcome + tour via `<html data-tour-active>` + one CSS rule, and is
+      **hidden, never dismissed**, so the disclosure is still made afterwards. CSS rather than state
+      because the notice is mounted in the root layout, outside the tour provider (it must also show
+      on the signed-out landing).
+- [x] **"Swipe up to drift on" was untrue when you read it.** Drifting onward is deliberately an
+      *overscroll* at the END of a card, and this step is normally reached by tapping a thread, which
+      loads a fresh card scrolled to the top. So the instruction appeared while swiping up correctly
+      did nothing. The step now scrolls the card to its end first. That needed a retry loop, not a
+      one-shot: the new card mounts *after* the step does and resets the scroll, which the first
+      attempt at this fix did not survive.
+- [x] **Skipping a step could silently end the tour.** "Skip this step" called plain `advance()`.
+      The steps after "open your trail" are anchored to a route only reachable by doing what was just
+      skipped (`match: "prefix"`), and the route orchestrator pauses rather than navigating to those,
+      so the overlay just stopped rendering: **skipping "Keep it close" swallowed the trail, Atlas,
+      Interests and outro steps.** A verified walk ended at step 13 of 17. `skipStep` now walks
+      forward to the next step it can actually show, and also steps over steps whose target is not on
+      screen, so skipping "End when you like" no longer leaves two steps describing a trail map the
+      user never opened (it goes to the Atlas instead).
+- [x] **A stuck user waited 7s** for the escape hatch to appear. Now 4s: long enough never to
+      pre-empt someone mid-gesture, short enough that being stuck doesn't read as "this is broken".
+- [x] **New step: "Circle one idea"** explains the orbit control, the one unlabelled icon on a card
+      (it reads as an eye and invites a tap without saying what it does). Placed right after the
+      reactions it sits beside, and deliberately **not** forced: tapping it re-anchors the whole
+      session to that page, which is more than a walkthrough should demand. `data-tour="card-orbit"`
+      added to the button.
+
+- [x] **Verified by driving the real tour, both paths, both breakpoints.** *Happy path* (a user who
+      actually does each step, iPhone viewport, real touch events): **11/11 steps advance, including
+      swipe-up on the first try** — the thing that was broken. *Skip path*: all 17 steps now reached
+      (was 13). *Adversarial*: 8/8 — the notice hides for the welcome modal, returns when the tour is
+      declined or quit, stays dismissed if it was already dismissed, and skipping "End when you like"
+      jumps to the Atlas and still reaches the ending. Desktop walks all 15 non-forced steps with the
+      eye correctly spotlighted. Zero page errors throughout. 505 unit tests, build + lint clean.
 
 ---
 

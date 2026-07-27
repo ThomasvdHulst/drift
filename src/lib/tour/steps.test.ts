@@ -157,3 +157,71 @@ describe("tour steps — helpers", () => {
     expect(isOnStepRoute(realmsStep, "/drift")).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The card's controls
+// ---------------------------------------------------------------------------
+
+describe("tour steps — the card's controls are all explained", () => {
+  const ids = TOUR_STEPS.map((s) => s.id);
+
+  it("names the orbit control, which is the one unlabelled icon on a card", () => {
+    const orbit = stepById("orbit");
+    expect(orbit).toBeDefined();
+    expect(orbit!.target).toBe("card-orbit");
+    expect(orbit!.spotlight).toBe(true);
+  });
+
+  // Tapping it re-anchors the whole session to that page, which is a bigger
+  // commitment than a walkthrough should demand of someone before they have
+  // understood it. So it explains, it does not insist.
+  it("does not force the user to tap the orbit control", () => {
+    expect(stepById("orbit")!.advance).toBe("next");
+  });
+
+  it("introduces it right after the reactions it sits beside", () => {
+    expect(ids.indexOf("orbit")).toBe(ids.indexOf("react") + 1);
+    expect(ids.indexOf("orbit")).toBeLessThan(ids.indexOf("threads"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// "Skip this step" must never strand the tour.
+//
+// Steps anchored to a route we can only REACH by doing the skipped thing (the
+// trail view needs a trail you saved and opened) are marked `match: "prefix"`.
+// TourProvider's skipStep walks PAST those to the next showable step, so what
+// this guards is the script side of that contract: there must always be such a
+// step, or the walk-forward runs off the end and the tour dies early. That was
+// the real bug: skipping "open your trail" swallowed the last four steps.
+// ---------------------------------------------------------------------------
+
+describe("tour steps — skipping a forced step never dead-ends", () => {
+  const prefixIds = TOUR_STEPS.filter(
+    (s) => (s.routeMatch ?? "exact") === "prefix",
+  ).map((s) => s.id);
+
+  it("the prefix-routed steps are the known, unreachable-by-skip ones", () => {
+    // Documented explicitly: adding another one is a decision, not an accident.
+    expect(prefixIds).toEqual(["trail"]);
+  });
+
+  it("every step can walk forward to a showable step or the end", () => {
+    for (const start of TOUR_STEPS) {
+      let cursor: TourStep | null = start;
+      let hops = 0;
+      // Mimic skipStep: step forward, skipping anything prefix-routed.
+      while (cursor && hops <= totalSteps + 1) {
+        const nxt: TourStep | null = nextStep(cursor.id, { cloud: true });
+        if (!nxt) break; // reached the end: finishing the tour is a fine outcome
+        if ((nxt.routeMatch ?? "exact") !== "prefix") {
+          cursor = null; // found somewhere to land
+          break;
+        }
+        cursor = nxt;
+        hops++;
+      }
+      expect(hops, `${start.id} walked too far`).toBeLessThanOrEqual(totalSteps);
+    }
+  });
+});

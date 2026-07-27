@@ -118,6 +118,21 @@ body {
   display: flex;
 }
 
+/* The storage notice steps aside while the guided tour is running. Both are
+   bottom-anchored and the notice is ~150px tall, so on a phone it landed on top
+   of whatever the tour was spotlighting: during "Pull a thread to steer" it
+   covered the thread chips the step was pointing at. TourProvider sets
+   <html data-tour-active> for the length of the tour.
+
+   CSS rather than state because the two live in different layout subtrees: the
+   notice is mounted in the root layout (it must also appear on the signed-out
+   landing, where the tour provider is not mounted at all), while the tour lives
+   inside the gate. Hidden, never dismissed, so the disclosure still gets made
+   the moment the tour ends. */
+:root[data-tour-active] [data-storage-notice] {
+  display: none;
+}
+
 /* Theme-toggle icon swap, driven purely by the data-theme attribute (no JS
    state, so no hydration mismatch). Moon in light mode, sun in dark mode. */
 .theme-icon-dark {

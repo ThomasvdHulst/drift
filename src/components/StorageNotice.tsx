@@ -47,6 +47,14 @@ export function StorageNotice() {
       initial={reduce ? { opacity: 0 } : { opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
+      // `data-storage-notice` lets globals.css hide this while the guided tour is
+      // running. Both are bottom-anchored, so on a phone the notice landed right
+      // on top of whatever the tour was spotlighting: during "Pull a thread to
+      // steer" it literally covered the thread chips the step points at. The tour
+      // is a deliberate, finite thing, so the notice waits its turn rather than
+      // competing. It is only hidden, never dismissed, so the disclosure is still
+      // made once the tour ends.
+      data-storage-notice
       className="fixed inset-x-0 bottom-safe z-40 flex justify-center px-4"
       role="region"
       aria-label="How Drift uses storage"

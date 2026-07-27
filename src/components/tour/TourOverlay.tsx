@@ -12,7 +12,11 @@ import type { TourStep } from "@/lib/tour/steps";
 
 const PAD = 8; // breathing room around the spotlighted element
 const APPEAR_TIMEOUT_MS = 3200; // give up finding a target after this
-const STALL_SKIP_MS = 7000; // reveal "Skip this step" on a forced step after this
+// Reveal "Skip this step" on a forced step after this. Kept short: a first-time
+// user who cannot make the gesture work is stuck behind a scrim until it shows,
+// and seven seconds of that reads as "the app is broken" rather than "take your
+// time". Four is long enough that it never pre-empts someone mid-gesture.
+const STALL_SKIP_MS = 4000;
 
 type Place = "top" | "bottom" | "center";
 
@@ -25,6 +29,7 @@ export function TourOverlay({
   index,
   total,
   onNext,
+  onSkipStep,
   onSkip,
   onPeek,
 }: {
@@ -32,6 +37,8 @@ export function TourOverlay({
   index: number;
   total: number;
   onNext: () => void;
+  /** Escape a forced step without ending the tour (see TourProvider.skipStep). */
+  onSkipStep: () => void;
   onSkip: () => void;
   // Present when the step offers a "Look around" peek; hides the coach + scrim.
   onPeek?: () => void;
@@ -149,6 +156,45 @@ export function TourOverlay({
     const t = setTimeout(() => setStalled(true), STALL_SKIP_MS);
     return () => clearTimeout(t);
   }, [forced]);
+
+  // Set the stage for "swipe up to drift on".
+  //
+  // Drifting onward is deliberately an OVERSCROLL: you swipe up at the END of a
+  // card, so reading never advances you by accident (lib/gesture.ts). A card
+  // opens at the top, and since the reading area grew (the threads moved into
+  // the scroll flow on phones) that end can be a long way down. So the tour was
+  // telling people to swipe up while they were mid-text, where swiping up
+  // correctly does nothing at all, and the step looked broken.
+  //
+  // Scrolling to the end first makes the instruction true the moment it is read:
+  // the very next upward swipe drifts. It also puts the threads on screen, which
+  // is where the previous step just left them.
+  // This step is usually reached by TAPPING A THREAD, which loads a whole new
+  // card. That card mounts (and its images settle) AFTER the step does, resetting
+  // the scroll to the top, so a single scroll-to-bottom on mount is quietly
+  // undone and the user is told to swipe up while sitting at the top of fresh
+  // text. So keep nudging until it actually sticks, re-querying the region each
+  // time because the card remounts per page. Stops the moment it is at the end,
+  // and gives up quickly so it can never fight a user who scrolls themselves.
+  useEffect(() => {
+    if (step.gestureHint !== "swipe-up") return;
+    const atEnd = (el: HTMLElement) =>
+      el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
+    let tries = 0;
+    const id = window.setInterval(() => {
+      const region = document.querySelector<HTMLElement>("[data-drift-scroll]");
+      if (region && region.scrollHeight > region.clientHeight) {
+        region.scrollTo({ top: region.scrollHeight, behavior: "smooth" });
+        // One extra tick after arriving absorbs late layout (an image landing).
+        if (atEnd(region) && tries > 1) {
+          window.clearInterval(id);
+          return;
+        }
+      }
+      if (++tries >= 12) window.clearInterval(id); // ~3s
+    }, 250);
+    return () => window.clearInterval(id);
+  }, [step.gestureHint, step.id]);
 
   const hasSpotlight = step.spotlight && !!rect && !notFound;
 
@@ -307,7 +353,7 @@ export function TourOverlay({
               showStepSkip ? (
                 <button
                   type="button"
-                  onClick={onNext}
+                  onClick={onSkipStep}
                   className="text-xs font-medium text-accent-strong underline-offset-2 transition hover:underline"
                 >
                   Skip this step
