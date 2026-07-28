@@ -184,7 +184,7 @@ function ProfileSection() {
           </p>
           <label className="block text-xs font-medium uppercase tracking-wide text-ink-soft">
             Handle
-            <div className="mt-1 flex items-center rounded-lg border border-line bg-paper px-3 focus-within:border-accent">
+            <div className="mt-1 flex items-center rounded-lg border border-line-strong bg-paper px-3 focus-ring-within">
               <span className="text-ink-soft">@</span>
               <input
                 value={handle}
@@ -202,7 +202,7 @@ function ProfileSection() {
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="How your name shows up"
               maxLength={50}
-              className="mt-1 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+              className="mt-1 w-full rounded-lg border border-line-strong bg-paper px-3 py-2 text-sm text-ink focus-ring"
             />
           </label>
           {error && (
@@ -285,7 +285,7 @@ function ChangePassword() {
               autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+              className="mt-1 w-full rounded-lg border border-line-strong bg-paper px-3 py-2 text-sm text-ink focus-ring"
             />
           </label>
           <label className="block text-xs font-medium uppercase tracking-wide text-ink-soft">
@@ -296,7 +296,7 @@ function ChangePassword() {
               autoComplete="new-password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+              className="mt-1 w-full rounded-lg border border-line-strong bg-paper px-3 py-2 text-sm text-ink focus-ring"
             />
           </label>
           {error && (
@@ -396,7 +396,7 @@ function DeleteAccount() {
               autoComplete="off"
               autoCapitalize="none"
               spellCheck={false}
-              className="mt-1 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-ink/40"
+              className="mt-1 w-full rounded-lg border border-line-strong bg-paper px-3 py-2 text-sm text-ink focus-ring"
             />
           </label>
           {error && (

@@ -123,7 +123,7 @@ export function ArtistSearch({
           onFocus={() => (results.length > 0 || empty) && setOpen(true)}
           placeholder="Drift an artist…"
           aria-label="Search for an artist to drift"
-          className="w-full rounded-full border border-line bg-paper-raised py-3 pl-11 pr-5 text-base text-ink shadow-sm outline-none transition placeholder:text-ink-soft focus:border-accent/50 focus:ring-1 focus:ring-accent/30"
+          className="w-full rounded-full border border-line-strong bg-paper-raised py-3 pl-11 pr-5 text-base text-ink shadow-sm transition placeholder:text-ink-soft focus-ring"
         />
       </div>
 

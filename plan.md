@@ -5,11 +5,24 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 **tested with success**. Keep the "Current status" line accurate. Full product detail is in
 `drift-spec.md`; working rules are in `CLAUDE.md`.
 
-> ## Current status — 2026-07-25
+> ## Current status — 2026-07-28
 >
 > **Drift is live** at <https://www.usedrift.org> (Vercel + Supabase) as an installable PWA,
 > in a small friends-and-colleagues beta. Two realms ship: **Encyclopedia** (Wikipedia) and
 > **Gallery** (Art Institute of Chicago, CC0).
+>
+> **Latest (2026-07-28): Phase 25 — the whole app now meets WCAG 2.2 Level AA on colour contrast.**
+> The palette was designed by eye and had never been measured; an audit found 258 failing text
+> nodes. The worst was dark mode's start tiles, where a pale tint mixed over dark paper made a
+> mid-tone that left the card's own label at **3.42:1** and its blurb at **2.22:1**. Dark tile
+> faces are now DERIVED by re-lighting the authored hue in OKLCH instead of mixing, which clears
+> the text bar (9.17 / 5.94) while actually IMPROVING how distinguishable neighbouring cards are.
+> The light accent ramp went one step deeper, fixing 37 primary buttons at the token layer; a
+> second border token `--line-strong` gives controls a real 3:1 edge while the decorative
+> hairline stays soft; and focus is now one shared 2px ring instead of ten ad-hoc border swaps.
+> Two gates keep it there: `npm run test` reads the real hexes out of globals.css, and
+> `npm run audit:contrast` measures composited pixels in a real browser. **The rules a future
+> session must not break are written up in CLAUDE.md §10.**
 >
 > **Latest (2026-07-25): Phase 24 — the Gallery is now as steerable as the Encyclopedia.** Two new ways
 > to begin, mirroring the Encyclopedia's shape. **Drift an artist:** search a name and wander their work,
@@ -40,7 +53,8 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > **Deferred by choice:** Phase 3 (local Ollama AI), 7 (constellations), 11 (calm social feed),
 > 12 (native app), 16 (memory & reflection), M12 (Library/Today realms), M-Ad3 (ad-free tier).
 >
-> **Baseline:** 520 unit tests green, `npm run build` + `npm run lint` clean.
+> **Baseline:** 641 unit tests green, `npm run build` + `npm run lint` clean, and
+> `npm run audit:contrast` PASS (1464 text nodes, 16 views x 2 themes).
 >
 > **Friends + sharing are HIDDEN** (2026-07-27, owner decision) behind `NEXT_PUBLIC_SOCIAL=1`.
 > Nothing was deleted; set that env var to bring the whole layer back. See the entry near the bottom.
@@ -2553,6 +2567,70 @@ other case, before changing anything:
       rather than the stale "6 characters". 520 unit tests, build + lint clean, zero page errors.
 
 ---
+
+## Phase 25 — WCAG 2.2 AA colour contrast (2026-07-28) ✅
+
+Drift's palette was designed by eye and had never been checked against a contrast standard.
+It is live in a public beta, so the gap mattered. Audited every token across 2 themes x 3
+realms with a relative-luminance calculator, then verified in real Chromium by rasterizing
+the actual `color-mix()` output. **Target: WCAG 2.2 Level AA** (1.4.3 text, 1.4.11 non-text,
+2.4.7 focus visible). The rules now live in **CLAUDE.md §10**.
+
+The structural news was good: zero Tailwind palette colours anywhere, every colour routed
+through seven CSS variables, and no text over images. So most of this was a token fix.
+
+**What was broken (measured):**
+
+- [x] Dark tile faces: label **3.42:1**, blurb **2.22:1** across 60 cards (28 fields, 10 news
+      sections, 10 art forms, 12 arXiv categories). The worst failure in the app.
+- [x] Primary buttons `bg-accent` + `text-paper-raised`, light: **3.36:1** across 37 sites.
+- [x] Gallery `--accent` #b97d59 at **2.99:1**, below even the 3:1 non-text floor.
+- [x] Papers `--accent-strong` at 4.47, missing 4.5 by 0.03.
+- [x] `--line` at **1.20:1** drawing the only visible edge of every text input.
+- [x] Focus drawn as a 1px border swap; **2.57:1** light / 1.66:1 dark over tile tints.
+- [x] 14 low-alpha text sites between 2.88 and 3.99.
+- [x] Papers cover label: all 9 discipline hues, **2.46 to 3.64**, text on its own hue.
+
+**What shipped:**
+
+- [x] **`src/lib/contrast.ts`** — pure WCAG + OKLCH maths. **`contrast.test.ts`** reads the real
+      hexes out of globals.css via **`palette.testkit.ts`**, so the contract binds the stylesheet
+      rather than a copy of it: retune a token and the suite goes red on its own.
+- [x] **Retuned the light accent ramp** (6 values). Fixed all 37 buttons, the gallery floor and
+      the papers link text without touching a call site. Dark was already passing, untouched.
+- [x] **`--line-strong`** (3.01:1), a SECOND border token. `--line` stays the decorative
+      hairline (1.4.11 exempts it); `--line-strong` is for control boundaries — inputs,
+      textareas, icon-only buttons. Text-labelled buttons keep `--line`, which 1.4.11 allows
+      because the label identifies the control. Deliberately the lightest passing value.
+- [x] **Dark tile faces derived, not mixed** (`src/lib/tiles.ts`). Lowering the mix percentage
+      cannot work: it trades text contrast against the neighbour-distinguishability rule and no
+      value satisfies both. Re-lighting in OKLCH at L=0.34 escapes the trade: label **9.17**,
+      blurb **5.94**, neighbour ΔE **6.48** — better separation than the light grid has (5.00).
+      Zero new hex constants; the 60 authored tints stay the single source of truth.
+- [x] **One shared focus utility**, `focus-ring` / `focus-ring-within`: 2px `--accent-strong`
+      at 2px offset, replacing ten ad-hoc border swaps.
+- [x] **Papers cover label** re-lit away from its own hue backdrop: 6.18 light, 7.80 dark.
+- [x] Three decorative monograms given `aria-hidden`, so their exemption is real rather than
+      assumed (and a screen reader stops announcing a stray letter).
+- [x] **`npm run audit:contrast`** — Playwright sweep of the running app, measuring composited
+      pixels across every route x both themes. Catches what token maths cannot.
+
+**Verified:** `npm run audit:contrast` **PASS, 1464 text nodes, 16 views x 2 themes**, zero
+failures (was 258). A keyboard walk of **182 tab stops** across 6 routes x 2 themes: every stop
+has a visible focus indicator, none under 3:1. **641 unit tests**, build + lint clean.
+
+> **Deviation from the approved plan:** the plan put the tile grid's `ring-line` on the
+> `--line-strong` list. Measurement showed `--line-strong` reaches only **2.47:1 light / 2.17
+> dark** against the tile faces, because the faces are mid-toned — so applying it would have
+> darkened the grid *without* achieving compliance. The ring was left decorative (the tile is
+> identified by its tinted fill and serif label) and the focus ring carries the load instead,
+> at 4.66 light / 6.27 dark on the same faces.
+
+> **Also corrected during the work:** the audit first read two handle inputs as having no focus
+> indicator at all. They do — their wrapper carries `focus-within`. They were weak, not absent.
+
+---
+
 
 ## Out of scope for v1 (do not build unless asked)
 

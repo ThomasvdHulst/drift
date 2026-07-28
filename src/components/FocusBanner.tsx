@@ -27,7 +27,7 @@ export function FocusBanner({
         <FocusIcon kind={focus.kind} />
         <span className="truncate">{describeFocus(focus)}</span>
         {proximity && (
-          <span className="text-accent-strong/70">· {proximity}</span>
+          <span className="text-accent-strong">· {proximity}</span>
         )}
         <button
           type="button"

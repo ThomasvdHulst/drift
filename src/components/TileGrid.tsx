@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { tileFaceDark, tileFaceLight } from "@/lib/tiles";
+
 // The homepage's grid of start cards: a typographic glyph, a serif name, and one
 // line of "what you'd find in here" on a pale tint blended over paper (§6).
 //
@@ -83,9 +85,17 @@ export function TileGrid({
           type="button"
           onClick={() => onPick(tile.id)}
           aria-pressed={selectedId !== undefined ? selected : undefined}
-          style={{
-            backgroundColor: `color-mix(in srgb, ${tile.tint} 45%, var(--paper-raised))`,
-          }}
+          // Both faces are published as custom properties and CSS picks between
+          // them off [data-theme] (see globals.css). Same no-JS mechanism as the
+          // theme-icon and brand-logo swaps, so there is no hydration flash and
+          // the server renders identical HTML for every visitor.
+          data-tile-face
+          style={
+            {
+              "--tile-face-light": tileFaceLight(tile.tint),
+              "--tile-face-dark": tileFaceDark(tile.tint),
+            } as React.CSSProperties
+          }
           className={`group flex h-full w-full flex-col rounded-2xl p-5 text-left transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
             selected
               ? "shadow-md ring-2 ring-accent"
@@ -98,7 +108,9 @@ export function TileGrid({
           <span className="mt-3 font-serif text-xl leading-tight text-ink">
             {tile.label}
           </span>
-          <span className="mt-1 text-xs leading-snug text-ink/60">
+          {/* /75, not /60: at 12px over a tinted face the dimmer value measured
+              3.6:1 light and 2.2:1 dark, both below the 4.5 AA bar. */}
+          <span className="mt-1 text-xs leading-snug text-ink/75">
             {tile.blurb}
           </span>
         </button>

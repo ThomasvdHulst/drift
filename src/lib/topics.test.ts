@@ -1,10 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { TOPICS, topicByKeyword, topicByOresKey } from "./topics";
 import {
-  PAPERS,
+  THEMES,
   deltaE,
   neighbourPairs,
   MIN_NEIGHBOUR_DELTA_E,
+  labelRatio,
+  blurbRatio,
+  MIN_TILE_TEXT_RATIO,
 } from "./tile-contrast.testkit";
 
 describe("topic registry — identity", () => {
@@ -79,12 +82,31 @@ describe("topic registry — grid order", () => {
   });
 
   it("no card looks like any neighbour in a 2, 3 or 4 column grid", () => {
-    for (const paper of Object.values(PAPERS)) {
+    for (const theme of THEMES) {
       for (const [a, b, gap] of neighbourPairs(TOPICS)) {
         expect(
-          deltaE(a.tint, b.tint, paper),
-          `${a.label} vs ${b.label} (${gap} apart, ${paper})`,
+          deltaE(a.tint, b.tint, theme),
+          `${a.label} vs ${b.label} (${gap} apart, ${theme})`,
         ).toBeGreaterThan(MIN_NEIGHBOUR_DELTA_E);
+      }
+    }
+  });
+
+
+  // 1.4.3 AA. Guarded here, beside the neighbour check, because the two pull in
+  // opposite directions: a face deep enough to read on is a face closer to its
+  // neighbours. See src/lib/tiles.ts.
+  it("every card's label and blurb are readable on its own face", () => {
+    for (const theme of THEMES) {
+      for (const t of TOPICS) {
+        expect(
+          labelRatio(t.tint, theme),
+          `${t.label} label (${theme})`,
+        ).toBeGreaterThanOrEqual(MIN_TILE_TEXT_RATIO);
+        expect(
+          blurbRatio(t.tint, theme),
+          `${t.label} blurb (${theme})`,
+        ).toBeGreaterThanOrEqual(MIN_TILE_TEXT_RATIO);
       }
     }
   });

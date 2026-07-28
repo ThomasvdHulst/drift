@@ -24,7 +24,7 @@ function ReactionButtons({
   onReact: (signal: Reaction) => void;
 }) {
   const base =
-    "flex h-8 w-8 items-center justify-center rounded-full border transition";
+    "flex h-8 w-8 items-center justify-center rounded-full border transition focus-ring";
   return (
     <div data-tour="card-reactions" className="flex shrink-0 items-center gap-1.5">
       <button
@@ -35,8 +35,8 @@ function ReactionButtons({
         title="More like this"
         className={
           reaction === "like"
-            ? `${base} border-accent/50 bg-accent/15 text-accent-strong`
-            : `${base} border-line text-ink-soft hover:border-accent/40 hover:text-accent-strong`
+            ? `${base} border-accent bg-accent/15 text-accent-strong`
+            : `${base} border-line-strong text-ink-soft hover:border-accent hover:text-accent-strong`
         }
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill={reaction === "like" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -52,8 +52,8 @@ function ReactionButtons({
         title="Less like this"
         className={
           reaction === "dislike"
-            ? `${base} border-ink/30 bg-ink/10 text-ink`
-            : `${base} border-line text-ink-soft hover:border-ink/30 hover:text-ink`
+            ? `${base} border-ink bg-ink/10 text-ink`
+            : `${base} border-line-strong text-ink-soft hover:border-ink hover:text-ink`
         }
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill={reaction === "dislike" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -74,7 +74,7 @@ function ShareButton({ onShare }: { onShare: () => void }) {
       onClick={onShare}
       aria-label="Send to a friend"
       title="Send to a friend"
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-line text-ink-soft transition hover:border-accent/40 hover:text-accent-strong"
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full focus-ring border border-line-strong text-ink-soft transition hover:border-accent/40 hover:text-accent-strong"
     >
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z" />
@@ -107,10 +107,10 @@ function OrbitButton({
       }
       aria-pressed={active}
       title={active ? "Drifting around this. Tap to stop." : "Drift around this"}
-      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition ${
+      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition focus-ring ${
         active
-          ? "border-accent/50 bg-accent/15 text-accent-strong"
-          : "border-line text-ink-soft hover:border-accent/40 hover:text-accent-strong"
+          ? "border-accent bg-accent/15 text-accent-strong"
+          : "border-line-strong text-ink-soft hover:border-accent hover:text-accent-strong"
       }`}
     >
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
@@ -208,7 +208,10 @@ function ImagePanel({ card, onZoom }: { card: Card; onZoom?: () => void }) {
   if (!card.imageUrl) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-accent/10">
-        <span className="font-serif text-7xl text-accent/40">
+        {/* Decorative monogram standing in for a missing image. The card title
+            is rendered as real text below, so this carries no information;
+            hidden from AT, which also makes it exempt from 1.4.3. */}
+        <span className="font-serif text-7xl text-accent/40" aria-hidden="true">
           {card.displayTitle.charAt(0)}
         </span>
       </div>
@@ -614,7 +617,7 @@ export function CardView({
               gesture — not a tease (no autoplay/countdown); the bottom-nav
               Advance button stays the explicit control (§2.2). It comes after
               the threads so the order reads: read it, go deeper, or drift on. */}
-          <p className="pt-1 text-center text-xs text-ink-soft/70">
+          <p className="pt-1 text-center text-xs text-ink-soft">
             ⌄ keep scrolling to drift onward
           </p>
 

@@ -44,7 +44,10 @@ function NodeThumb({ step, isEndpoint }: { step: TrailStep; isEndpoint: boolean 
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center">
-          <span className="font-serif text-2xl text-accent/50">
+          {/* Decorative monogram standing in for a missing image. The title is
+              rendered as real text beside it, so this carries no information;
+              hidden from AT, which also makes it exempt from 1.4.3. */}
+          <span className="font-serif text-2xl text-accent/50" aria-hidden="true">
             {card.displayTitle.charAt(0)}
           </span>
         </div>

@@ -12,12 +12,30 @@
   --paper-raised: #fbf7ef; /* card / raised surfaces */
   --ink: #2b2723; /* warm near-black for body text */
   --ink-soft: #6f665b; /* muted warm gray for secondary text */
-  --accent: #6f8f74; /* muted sage green */
-  --accent-strong: #4f6d55; /* darker sage for links / hover / text-on-paper */
-  --line: #e4dbcb; /* hairline borders */
+  --accent: #5a795f; /* muted sage green */
+  --accent-strong: #46654c; /* darker sage for links / hover / text-on-paper */
+  --line: #e4dbcb; /* hairline DECORATIVE borders — see the note below */
+  --line-strong: #92897b; /* boundary of a CONTROL — 3:1, see the note below */
   --shadow: 20 14 6;
   color-scheme: light;
 }
+
+/* Two border tokens, because WCAG asks two different things of a border
+   (2026-07-28 contrast audit).
+
+   `--line` is the quiet reading room's hairline: 1.20:1 on paper. That is fine
+   for a DECORATIVE rule — a card edge, a divider, a separator — which 1.4.11
+   exempts.
+
+   But the same hairline was also drawing the only visible edge of every text
+   input, where the border IS the thing that says "a control lives here", and
+   1.4.11 wants 3:1 for that. So control boundaries use `--line-strong` instead:
+   text inputs, textareas, icon-only buttons (no label to identify them), and
+   the tile grid's buttons. Buttons with a visible text LABEL keep `--line`;
+   1.4.11 allows it, because the label already identifies them.
+
+   `--line-strong` is deliberately the LIGHTEST value that clears 3:1 (3.01:1 on
+   paper), so forms gain definition without the app turning grey. */
 
 /* "Night library" dark mode — deep warm gray, not pure black (CLAUDE.md §6).
    Set on <html data-theme="dark"> by the pre-paint script in layout.tsx. */
@@ -28,7 +46,8 @@
   --ink-soft: #a79d8d; /* muted warm gray */
   --accent: #86a98c; /* sage, lifted for contrast on dark */
   --accent-strong: #a9c6ad; /* lighter sage for links / text-on-dark */
-  --line: #37322c; /* hairline borders */
+  --line: #37322c; /* hairline decorative borders */
+  --line-strong: #706a64; /* boundary of a control — 3:1 */
   color-scheme: dark;
 }
 
@@ -38,8 +57,8 @@
    Encyclopedia keeps the default sage above. Warm-paper/ink base is unchanged.
    The dark variants are lifted for contrast, matching the sage dark treatment. */
 [data-realm="gallery"] {
-  --accent: #b97d59; /* muted terracotta */
-  --accent-strong: #955c3d;
+  --accent: #9e6441; /* muted terracotta */
+  --accent-strong: #88502d;
 }
 :root[data-theme="dark"] [data-realm="gallery"] {
   --accent: #cf9d80;
@@ -49,8 +68,8 @@
    can rebind back to sage inside a gallery scope — e.g. a cross-realm doorway chip
    (Phase 15) tinted by its DESTINATION realm. */
 [data-realm="encyclopedia"] {
-  --accent: #6f8f74;
-  --accent-strong: #4f6d55;
+  --accent: #5a795f;
+  --accent-strong: #46654c;
 }
 :root[data-theme="dark"] [data-realm="encyclopedia"] {
   --accent: #86a98c;
@@ -60,8 +79,8 @@
    per-field tint lives only inside the card cover, so the app still reads as one
    system. */
 [data-realm="papers"] {
-  --accent: #6f83a6;
-  --accent-strong: #566f95;
+  --accent: #5f7294;
+  --accent-strong: #4d5f80;
 }
 :root[data-theme="dark"] [data-realm="papers"] {
   --accent: #8b9fc0;
@@ -76,6 +95,7 @@
   --color-accent: var(--accent);
   --color-accent-strong: var(--accent-strong);
   --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
 
   --font-sans: var(--font-inter);
   --font-serif: var(--font-fraunces);
@@ -90,6 +110,36 @@
 }
 @utility pb-safe {
   padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+}
+
+/* One focus indicator for the whole app (2026-07-28 contrast audit).
+
+   Before this, focus was drawn by swapping a control's 1px border from `--line`
+   to `--accent`. That is a weak signal: one hairline changing colour, easy to
+   miss, and on a tinted tile face it did not clear the 3:1 that 1.4.11 asks of
+   a focus indicator. A 2px outline with a 2px offset is unmissable, sits
+   OUTSIDE the control so it never reflows the layout, and reads against any
+   surface the app has.
+
+   Drawn in `--accent-strong` because it is the highest-contrast step of the
+   ramp in both themes: 5.69:1 on paper in light, 9.49:1 in dark, and 4.66/6.27
+   against the palest and deepest tile faces. `contrast.test.ts` holds it there.
+
+   `focus-ring-within` is the same treatment for a control whose input is
+   wrapped in a styled container (the @handle fields), so the ring lands on the
+   box the user sees rather than the bare input inside it. */
+@utility focus-ring {
+  &:focus-visible {
+    outline: 2px solid var(--accent-strong);
+    outline-offset: 2px;
+  }
+}
+
+@utility focus-ring-within {
+  &:focus-within {
+    outline: 2px solid var(--accent-strong);
+    outline-offset: 2px;
+  }
 }
 
 html,
@@ -131,6 +181,33 @@ body {
    the moment the tour ends. */
 :root[data-tour-active] [data-storage-notice] {
   display: none;
+}
+
+/* Start-tile faces (2026-07-28 contrast audit). One authored tint per tile, two
+   rendered faces: `src/lib/tiles.ts` publishes both as custom properties on the
+   button and these two rules pick between them.
+
+   CSS rather than JS state for the same reason as the icon swaps below: the
+   theme is only known pre-paint, so branching in React would either flash or
+   break hydration. Every visitor gets identical HTML; only which property is
+   read differs.
+
+   The dark face is NOT the light tint mixed over dark paper — that produced a
+   mid-tone that failed AA (label 3.42:1, blurb 2.22:1). See tiles.ts for why
+   re-lighting in OKLCH is the fix and why lowering the mix percentage is not. */
+[data-tile-face] {
+  background-color: var(--tile-face-light);
+}
+:root[data-theme="dark"] [data-tile-face] {
+  background-color: var(--tile-face-dark);
+}
+
+/* Papers cover label — same two-face mechanism, same reason (see tiles.ts). */
+[data-cover-label] {
+  color: var(--cover-label-light);
+}
+:root[data-theme="dark"] [data-cover-label] {
+  color: var(--cover-label-dark);
 }
 
 /* Theme-toggle icon swap, driven purely by the data-theme attribute (no JS

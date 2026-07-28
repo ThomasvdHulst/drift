@@ -49,7 +49,7 @@ export function AccountButton() {
           : "Sign in"
       }
       title={user ? (user.email ?? "Your account") : "Sign in"}
-      className="fixed bottom-safe right-16 z-30 flex h-9 items-center justify-center rounded-full border border-line bg-paper-raised/90 text-ink-soft shadow-sm backdrop-blur transition hover:text-accent-strong"
+      className="fixed bottom-safe right-16 z-30 flex h-9 items-center justify-center rounded-full focus-ring border border-line-strong bg-paper-raised/90 text-ink-soft shadow-sm backdrop-blur transition hover:text-accent-strong"
     >
       {user ? (
         <span className="relative flex h-9 w-9 items-center justify-center text-sm font-semibold">

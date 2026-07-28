@@ -103,7 +103,7 @@ export function Landing() {
                 or sign in
               </a>
             </div>
-            <p className="mt-4 text-xs text-ink-soft/80">
+            <p className="mt-4 text-xs text-ink-soft">
               Free · your trails stay private to your account
             </p>
           </div>
@@ -339,7 +339,7 @@ function FloatingCard({ reduce }: { reduce: boolean }) {
 function StaticChip({ kind, label }: { kind: ThreadKind; label: string }) {
   return (
     <span className="inline-flex flex-col items-start gap-0.5 rounded-2xl border border-accent/35 bg-accent/10 px-3.5 py-1.5 text-sm font-medium text-accent-strong">
-      <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-accent-strong/80">
+      <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-accent-strong">
         <KindIcon kind={kind} size={11} />
         {KIND_META[kind].word}
       </span>

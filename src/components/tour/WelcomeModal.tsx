@@ -67,7 +67,7 @@ export function WelcomeModal({
             Maybe later
           </button>
         </div>
-        <p className="mt-4 text-center text-xs leading-snug text-ink/55">
+        <p className="mt-4 text-center text-xs leading-snug text-ink/75">
           You can start the tour anytime from the home page or your account.
         </p>
       </motion.div>

@@ -232,7 +232,7 @@ export default function Home() {
             </span>
             <span className="font-medium">Keep a trail of this session</span>
           </button>
-          <p className="max-w-xs text-center text-xs leading-snug text-ink/55">
+          <p className="max-w-xs text-center text-xs leading-snug text-ink/75">
             {keepTrail
               ? "Your wander is mapped into a trail you can save and share."
               : "Just drift. Read freely, nothing saved. You can still send single cards, or keep a trail anytime."}

@@ -44,7 +44,7 @@ export function PasswordField({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           aria-describedby={hint ? hintId : undefined}
-          className="w-full rounded-lg border border-line bg-paper py-2 pl-3 pr-11 text-sm text-ink outline-none focus:border-accent"
+          className="w-full rounded-lg border border-line-strong bg-paper py-2 pl-3 pr-11 text-sm text-ink focus-ring"
         />
         <button
           type="button"
@@ -74,7 +74,7 @@ export function PasswordField({
       {hint && (
         <span
           id={hintId}
-          className="mt-1.5 block text-[11px] font-normal normal-case tracking-normal text-ink/55"
+          className="mt-1.5 block text-[11px] font-normal normal-case tracking-normal text-ink/75"
         >
           {hint}
         </span>

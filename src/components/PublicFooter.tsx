@@ -39,11 +39,11 @@ export function PublicFooter() {
             </Link>
           ))}
         </nav>
-        <p className="max-w-md text-xs leading-relaxed text-ink-soft/80">
+        <p className="max-w-md text-xs leading-relaxed text-ink-soft">
           Content from Wikipedia (CC BY-SA) and the Art Institute of Chicago
           (public domain, CC0). Drift only reshapes it. It never invents facts.
         </p>
-        <p className="text-xs text-ink-soft/70">
+        <p className="text-xs text-ink-soft">
           © {year} Drift. A calm corner of the internet, for the curious.
         </p>
       </div>

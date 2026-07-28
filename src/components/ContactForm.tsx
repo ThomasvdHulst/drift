@@ -218,7 +218,7 @@ export function ContactForm() {
               maxLength={NAME_MAX}
               autoComplete="name"
               onChange={(e) => setName(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+              className="mt-1 w-full rounded-lg border border-line-strong bg-paper px-3 py-2 text-sm text-ink focus-ring"
             />
           </label>
 
@@ -231,7 +231,7 @@ export function ContactForm() {
               maxLength={EMAIL_MAX}
               autoComplete="email"
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+              className="mt-1 w-full rounded-lg border border-line-strong bg-paper px-3 py-2 text-sm text-ink focus-ring"
             />
           </label>
         </div>
@@ -241,7 +241,7 @@ export function ContactForm() {
           <select
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+            className="mt-1 w-full rounded-lg border border-line-strong bg-paper px-3 py-2 text-sm text-ink focus-ring"
           >
             {CONTACT_TOPICS.map((t) => (
               <option key={t.id} value={t.id}>
@@ -260,10 +260,10 @@ export function ContactForm() {
             maxLength={MESSAGE_MAX}
             onChange={(e) => setMessage(e.target.value)}
             placeholder="Tell us what is on your mind."
-            className="mt-1 w-full resize-y rounded-lg border border-line bg-paper px-3 py-2 text-sm leading-relaxed text-ink outline-none focus:border-accent"
+            className="mt-1 w-full resize-y rounded-lg border border-line-strong bg-paper px-3 py-2 text-sm leading-relaxed text-ink focus-ring"
           />
         </label>
-        <p className="mt-1 text-right text-xs text-ink-soft/70">
+        <p className="mt-1 text-right text-xs text-ink-soft">
           {message.length} / {MESSAGE_MAX}
         </p>
 

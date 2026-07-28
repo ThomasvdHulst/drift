@@ -117,7 +117,7 @@ export const Atlas = forwardRef<
             aria-label={
               b.k === "+" ? "Zoom in" : b.k === "−" ? "Zoom out" : "Fit to screen"
             }
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-line bg-paper-raised text-ink-soft shadow-sm transition hover:border-accent/50 hover:text-accent-strong"
+            className="flex h-8 w-8 items-center justify-center rounded-full focus-ring border border-line-strong bg-paper-raised text-ink-soft shadow-sm transition hover:border-accent/50 hover:text-accent-strong"
           >
             {b.k}
           </button>
@@ -249,7 +249,12 @@ export const Atlas = forwardRef<
                     className="h-full w-full object-cover"
                   />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center font-serif text-2xl text-accent/50">
+                  <div
+                    // Decorative monogram for a missing image; the title is
+                    // real text alongside. Hidden from AT, so also 1.4.3-exempt.
+                    aria-hidden="true"
+                    className="flex h-full w-full items-center justify-center font-serif text-2xl text-accent/50"
+                  >
                     {selected.title.charAt(0)}
                   </div>
                 )}

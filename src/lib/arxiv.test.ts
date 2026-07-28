@@ -12,6 +12,11 @@ import {
   categoryGroupOf,
   FIELD_STYLES,
 } from "./realms/arxiv.categories";
+import {
+  THEMES,
+  coverLabelRatio,
+  MIN_TILE_TEXT_RATIO,
+} from "./tile-contrast.testkit";
 
 const FEED = `<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom">
@@ -212,5 +217,21 @@ describe("arxivBucketById (injection guard)", () => {
   it("rejects unknown / injection strings", () => {
     expect(arxivBucketById("cat:cs.LG); DROP TABLE")).toBeUndefined();
     expect(arxivBucketById("")).toBeUndefined();
+  });
+});
+
+describe("Papers cover label — contrast (1.4.3 AA)", () => {
+  // The chip is drawn in the discipline's own hue ON a backdrop made of that
+  // same hue, which measured 2.46:1 to 3.64:1 before the label was re-lit.
+  // See src/lib/tiles.ts.
+  it("every discipline's label is readable on its own cover", () => {
+    for (const theme of THEMES) {
+      for (const [group, style] of Object.entries(FIELD_STYLES)) {
+        expect(
+          coverLabelRatio(style.hue, theme),
+          `${group} (${theme})`,
+        ).toBeGreaterThanOrEqual(MIN_TILE_TEXT_RATIO);
+      }
+    }
   });
 });

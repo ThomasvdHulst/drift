@@ -175,7 +175,7 @@ export function ThreadChips({
           >
             {kind || eyebrow ? (
               <>
-                <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-accent-strong/80">
+                <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-accent-strong">
                   {kind ? (
                     <KindIcon kind={kind} size={11} />
                   ) : doorway ? (

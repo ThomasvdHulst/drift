@@ -167,7 +167,7 @@ export function ShareToFriend({
                     rows={2}
                     maxLength={280}
                     placeholder="Say why you thought of them…"
-                    className="mt-1 w-full resize-none rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                    className="mt-1 w-full resize-none rounded-lg border border-line-strong bg-paper px-3 py-2 text-sm text-ink focus-ring"
                   />
                 </label>
 

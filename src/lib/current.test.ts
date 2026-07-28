@@ -9,10 +9,13 @@ import {
   freshnessWord,
 } from "./current";
 import {
-  PAPERS,
+  THEMES,
   deltaE,
   neighbourPairs,
   MIN_NEIGHBOUR_DELTA_E,
+  labelRatio,
+  blurbRatio,
+  MIN_TILE_TEXT_RATIO,
 } from "./tile-contrast.testkit";
 
 // A trimmed but otherwise verbatim slice of Portal:Current events wikitext,
@@ -68,12 +71,30 @@ describe("current — section registry", () => {
   });
 
   it("no section card looks like any neighbour in the grid", () => {
-    for (const paper of Object.values(PAPERS)) {
+    for (const theme of THEMES) {
       for (const [a, b, gap] of neighbourPairs(CURRENT_SECTIONS)) {
         expect(
-          deltaE(a.tint, b.tint, paper),
-          `${a.label} vs ${b.label} (${gap} apart, ${paper})`,
+          deltaE(a.tint, b.tint, theme),
+          `${a.label} vs ${b.label} (${gap} apart, ${theme})`,
         ).toBeGreaterThan(MIN_NEIGHBOUR_DELTA_E);
+      }
+    }
+  });
+
+  // 1.4.3 AA. Guarded here, beside the neighbour check, because the two pull in
+  // opposite directions: a face deep enough to read on is a face closer to its
+  // neighbours. See src/lib/tiles.ts.
+  it("every section card's label and blurb are readable on its own face", () => {
+    for (const theme of THEMES) {
+      for (const s of CURRENT_SECTIONS) {
+        expect(
+          labelRatio(s.tint, theme),
+          `${s.label} label (${theme})`,
+        ).toBeGreaterThanOrEqual(MIN_TILE_TEXT_RATIO);
+        expect(
+          blurbRatio(s.tint, theme),
+          `${s.label} blurb (${theme})`,
+        ).toBeGreaterThanOrEqual(MIN_TILE_TEXT_RATIO);
       }
     }
   });

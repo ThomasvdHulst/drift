@@ -2,6 +2,8 @@
 
 import { useMemo } from "react";
 
+import { coverLabelColor } from "@/lib/tiles";
+
 // A generated, field-themed "cover" for a Papers card (Phase 17). Papers have no
 // image, so instead of a photo the card shows a calm, abstract cover keyed to the
 // paper's DISCIPLINE: a soft hue gradient + a faint field motif whose exact
@@ -205,9 +207,20 @@ export function PaperCover({
     >
       <Motif motif={motif} hue={hue} seed={seed} />
       {label && (
+        // The label keeps the discipline's hue but is re-lit away from its own
+        // backdrop, which is made of that same hue (see lib/tiles.ts). Both
+        // themes are published as custom properties and CSS picks, matching the
+        // tile faces: the theme is only known pre-paint.
         <span
+          data-cover-label
           className="relative z-[1] rounded-full px-3 py-1 text-xs font-medium uppercase tracking-widest"
-          style={{ color: `${hue}`, backgroundColor: `${hue}1a` }}
+          style={
+            {
+              backgroundColor: `${hue}1a`,
+              "--cover-label-light": coverLabelColor(hue, "light"),
+              "--cover-label-dark": coverLabelColor(hue, "dark"),
+            } as React.CSSProperties
+          }
         >
           {label}
         </span>

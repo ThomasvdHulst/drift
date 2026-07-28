@@ -124,7 +124,7 @@ export function FormEraPicker({
                       }`}
                     >
                       {era.label}
-                      <span className="ml-2 text-xs text-ink/50">
+                      <span className="ml-2 text-xs text-ink/75">
                         {era.works.toLocaleString()}
                       </span>
                     </button>

@@ -99,7 +99,7 @@ export function OrbitSearch({ onPick }: { onPick: (title: string) => void }) {
           onFocus={() => results.length > 0 && setOpen(true)}
           placeholder="Drift around a page…"
           aria-label="Search for a page to drift around"
-          className="w-full rounded-full border border-line bg-paper-raised py-3 pl-11 pr-5 text-base text-ink shadow-sm outline-none transition placeholder:text-ink-soft focus:border-accent/50 focus:ring-1 focus:ring-accent/30"
+          className="w-full rounded-full border border-line-strong bg-paper-raised py-3 pl-11 pr-5 text-base text-ink shadow-sm transition placeholder:text-ink-soft focus-ring"
         />
       </div>
 

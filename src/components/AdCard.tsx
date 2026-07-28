@@ -36,7 +36,7 @@ export function AdCard({ config }: { config: AdsConfig }) {
 
         {/* Same quiet wayfinding cue as a knowledge card: leave it by drifting on,
             never an autoplay/countdown (§2). */}
-        <p className="pt-1 text-center text-xs text-ink-soft/70">
+        <p className="pt-1 text-center text-xs text-ink-soft">
           ⌄ keep scrolling to continue
         </p>
       </div>

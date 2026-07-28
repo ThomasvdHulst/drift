@@ -148,6 +148,7 @@ npm run test            # vitest (unit tests for pure lib logic)
 npm run test:watch      # vitest in watch mode
 npm run verify:supabase # Phase 9: check the cloud backend (tables + RLS + upserts)
 npm run verify:social   # Phase 10: check the friends/sharing tables + RLS
+npm run audit:contrast  # WCAG 2.2 AA contrast sweep of the RUNNING app (see §10)
 ```
 
 (Keep this section accurate as scripts are added.)
@@ -206,3 +207,42 @@ Instagram/YouTube? Does pulling threads feel better than being fed? Do sessions 
 naturally and does the trail map feel like a reward? Did I learn things I remember two days
 later? Instrument lightly (per-session stats in IndexedDB) to support this — never build
 engagement-maximizing metrics.
+
+## 10. Colour contrast — the rules the palette must keep (2026-07-28)
+
+Drift conforms to **WCAG 2.2 Level AA**. Every colour decision has to keep it there, so
+before changing a token, a tint, or a text opacity, know these:
+
+- **1.4.3** text **4.5:1**; large text (≥24px, or ≥18.66px bold) **3:1**.
+  **1.4.11** UI component boundaries/states and meaningful graphics **3:1**.
+  **2.4.7** a visible focus indicator at every tab stop.
+  Exempt: disabled controls, `aria-hidden` decoration, logotypes.
+- **All colour lives in `src/app/globals.css`.** There are no Tailwind palette colours in
+  this codebase (no `text-gray-500`) and it must stay that way — the tokens are the single
+  point of control that makes conformance checkable.
+- **Two border tokens, and the difference matters.** `--line` is the decorative hairline
+  (1.2:1, exempt). `--line-strong` (3:1) is for the boundary of a **control** — text
+  inputs, textareas, icon-only buttons. A button with a visible text label keeps `--line`;
+  1.4.11 allows it, because the label identifies the control. Don't "fix" `--line`.
+- **Focus is one shared utility**, `focus-ring` (or `focus-ring-within` for a wrapped
+  input): a 2px `--accent-strong` outline at 2px offset. Don't hand-roll a border swap.
+- **Never dim text below the bar.** `text-ink/75` is the lowest passing ink opacity;
+  `text-ink-soft` is already at its floor and takes no `/NN`. `text-accent` is a
+  **non-text** colour (3:1) — for accent-coloured *text* use `text-accent-strong`.
+- **A pale tint mixed over dark paper produces a mid-tone that fails AA.** This is why
+  dark tile faces and the Papers cover label are DERIVED by re-lighting the authored hue
+  in OKLCH (`src/lib/tiles.ts`) rather than mixed. Lowering the mix percentage cannot fix
+  it: it trades text contrast against the neighbour-distinguishability rule and there is
+  no value where both hold. Both faces are published as custom properties and CSS picks
+  off `[data-theme]`, because the theme is only known pre-paint.
+
+**Two gates, and they check different things.** `npm run test` proves the *tokens* are
+legal — `src/lib/contrast.test.ts` reads the real hexes out of globals.css, so retuning a
+token without updating anything else goes red on its own. `npm run audit:contrast` proves
+the *rendered composite* is legal: it drives Playwright over every route in both themes and
+measures actual pixels, catching what static token maths cannot (opacity stacking,
+`color-mix`, tinted surfaces). It needs a dev server (§7) and is not part of `npm test`.
+
+⚠️ **Turbopack does not reliably rebuild `globals.css` in a copied scratch instance.** If a
+new CSS rule seems to have no effect, it is almost certainly stale cache, not your code:
+delete `.next` and restart before debugging anything else.

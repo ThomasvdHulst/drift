@@ -140,7 +140,7 @@ function FriendsPageInner() {
           Add a friend
         </h2>
         <div className="mt-3 flex gap-2">
-          <div className="flex flex-1 items-center rounded-full border border-line bg-paper px-3 focus-within:border-accent">
+          <div className="flex flex-1 items-center rounded-full border border-line-strong bg-paper px-3 focus-ring-within">
             <span className="text-ink-soft">@</span>
             <input
               value={query}
