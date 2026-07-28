@@ -2,6 +2,12 @@ import { describe, it, expect } from "vitest";
 import {
   parseOAuthProviders,
   humanizeAuthError,
+  isAlreadyRegistered,
+  passwordProblem,
+  passwordHint,
+  describeWeakPassword,
+  ALREADY_REGISTERED,
+  PASSWORD_RULES,
   parseAuthLink,
   describeLinkError,
   destinationFor,
@@ -197,5 +203,106 @@ describe("humanizeAuthError", () => {
   it("handles empty / missing errors gracefully", () => {
     expect(humanizeAuthError(null, "generic")).toMatch(/our end/i);
     expect(humanizeAuthError({}, "signup")).toMatch(/confirmation email/i);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Sign-up: the silent "already registered" case.
+//
+// Shapes captured from the live project. Supabase's email-enumeration
+// protection answers a sign-up for an existing CONFIRMED account with a fake
+// success whose only tell is an EMPTY identities array, so the app used to
+// promise a confirmation email that was never sent.
+// ---------------------------------------------------------------------------
+
+describe("isAlreadyRegistered", () => {
+  it("spots the fake success returned for an existing confirmed account", () => {
+    expect(isAlreadyRegistered({ identities: [] })).toBe(true);
+  });
+
+  // A real new sign-up AND a resend for an existing UNCONFIRMED account both
+  // come back with one identity, and for both "check your email" is true.
+  it("leaves a genuine sign-up and a genuine resend alone", () => {
+    expect(isAlreadyRegistered({ identities: [{ id: "x" }] })).toBe(false);
+  });
+
+  it("says no when there is nothing to judge", () => {
+    expect(isAlreadyRegistered(null)).toBe(false);
+    expect(isAlreadyRegistered(undefined)).toBe(false);
+    // Older/other responses may omit identities entirely: never guess from that.
+    expect(isAlreadyRegistered({})).toBe(false);
+    expect(isAlreadyRegistered({ identities: null })).toBe(false);
+  });
+
+  it("has one shared message, whichever way the backend refuses", () => {
+    expect(humanizeAuthError({ message: "User already registered" })).toBe(
+      ALREADY_REGISTERED,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Passwords
+// ---------------------------------------------------------------------------
+
+describe("passwordProblem", () => {
+  it("accepts a password that meets every rule", () => {
+    expect(passwordProblem("Drift-test-pw-9134")).toBeNull();
+    expect(passwordProblem("aB3aB3aB")).toBeNull();
+  });
+
+  it("rejects one that is too short, even with every character class", () => {
+    expect(passwordProblem("aB3aB3a")).toBe(passwordHint());
+    expect(passwordProblem("")).toBe(passwordHint());
+  });
+
+  it("rejects a missing character class", () => {
+    expect(passwordProblem("alllowercase1")).toBe(passwordHint()); // no capital
+    expect(passwordProblem("ALLUPPERCASE1")).toBe(passwordHint()); // no lower
+    expect(passwordProblem("NoDigitsHere")).toBe(passwordHint()); // no number
+  });
+
+  it("states the real minimum length", () => {
+    expect(passwordHint()).toContain(String(PASSWORD_RULES.minLength));
+  });
+
+  it("uses no em or en dashes", () => {
+    expect(passwordHint()).not.toMatch(/[—–]/);
+  });
+});
+
+describe("describeWeakPassword", () => {
+  // The verbatim refusal from the live project: it spells out both alphabets.
+  const RAW =
+    "Password should be at least 8 characters. Password should contain at least one character of each: abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ, 0123456789.";
+
+  it("replaces the alphabet dump with something readable", () => {
+    const out = describeWeakPassword(RAW);
+    expect(out).toBe(
+      "Please choose a password of at least 8 characters, with a lower case letter, a capital letter and a number.",
+    );
+    expect(out).not.toContain("abcdefghij");
+  });
+
+  it("reads the length out of the message, so it follows the server's rule", () => {
+    expect(describeWeakPassword("Password should be at least 12 characters.")).toContain(
+      "at least 12 characters",
+    );
+  });
+
+  it("names only the classes actually required", () => {
+    const out = describeWeakPassword(
+      "Password should be at least 6 characters. Password should contain at least one character of each: 0123456789.",
+    );
+    expect(out).toContain("a number");
+    expect(out).not.toContain("capital");
+  });
+
+  it("routes through humanizeAuthError, by code or by message", () => {
+    expect(humanizeAuthError({ message: RAW, status: 422 })).not.toContain("abcdefghij");
+    expect(
+      humanizeAuthError({ message: RAW, status: 422, code: "weak_password" } as never),
+    ).toContain("at least 8 characters");
   });
 });

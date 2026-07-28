@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useAuth } from "@/components/AuthProvider";
+import { PasswordField } from "@/components/PasswordField";
+import { passwordHint, passwordProblem } from "@/lib/auth";
 
 // Password-recovery landing (the reset link's redirectTo). When the link is
 // clicked, detectSessionInUrl (client.ts) establishes a short-lived recovery
@@ -21,7 +23,10 @@ export default function ResetPasswordPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (password.length < 6) return setError("Use at least 6 characters.");
+    // The same rules the sign-up form checks, so the two cannot disagree (the
+    // page used to demand 6 characters while the server required 8 and a mix).
+    const problem = passwordProblem(password);
+    if (problem) return setError(problem);
     if (password !== confirm) return setError("The two passwords don't match.");
     setBusy(true);
     const res = await updatePassword(password);
@@ -82,30 +87,21 @@ export default function ResetPasswordPage() {
           onSubmit={onSubmit}
           className="rounded-2xl border border-line bg-paper-raised p-6"
         >
-          <label className="block text-xs font-medium uppercase tracking-wide text-ink-soft">
-            New password
-            <input
-              type="password"
-              required
-              minLength={6}
-              autoComplete="new-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
-            />
-          </label>
-          <label className="mt-4 block text-xs font-medium uppercase tracking-wide text-ink-soft">
-            Confirm new password
-            <input
-              type="password"
-              required
-              minLength={6}
-              autoComplete="new-password"
+          <PasswordField
+            label="New password"
+            value={password}
+            onChange={setPassword}
+            autoComplete="new-password"
+            hint={passwordHint()}
+          />
+          <div className="mt-4">
+            <PasswordField
+              label="Confirm new password"
               value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+              onChange={setConfirm}
+              autoComplete="new-password"
             />
-          </label>
+          </div>
           {error && (
             <p className="mt-4 text-sm text-ink" role="alert">
               {error}

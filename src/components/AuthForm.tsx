@@ -2,6 +2,8 @@
 
 import { useState, type FormEvent } from "react";
 import { useAuth } from "@/components/AuthProvider";
+import { PasswordField } from "@/components/PasswordField";
+import { passwordHint, passwordProblem } from "@/lib/auth";
 import { OAuthButtons } from "@/components/OAuthButtons";
 import { parseOAuthProviders } from "@/lib/auth";
 
@@ -32,6 +34,8 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: Mode } = {}
   // sign-up that needs verification, "reset" after a reset email is sent.
   const [sent, setSent] = useState<Sent | null>(null);
   const [resendMsg, setResendMsg] = useState<string | null>(null);
+  // Sign-in was refused only for lack of verification (see AuthResult).
+  const [unconfirmed, setUnconfirmed] = useState(false);
 
   const showOAuth =
     cloudConfigured &&
@@ -40,11 +44,15 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: Mode } = {}
   function switchMode(m: Mode) {
     setMode(m);
     setError(null);
+    setUnconfirmed(false);
+    setResendMsg(null);
   }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    setUnconfirmed(false);
+    setResendMsg(null);
     setBusy(true);
     const addr = email.trim();
 
@@ -56,9 +64,18 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: Mode } = {}
       return;
     }
 
+    if (mode === "signup") {
+      const problem = passwordProblem(password);
+      if (problem) {
+        setBusy(false);
+        return setError(problem);
+      }
+    }
+
     const res =
       mode === "signup" ? await signUp(addr, password) : await signIn(addr, password);
     setBusy(false);
+    setUnconfirmed(!!res.unconfirmed);
     if (res.error) return setError(res.error);
     if (res.needsConfirm) {
       setSent({ kind: "confirm", email: addr });
@@ -66,6 +83,16 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: Mode } = {}
     }
     setPassword("");
     // On a successful sign-in, auth state flips and the gate/route reveals the app.
+  }
+
+  // Resend from the sign-in error (as opposed to the "check your email" panel,
+  // which has its own resend). Reports into the same little line it replaces.
+  async function resendFromSignIn() {
+    const addr = email.trim();
+    if (!addr) return;
+    setResendMsg("Sending…");
+    const res = await resendConfirmation(addr);
+    setResendMsg(res.error ?? "Sent. Check your inbox.");
   }
 
   async function resend() {
@@ -169,18 +196,17 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: Mode } = {}
       </label>
 
       {mode !== "reset" && (
-        <label className="mt-4 block text-xs font-medium uppercase tracking-wide text-ink-soft">
-          Password
-          <input
-            type="password"
-            required
-            minLength={6}
-            autoComplete={mode === "signup" ? "new-password" : "current-password"}
+        <div className="mt-4">
+          <PasswordField
+            label="Password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+            onChange={setPassword}
+            autoComplete={mode === "signup" ? "new-password" : "current-password"}
+            // Only while CHOOSING one: repeating the rules at sign-in would
+            // imply the existing password is wrong.
+            hint={mode === "signup" ? passwordHint() : undefined}
           />
-        </label>
+        </div>
       )}
 
       {mode === "signin" && (
@@ -194,9 +220,23 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: Mode } = {}
       )}
 
       {error && (
-        <p className="mt-4 text-sm text-ink" role="alert">
-          {error}
-        </p>
+        <div className="mt-4">
+          <p className="text-sm text-ink" role="alert">
+            {error}
+          </p>
+          {/* Sign-in refused purely because the address is unverified: the link
+              is probably expired or lost, so offer a fresh one right here rather
+              than leaving the reader to hunt for it. */}
+          {unconfirmed && (
+            <button
+              type="button"
+              onClick={resendFromSignIn}
+              className="mt-1.5 text-xs font-medium text-accent-strong underline decoration-accent/40 underline-offset-4 transition hover:decoration-accent"
+            >
+              {resendMsg ?? "Send me a new confirmation link"}
+            </button>
+          )}
+        </div>
       )}
 
       <button

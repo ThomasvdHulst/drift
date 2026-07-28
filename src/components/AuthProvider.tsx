@@ -13,6 +13,8 @@ import type { Session, User } from "@supabase/supabase-js";
 import { getSupabase, isCloudConfigured } from "@/lib/supabase/client";
 import {
   humanizeAuthError,
+  isAlreadyRegistered,
+  ALREADY_REGISTERED,
   type EmailOtpType,
   type OAuthProvider,
 } from "@/lib/auth";
@@ -28,7 +30,13 @@ import { startSync, stopSync, flushSync } from "@/lib/sync/replicator";
 // sign-out wipes this device's local data so nothing bleeds between accounts.
 // ---------------------------------------------------------------------------
 
-export type AuthResult = { error: string | null; needsConfirm?: boolean };
+export type AuthResult = {
+  error: string | null;
+  needsConfirm?: boolean;
+  /** Sign-in was refused only because the address is not verified yet. The form
+   *  offers to resend the link rather than leaving the reader at a dead end. */
+  unconfirmed?: boolean;
+};
 
 interface AuthContextValue {
   user: User | null;
@@ -155,6 +163,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.error("[auth] signUp failed", error);
           return { error: humanizeAuthError(error, "signup") };
         }
+        // Supabase's email-enumeration protection answers a sign-up for an
+        // address that ALREADY has a confirmed account with a fake success, so
+        // this looked identical to a real sign-up and told the reader to check
+        // their inbox for a link nobody had sent. Say what actually happened.
+        // (An existing UNCONFIRMED account is a genuine resend and falls through
+        // to the "check your email" state below, which is true for it.)
+        if (isAlreadyRegistered(data.user)) {
+          return { error: ALREADY_REGISTERED };
+        }
         // With "Confirm email" enabled, no session comes back until the link in
         // the confirmation email is clicked — surface the "check your email"
         // state so the user knows to verify before signing in.
@@ -272,7 +289,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { error } = await sb.auth.signInWithPassword({ email, password });
         if (error) {
           console.error("[auth] signIn failed", error);
-          return { error: humanizeAuthError(error, "generic") };
+          // A correct password on an unverified address is not a failed
+          // sign-in, it is an unfinished sign-up. Flag it so the form can offer
+          // the way forward (a fresh link) instead of just saying no.
+          const unconfirmed =
+            (error as { code?: string }).code === "email_not_confirmed";
+          return {
+            error: humanizeAuthError(error, "generic"),
+            ...(unconfirmed ? { unconfirmed: true } : {}),
+          };
         }
         return { error: null };
       } catch {

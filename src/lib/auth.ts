@@ -27,6 +27,97 @@ export const OAUTH_META: Record<OAuthProvider, { label: string }> = {
   apple: { label: "Continue with Apple" },
 };
 
+// ---------------------------------------------------------------------------
+// Passwords.
+//
+// The SERVER is the authority (Supabase → Auth → Password requirements); this
+// mirrors it so someone learns the rule while typing instead of after a failed
+// round trip. The project requires 8 characters with a lower case letter, a
+// capital and a digit — the app previously said 6 everywhere, so a password that
+// passed every check in the UI was still rejected, and the raw refusal reads:
+//   "Password should be at least 8 characters. Password should contain at least
+//    one character of each: abcdefghijk…XYZ, 0123456789."
+// If the dashboard rule is ever changed, change PASSWORD_RULES to match; a
+// mismatch only costs a redundant message, never a lockout.
+// ---------------------------------------------------------------------------
+
+export const PASSWORD_RULES = {
+  minLength: 8,
+  lower: true,
+  upper: true,
+  digit: true,
+} as const;
+
+/** One plain sentence describing what a password needs. */
+export function passwordHint(): string {
+  const parts = [
+    PASSWORD_RULES.lower ? "a lower case letter" : null,
+    PASSWORD_RULES.upper ? "a capital letter" : null,
+    PASSWORD_RULES.digit ? "a number" : null,
+  ].filter(Boolean) as string[];
+  const list =
+    parts.length > 1
+      ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`
+      : parts[0];
+  const length = `at least ${PASSWORD_RULES.minLength} characters`;
+  return parts.length ? `Use ${length}, with ${list}.` : `Use ${length}.`;
+}
+
+/** What's wrong with this password, or null if it satisfies the rules. Checked
+ *  before submitting so the answer is instant and the wording is ours. */
+export function passwordProblem(password: string): string | null {
+  if (password.length < PASSWORD_RULES.minLength) return passwordHint();
+  if (PASSWORD_RULES.lower && !/[a-z]/.test(password)) return passwordHint();
+  if (PASSWORD_RULES.upper && !/[A-Z]/.test(password)) return passwordHint();
+  if (PASSWORD_RULES.digit && !/[0-9]/.test(password)) return passwordHint();
+  return null;
+}
+
+/**
+ * Rewrite Supabase's weak-password refusal, which lists the required character
+ * sets by spelling out entire alphabets. Reads the real requirements out of the
+ * message (so it stays true even if the dashboard rule changes) and says them
+ * like a person.
+ */
+export function describeWeakPassword(message: string): string {
+  const min = message.match(/at least (\d+) characters/)?.[1];
+  const needs: string[] = [];
+  if (/abcdefghijklmnopqrstuvwxyz/.test(message)) needs.push("a lower case letter");
+  if (/ABCDEFGHIJKLMNOPQRSTUVWXYZ/.test(message)) needs.push("a capital letter");
+  if (/0123456789/.test(message)) needs.push("a number");
+  // Supabase can also require a symbol; its set is punctuation, not an alphabet.
+  if (/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]{6,}/.test(message)) {
+    needs.push("a symbol");
+  }
+  const length = `at least ${min ?? PASSWORD_RULES.minLength} characters`;
+  if (needs.length === 0) return `Please choose a password of ${length}.`;
+  const list =
+    needs.length > 1
+      ? `${needs.slice(0, -1).join(", ")} and ${needs[needs.length - 1]}`
+      : needs[0];
+  return `Please choose a password of ${length}, with ${list}.`;
+}
+
+/**
+ * Did a sign-up quietly refuse because that address already has an account?
+ *
+ * Supabase's email-enumeration protection answers a sign-up for an existing
+ * CONFIRMED account with a fake success: no error, a throwaway user object, and
+ * `identities: []`. The app took that at face value and told the reader to check
+ * their inbox for a link that was never sent. An existing UNCONFIRMED account is
+ * different and must keep the old behaviour: it gets `identities: [1]` and a real
+ * resent confirmation, so "check your email" is true there.
+ *
+ * Saying so out loud does not weaken the protection: the tell is in the response
+ * the browser already holds, so anyone probing addresses can read it regardless.
+ * All the silence bought was a confusing dead end for real people.
+ */
+export function isAlreadyRegistered(
+  user: { identities?: unknown[] | null } | null | undefined,
+): boolean {
+  return !!user && Array.isArray(user.identities) && user.identities.length === 0;
+}
+
 /** Which flow an auth error came from, so the fallback copy can be specific. */
 export type AuthErrorKind = "signup" | "reset" | "generic";
 
@@ -55,6 +146,17 @@ export function humanizeAuthError(
   const serverish =
     (typeof status === "number" && status >= 500) ||
     error?.name === "AuthRetryableFetchError";
+
+  // Supabase spells out whole alphabets when refusing a weak password; say it
+  // like a person instead. Matched on the message (and the weak_password code)
+  // rather than an exact string, because the text varies with the project's
+  // configured rules.
+  if (
+    (error as { code?: string } | null | undefined)?.code === "weak_password" ||
+    /^Password should/i.test(msg)
+  ) {
+    return describeWeakPassword(msg);
+  }
 
   if (serverish || opaque) {
     if (kind === "signup") {
@@ -182,15 +284,18 @@ export function destinationFor(type: EmailOtpType | undefined): string {
 // credentials"), and they are the errors a real person hits most often. Restate
 // the common ones in Drift's voice; anything unlisted still passes through
 // verbatim, so a new upstream message is never swallowed.
+/** Shown both for Supabase's own "User already registered" error AND for the
+ *  silent already-registered case `isAlreadyRegistered` detects, so the reader
+ *  gets one consistent answer however the backend phrases it. */
+export const ALREADY_REGISTERED =
+  "There is already an account with that email. Try signing in instead.";
+
 const FRIENDLY_4XX: Record<string, string> = {
   "Invalid login credentials":
     "That email and password do not match. Try again, or reset your password below.",
-  "User already registered":
-    "There is already an account with that email. Try signing in instead.",
+  "User already registered": ALREADY_REGISTERED,
   "Email not confirmed":
     "Please confirm your email first. Check your inbox for the link we sent.",
-  "Password should be at least 6 characters":
-    "Please choose a password of at least 6 characters.",
   "New password should be different from the old password":
     "That is already your current password. Please choose a different one.",
 };

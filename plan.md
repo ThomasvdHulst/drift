@@ -40,7 +40,7 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > **Deferred by choice:** Phase 3 (local Ollama AI), 7 (constellations), 11 (calm social feed),
 > 12 (native app), 16 (memory & reflection), M12 (Library/Today realms), M-Ad3 (ad-free tier).
 >
-> **Baseline:** 507 unit tests green, `npm run build` + `npm run lint` clean.
+> **Baseline:** 520 unit tests green, `npm run build` + `npm run lint` clean.
 >
 > **Friends + sharing are HIDDEN** (2026-07-27, owner decision) behind `NEXT_PUBLIC_SOCIAL=1`.
 > Nothing was deleted; set that env var to bring the whole layer back. See the entry near the bottom.
@@ -2498,6 +2498,59 @@ the eye and a run that did not failed at *different* points, which is what made 
       step; swipe-up advances in every run; the focus is released before the cross step; and the
       sideways swipe crosses realms, including with a **deliberately cancelled** drag. 507 unit
       tests, build + lint clean, zero page errors.
+
+---
+
+## Auth messages audit + a password reveal ✅ *(2026-07-28)*
+
+**The report.** Creating an account with an address that already has one said "we sent you a
+confirmation link". It had sent nothing; it should say the address is taken.
+
+**Root cause.** Supabase's **email-enumeration protection** answers a sign-up for an existing
+CONFIRMED account with a *fake success*: no error, a throwaway user object, and the only tell being
+an **empty `identities` array**. The app took that at face value. Captured live, along with every
+other case, before changing anything:
+
+| what the reader did | Supabase's answer |
+|---|---|
+| sign up, new address | no error, `identities:[1]` |
+| **sign up, existing CONFIRMED** | **no error, `identities:[0]`** (the fake) |
+| sign up, existing UNCONFIRMED | no error, `identities:[1]`, link genuinely resent |
+| sign in, unconfirmed | `email_not_confirmed` |
+| sign in, wrong password / no such account | `invalid_credentials` (identical, by design) |
+| reset for a non-existent address | no error (by design) |
+| weak password | `weak_password`, message spelling out entire alphabets |
+
+- [x] **`isAlreadyRegistered`** (pure, tested) reads the empty-identities tell, and sign-up now says
+      the address is taken. An existing *unconfirmed* account is a genuine resend and still gets
+      "check your email", which is true for it. Saying so costs no privacy: the tell is already in
+      the response the browser holds, so probing addresses was never actually prevented.
+- [x] **The audit found two more real problems, neither reported:**
+      - **The app demanded 6 characters; the server demands 8 plus a lower case letter, a capital
+        and a digit.** So a password the UI accepted was rejected, and the refusal shown was
+        Supabase's raw one, which prints `abcdefghijklmnopqrstuvwxyzABC…` at the reader.
+        `PASSWORD_RULES` / `passwordProblem` / `passwordHint` now hold the rule in one place (used by
+        sign-up AND the reset page, which disagreed with each other), and `describeWeakPassword`
+        rewrites the server's refusal, reading the real requirements out of it so it stays true if
+        the dashboard rule changes.
+      - **Signing in with an unverified address was a dead end.** It said "confirm your email first"
+        with no way to act; the link is usually expired or lost. It now offers **"Send me a new
+        confirmation link"** right there (`signIn` flags `unconfirmed` from the error code).
+- [x] **Verified correct already, left alone:** wrong password and no-such-account return the same
+      message, which is deliberate and must not be "fixed" into leaking which addresses exist; a
+      reset for an unknown address still reports success for the same reason.
+- [x] **`PasswordField`** — a shared input with a show/hide eye, used by sign in, sign up and both
+      fields on the reset page, so they cannot drift apart. Typing a password blind on a phone is
+      where a lot of "wrong password" attempts actually come from. The eye is `tabIndex={-1}` so it
+      never sits between the field and the submit button, and announces its state.
+
+- [x] **Verified against the real backend, driving the real form** (iPhone viewport): 9/9 — existing
+      confirmed account says "already an account" and does NOT promise an email; existing unconfirmed
+      still gets the check-your-email step; unconfirmed sign-in offers a fresh link and that link
+      really sends; wrong password says the pair does not match; a weak password shows a readable
+      rule with no alphabet dump; the eye reveals and re-hides. Then the reset page via a real
+      recovery link: two fields, two eyes, the rule shown, and a weak password refused in our words
+      rather than the stale "6 characters". 520 unit tests, build + lint clean, zero page errors.
 
 ---
 
