@@ -32,6 +32,11 @@ const THEMES = themeArg ? [themeArg] : ["light", "dark"];
 // Papers is behind NEXT_PUBLIC_REALM_PAPERS, so its realm tab and generated
 // covers only render when the dev server was started with that flag set. The
 // run prints a warning if it looks absent rather than quietly passing.
+// `expand` taps "Read more" first and waits for the body to arrive. Without it a
+// whole class of text is never audited, because it only exists once expanded:
+// Phase 26's tables (caption band, header row, zebra rows, the "showing 10 of 84
+// rows" footer) and the infobox rows in the Details disclosure. The Mohs scale is
+// pinned as the expanded page because it reliably carries a real data table.
 const ROUTES = [
   { path: "/", keepModal: true },
   { path: "/" },
@@ -40,6 +45,7 @@ const ROUTES = [
   { path: "/install" },
   { path: "/contact" },
   { path: "/drift" },
+  { path: "/drift?title=Mohs%20scale&seed=Mohs%20scale", expand: true },
   { path: "/drift?realm=gallery" },
   { path: "/drift?realm=papers" },
   { path: "/trails" },
@@ -161,8 +167,12 @@ const failures = [];
 
 let sawPapers = false;
 
-for (const { path: route, keepModal } of ROUTES) {
-  const label = keepModal ? `${route} [welcome modal]` : route;
+for (const { path: route, keepModal, expand } of ROUTES) {
+  const label = keepModal
+    ? `${route} [welcome modal]`
+    : expand
+      ? `${route} [expanded]`
+      : route;
   for (const theme of THEMES) {
     let res;
     try {
@@ -184,6 +194,23 @@ for (const { path: route, keepModal } of ROUTES) {
     }
     if (route.includes("realm=papers")) {
       sawPapers ||= (await page.getByText(/papers/i).count()) > 0;
+    }
+    // Reveal the expanded body, so its tables and the infobox Details rows are
+    // measured too. Best-effort: a page that fails to expand still audits what is
+    // on screen rather than aborting the run.
+    if (expand) {
+      const readMore = page.getByRole("button", { name: /^Read more$/ });
+      if (await readMore.count()) {
+        await readMore.first().click().catch(() => {});
+        await page
+          .locator("figure table")
+          .first()
+          .waitFor({ timeout: 20000 })
+          .catch(() => {});
+        const details = page.getByRole("button", { name: /^Details$/ });
+        if (await details.count()) await details.first().click().catch(() => {});
+        await page.waitForTimeout(500);
+      }
     }
 
     await page.evaluate((t) => {

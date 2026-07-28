@@ -11,7 +11,13 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > in a small friends-and-colleagues beta. Two realms ship: **Encyclopedia** (Wikipedia) and
 > **Gallery** (Art Institute of Chicago, CC0).
 >
-> **Latest (2026-07-28): "drift within a field" was broken on Architecture and Visual Arts.** A
+> **Latest (2026-07-28): Phase 26 — cards can carry TABLES.** "Read more" now builds the body from
+> the article's real HTML, so a paragraph saying "as the table below shows" is followed by that
+> table, and the page's infobox fills the card's Details disclosure. Compliance was verified against
+> Wikipedia's own rules first (see M-W0): the one real gap, a licence notice that named CC BY-SA
+> without linking it, is fixed and the notice now sits on the card itself.
+>
+> **Also (2026-07-28): "drift within a field" was broken on Architecture and Visual Arts.** A
 > topic's incoming-links ranking holds long contiguous runs of "… listings in …" hub pages, which our
 > junk filter drops, so a whole window could come back empty: the seed reported "couldn't load", and
 > an empty refill quietly served off-field cards. The search now excludes those titles upstream, the
@@ -2766,6 +2772,190 @@ home, then a field) on a phone viewport: Architecture, Visual Arts and Mathemati
 and **every** drift is labelled with the field it promised. Liking a card inside a field drift keeps
 the field; liking one in an unfocused drift still follows the like. **648 unit tests**, build + lint
 clean, zero page errors.
+
+---
+
+## Phase 26 — Tables (and infobox facts) in Encyclopedia cards *(started 2026-07-28)*
+
+**Why.** A card's body is plain text (`prop=extracts&explaintext` throws away everything that is not
+prose), so a paragraph reading "as the table below shows" arrives with no table anywhere. Same for
+the infobox, where a lot of a page's actual answers live. Goal: on **Read more**, the body carries
+the article's real data tables, in the place the prose refers to them, plus the infobox as
+label/value rows in the card's existing "Details" disclosure.
+
+### M-W0 — Wikipedia compliance, verified against primary sources ✅ *(DONE & verified 2026-07-28)*
+
+Checked BEFORE writing any feature code, at the owner's request. Findings, from the WMF **Terms of
+Use §7**, **WP:Copyrights**, **API:Etiquette** and the **User-Agent policy**:
+
+- **Licence.** Text is CC BY-SA 4.0 + GFDL. A table, an infobox and a paragraph are all the same
+  article text under the same licence, so tables need no separate permission.
+- **Attribution.** "A hyperlink (where possible) or URL to the article" is an explicitly permitted
+  method, because the article's history lists its authors. Every card already links to its article,
+  and that link covers anything taken from that page. Already satisfied.
+- **Licence notice.** ⚠️ The gap. The ToU require "a licensing notice stating which license the work
+  is released under, **along with either a hyperlink or URL to the text of the license**". Drift
+  named "CC BY-SA" on /about, /privacy and the public footer but **never linked the licence**, and
+  none of those places was the screen where the content is actually read. This was true of today's
+  plain extracts, independent of tables.
+- **Modifications** must be indicated "in a reasonable fashion": excerpting is already visible
+  (Read more, the fade), and the table footer will say what it left out.
+- **ShareAlike** binds adaptations. Drift reproduces verbatim excerpts, so none is created. *If
+  `AI_REWRITE` is ever switched on, the rewritten text IS an adaptation and must be CC BY-SA.*
+- **Non-free media** is "not under the CC BY-SA or GFDL license as such". Confirmed empirically that
+  `prop=pageimages` excludes it: "Pulp Fiction", whose lead image is a non-free poster, returns **no
+  page image at all**.
+- **API etiquette**: serial not parallel (our 300ms gate serializes every Wikimedia call),
+  descriptive UA with site + contact, cached responses, GET, no bulk downloading. `action=parse` is
+  a documented read endpoint; 1 to 4 calls per explicit Read-more tap, edge-cached for a day, is
+  ordinary interactive use. `maxlag` is for non-interactive bots and does not apply.
+
+Fixes shipped:
+
+- [x] `src/lib/licenses.ts` — one place naming each source's licence **and its URL**, with the two
+      separate obligations (attribution vs notice) written down so a future session cannot conflate
+      them. Papers deliberately has no entry: arXiv abstracts are not ours to label.
+- [x] The notice now appears **on the card**, beside the source link: a quiet "CC BY-SA 4.0 ↗"
+      (Gallery cards get "CC0 1.0 ↗"), `rel="license"`.
+- [x] The footer, /about and /privacy now **link** the licence text instead of only naming it
+      (shared `LicenseLink`), and both pages say plainly that each card links back to the page whose
+      history credits its authors.
+- [x] `pilicense: "free"` pinned explicitly on all three `pageimages` call sites, so "no fair-use
+      file ever reaches a card" is a stated guarantee rather than an inherited default.
+- [x] Compliance guards in `src/lib/licenses.test.ts` (the notice must link creativecommons.org;
+      `CARD_PROPS.pilicense === "free"`), each carrying the reason it exists.
+
+**Verified:** licence links present with the right hrefs on the card (Encyclopedia and Gallery),
+/about and /privacy; `/api/realm/encyclopedia/summary?id=Pulp Fiction` returns no image;
+**654 unit tests**, build + lint clean, `npm run audit:contrast` **PASS (1482 nodes)**.
+
+### M-W1 — the pure parser ✅ *(DONE & verified 2026-07-28)*
+
+`src/lib/wikihtml.ts` + `wikihtml.test.ts` + `wikihtml.fixtures.ts`. Article HTML in, ordered
+`Block[]` (paragraph | table) + infobox `Fact[]` out. No network, no DOM, **no new dependency**, and
+no Wikipedia HTML is ever injected into the page: the card will render *data*, so there is nothing
+for a sanitizer to do. Same register as `lib/realms/arxiv.ts` (regex Atom parsing) and
+`lib/mathtext.ts`.
+
+- [x] `elementEnd` (depth-aware element slicing), `decodeEntities`, `htmlToText`, `cleanArticleHtml`,
+      `replaceMath`, `htmlTable`, `infoboxFacts`, `htmlBlocks`, `takeBlocks`, `blocksToText`.
+- [x] **Math costs no new logic.** MediaWiki ships the TeX twice in machine-readable form
+      (`<annotation encoding="application/x-tex">` and the fallback image's `alt`), both spelled
+      `{\displaystyle …}` — exactly what `preprocessMath` already converts to the markers
+      `<MathText>` renders. Better than the plaintext path, which has to clean up flattened MathML.
+- [x] Tables: header row detection, clamped colspan/rowspan, caps (10 data rows × 6 columns, 140
+      chars per cell) with the true totals kept so the card can say what it left out, the section
+      heading as a fallback caption, and refusal of navboxes / maintenance banners / infoboxes /
+      nested-table layouts / unclassed tables with no header cell.
+- [x] Infobox → the `facts` shape the card already renders, handling both modern infoboxes
+      (`th.infobox-label` + `td.infobox-data`) and **taxoboxes** (labels are plain cells ending in a
+      colon), de-duplicated by label, `<br>` read as a comma because a value is a list.
+- [x] **Images are dropped from every cell.** A licensing decision, not a layout one (a file in an
+      article may be non-free), written down at the top of the module so it is not "improved" later.
+- [x] 41 unit tests over **verbatim** captured markup in `wikihtml.fixtures.ts`, including the two
+      traps that hand-written fixtures would have missed: TemplateStyles CSS living **inside a table
+      cell**, and `<sup class="reference">` footnotes.
+
+**Four real bugs the tests + a live run caught (none guessable from reading):**
+
+1. `dropElements` skipped *past* an element it decided to keep, so every hatnote and short
+   description nested inside the lead's one big `<div class="mw-parser-output">` survived. It now
+   steps into a kept element.
+2. `htmlTable` trusted its caller to have cleaned the markup, so a header read
+   "Absolute hardness[13]" and an image-only column looked full. It cleans its own input.
+3. **Running the parser over ten LIVE articles** (not fixtures) found MediaWiki's own error text in
+   the body: parsing a section alone leaves a footnote group without its list, so the HTML ends with
+   `<span class="error mw-ext-cite-error">Cite error: There are <ref group=lower-alpha> tags…</span>`.
+4. The same run found an infobox coordinate reading "40.7057°N 73.9964°W / 40.7057; -73.9964": a
+   coordinate ships three spellings of itself, two hidden. Hidden markup is now dropped outright
+   (`display:none`), which is the general rule that fixes it. It also refuses a very wide spanned
+   table, after the periodic table's own grid came back 19 columns wide.
+
+**Verified (M-W1):** 41 parser tests; a temporary live pass over Mohs scale, Beaufort scale, Periodic table,
+Brooklyn Bridge, Octopus, Euler's identity, Cognitive development, Doric order, Coffee and Black hole
+asserting **no markup leaks of any kind** (no CSS, no `[13]`, no `{\displaystyle}`, no entities, no
+`<`) and sane tables — Mohs came back with its hardness table intact, Octopus with its taxobox
+(Kingdom/Phylum/Class), Brooklyn Bridge with 10 infobox rows, Euler's identity with rendered math.
+**695 unit tests**, build + lint clean. (The live pass was deliberately not kept in the suite: it
+needs the network. The fixtures are the standing gate.)
+
+### M-W2 — the server: an HTML-backed "Read more" ✅ *(DONE & verified 2026-07-28)*
+
+- [x] `wikiParse` in `lib/wiki-server.ts`: `action=parse`, through the SAME 300ms gate as every other
+      Wikimedia call (API:Etiquette asks for serial requests), with the parser report, edit links and
+      TOC turned off. Its own function rather than a `wikiQuery({action:"parse"})` spread override.
+- [x] `wikiExtended` now walks the article **section by section**, stopping the moment the reading
+      budget is full and never exceeding 4 requests. The lead usually carries 3 to 6 paragraphs, so
+      most pages cost 2 calls of 12 to 40KB, against 174 to 824KB for the whole page.
+- [x] `ExtendedBody` (`lib/types.ts`) adds optional `blocks` + `facts`. Gallery and Papers return
+      exactly what they returned before; nothing is stored on a `Card`, so saved trails and the cloud
+      sync payload do not grow by a byte.
+- [x] **Falls back to the old plaintext path** on any throw, on `nosuchsection` at the first request,
+      or when the parse yields fewer than 2 paragraphs. A reader can never end up worse off (§4).
+
+**Verified:** the route driven over 12 articles — table-rich (Mohs, Beaufort, Periodic table),
+infobox-only (Brooklyn Bridge, Octopus, Coffee, Cthulhu), math (Euler's identity), plain (Cognitive
+development, Doric order, Black hole) and a short one (Aisle). Every one returned blocks (no
+fallbacks), 3 to 10KB, **no markup leaked into any paragraph or cell**, and the infobox rows read
+cleanly (Kingdom=Animalia; Origin=Yemen; Created by=H. P. Lovecraft). Latency 1.0 to 3.2s on a cold
+dev server with no cache; production is compiled, closer to Wikimedia, and edge-cached for a day.
+
+### M-W3 — the card: tables in the reading flow ✅ *(DONE & verified 2026-07-28)*
+
+- [x] `src/components/CardTable.tsx` — rendered from DATA, never from Wikipedia's HTML, so there is
+      nothing to sanitize. Caption band, header row, zebra rows, all in `globals.css` tokens (§10).
+- [x] **A wide table scrolls inside its own box**, never the page, with a soft right-edge fade while
+      there is more to the right (the card's existing fade language, turned sideways). Cells carry a
+      width floor and ceiling: without them a 6-column table in a 310px box squeezed each column to
+      ~50px and turned a prose cell into a ten-line tower.
+- [x] **Gestures:** a sideways drag over a *scrollable* table belongs to the table (its touches stop
+      there, so it cannot read as a cross-realm swipe); over a table that fits, gestures pass through
+      untouched. Wheel events are never intercepted, so reading and overscroll-to-advance are exactly
+      as before.
+- [x] **Keyboard + a11y:** a scrollable table is a tab stop with the app's shared focus ring, a
+      `role="group"` and a label naming it; a table that fits adds no tab stop at all.
+- [x] The soft bottom fade is suppressed when the body ends on a table (a gradient washing over a
+      table's last row reads as a rendering fault).
+- [x] The infobox lands in the card's existing **Details** disclosure, so a Wikipedia card gains
+      Kingdom/Phylum/Class (or Carries/Crosses/Opened) once expanded.
+- [x] **Honesty in the footer**, only when something really was left out: "Showing 10 of 13 rows",
+      and — because a table can introduce itself with "…with images of the reference minerals in the
+      rightmost column" — **"Images are not shown here."** when the table had images we removed on
+      licensing grounds. `totalCols` deliberately counts only columns a reader could have read, so
+      the card never "admits" to hiding a column that our own no-images rule emptied.
+
+### M-W4 — the standing gate sees it ✅ *(DONE & verified 2026-07-28)*
+
+- [x] `scripts/audit-contrast.mjs` now expands a card (Mohs scale) and opens Details before
+      measuring, so table and infobox text is audited on every future run: **77 nodes on that view,
+      against 23 collapsed.**
+
+### M-W5 — bug fix: a wide table was widening the whole article ✅ *(2026-07-28)*
+
+**The report.** On a card whose table is wide, tapping Read more made the *prose* too wide and cut it
+off, and the page could not be scrolled sideways to reach it. "Only the table should be wider than
+the page, not the article."
+
+**Cause.** A flex item defaults to `min-width: auto`, meaning "never narrower than my content", so
+the single widest child sized the entire reading column. Measured: expanding grew the reading region
+from **554px to 976px** and pushed paragraph edges to x=1630 on a 1280px screen, where the card's
+`overflow-hidden` clipped them. The table was behaving; the article around it was not.
+
+- [x] `min-w-0` on the reading column, on the `[data-drift-scroll]` region and on the body container
+      (each is a flex item that must take its width FROM the card, not from its content), plus
+      `w-full min-w-0` on the table's own figure.
+- [x] **Verified by measurement, before and after.** After: the reading column stays 554px on desktop
+      and 310px on a phone whether or not a table is present, prose is never clipped, the page never
+      scrolls sideways, and the Beaufort table alone is **1246px inside a 310px box**, scrolling on
+      its own. Which is exactly the ask: the table is the only thing that exceeds the page.
+
+**Verified (M-W2/3/4), in a real browser:** on a phone (390px) and desktop, light and dark — the
+table lands directly under the sentence that promises it; a wide table scrolls inside its box while
+the page never scrolls sideways; a real touch drag inside a scrollable table does **not** cross
+realms while the same drag over prose still does; `r`/"Read more"/"Show less" all behave and
+re-expanding does not refetch; the Octopus Details rows carry the taxobox; a table-less card and the
+whole Gallery realm are untouched. **698 unit tests**, build + lint clean, `npm run audit:contrast`
+**PASS, 1610 nodes across 17 views x 2 themes**, zero console errors.
 
 ---
 

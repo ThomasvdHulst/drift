@@ -3,7 +3,7 @@
 // = articletopic); `related`/`summary`/`extended` come from the realm's content
 // source. Adding a realm = adding one entry here (+ its adapter module).
 
-import type { Card, RelatedCandidate } from "@/lib/types";
+import type { Card, ExtendedBody, RelatedCandidate } from "@/lib/types";
 import type { RealmId } from "../types";
 import { topicByKeyword } from "@/lib/topics";
 import { articBucketById } from "../artic.buckets";
@@ -39,7 +39,10 @@ export interface ServerRealm {
   }): Promise<Card[]>;
   related(id: string): Promise<RelatedCandidate[]>;
   summary(id: string, opts: { full?: boolean }): Promise<Card | null>;
-  extended(id: string): Promise<{ extract: string; hasMore: boolean } | null>;
+  /** The "Read more" body. `extract` + `hasMore` are the contract every realm
+   *  meets; the Encyclopedia additionally returns `blocks` (paragraphs and the
+   *  tables between them) and the page's infobox `facts` — see lib/types.ts. */
+  extended(id: string): Promise<ExtendedBody | null>;
 }
 
 const encyclopedia: ServerRealm = {

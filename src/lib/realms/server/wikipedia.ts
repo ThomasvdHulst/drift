@@ -2,7 +2,16 @@
 // related / summary / extended implementations, behind plain functions so the
 // generic /api/realm/[realm]/* routes stay source-agnostic.
 
-import { wikiQuery, CARD_PROPS } from "@/lib/wiki-server";
+import { wikiQuery, wikiParse, CARD_PROPS } from "@/lib/wiki-server";
+import {
+  htmlBlocks,
+  htmlToText,
+  infoboxFacts,
+  takeBlocks,
+  blocksToText,
+  type Block,
+  type Fact,
+} from "@/lib/wikihtml";
 import {
   relatedToCandidates,
   firstPage,
@@ -13,7 +22,7 @@ import {
 } from "@/lib/wiki";
 import { topParagraphs } from "@/lib/extract";
 import { preprocessMath } from "@/lib/mathtext";
-import type { Card, RelatedCandidate } from "@/lib/types";
+import type { Card, ExtendedBody, RelatedCandidate } from "@/lib/types";
 
 /** morelike related candidates for a title (client selects the diverse 3). */
 export async function wikiRelated(title: string): Promise<RelatedCandidate[]> {
@@ -27,6 +36,7 @@ export async function wikiRelated(title: string): Promise<RelatedCandidate[]> {
     explaintext: "1",
     exsentences: "2",
     piprop: "thumbnail",
+    pilicense: "free", // never a fair-use file; see CARD_PROPS in lib/wiki-server.ts
     pithumbsize: "800",
     ppprop: "disambiguation",
     format: "json",
@@ -49,10 +59,84 @@ export async function wikiSummary(
   return actionPageToCard(page);
 }
 
-/** The first several BODY paragraphs for "Read more". null if page missing. */
-export async function wikiExtended(
-  title: string,
-): Promise<{ extract: string; hasMore: boolean } | null> {
+/**
+ * The body a card reveals on "Read more": paragraphs AND the tables between them,
+ * plus the page's infobox as label/value facts (Phase 26).
+ *
+ * Built from the article's real HTML, section by section, because `prop=extracts`
+ * keeps prose and drops everything else — which is how a paragraph reading "as the
+ * table below shows" ended up on a card with no table anywhere.
+ *
+ * The walk is deliberately incremental: the LEAD alone usually carries 3 to 6
+ * paragraphs, so filling the same 8-paragraph budget the plaintext path uses takes
+ * one or two more sections, at 12 to 40KB each, rather than the 174 to 824KB the
+ * whole page would cost. It stops the moment the budget is full, and never makes
+ * more than `MAX_SECTIONS` requests. The route caches the answer for a day, so a
+ * second reader of the same page costs nothing at all.
+ *
+ * Any failure falls back to the plaintext path (§4): a reader can never end up
+ * with less than they had before this existed.
+ */
+const MAX_SECTIONS = 4; // the lead + up to 3 body sections
+const MIN_BLOCK_PARAGRAPHS = 2; // fewer than this and we do not trust the parse
+
+export async function wikiExtended(title: string): Promise<ExtendedBody | null> {
+  try {
+    const rich = await wikiExtendedBlocks(title);
+    if (rich) return rich;
+  } catch {
+    /* fall through to the plaintext body */
+  }
+  return wikiExtendedText(title);
+}
+
+/** The HTML path: ordered blocks + infobox facts, or null to fall back. */
+async function wikiExtendedBlocks(title: string): Promise<ExtendedBody | null> {
+  const blocks: Block[] = [];
+  let facts: Fact[] = [];
+
+  for (let section = 0; section < MAX_SECTIONS; section++) {
+    const parsed = await wikiParse({ page: title, section: String(section) });
+    const data = parsed as {
+      parse?: { text?: string; title?: string };
+      error?: { code?: string };
+    };
+    // `nosuchsection` just means the article ended; anything else on the FIRST
+    // request means we have nothing, so let the caller fall back.
+    if (data.error || !data.parse?.text) {
+      if (section === 0) return null;
+      break;
+    }
+    const html = data.parse.text;
+    if (section === 0) facts = infoboxFacts(html);
+    // A section's own heading is not rendered (the plaintext path drops headings
+    // too: readers wanted continuous prose), but it names a table that has no
+    // caption of its own.
+    blocks.push(...htmlBlocks(html, { caption: sectionHeading(html) }));
+    const soFar = takeBlocks(blocks);
+    if (soFar.hasMore) break; // budget already full: stop asking for more
+  }
+
+  const taken = takeBlocks(blocks);
+  const paragraphs = taken.blocks.filter((b) => b.kind === "p").length;
+  if (paragraphs < MIN_BLOCK_PARAGRAPHS) return null; // thin parse: fall back
+  return {
+    extract: blocksToText(taken.blocks),
+    hasMore: taken.hasMore,
+    blocks: taken.blocks,
+    ...(facts.length > 0 ? { facts } : {}),
+  };
+}
+
+/** The section's `<h2>`/`<h3>` text, used as a table's fallback caption. */
+function sectionHeading(html: string): string | undefined {
+  const m = /<h[23]\b[^>]*>([\s\S]*?)<\/h[23]>/i.exec(html);
+  const text = m ? htmlToText(m[1]) : "";
+  return text || undefined;
+}
+
+/** The original plaintext body: still the fallback, unchanged. */
+async function wikiExtendedText(title: string): Promise<ExtendedBody | null> {
   const raw = await wikiQuery({
     titles: title,
     redirects: "1",

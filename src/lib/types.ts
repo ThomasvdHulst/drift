@@ -2,6 +2,7 @@
 // the feed; TrailStep / Trail / SessionStats drive saved trails and the stats view.
 
 import type { SourceId, RealmId } from "./realms/types";
+import type { Block } from "./wikihtml";
 
 export type Card = {
   // Source-native id / key. For Wikipedia this is the canonical title (used in
@@ -155,4 +156,21 @@ export type SessionStats = {
   threadsPulled: number;
   drifts: number;
   durationMs?: number;
+};
+
+// What `?extended=1` answers with: the body a card reveals on "Read more".
+//
+// `extract` is always present — plain paragraphs joined by blank lines, the shape
+// the card has rendered since Phase 2, and the thing it falls back to. `blocks`
+// (Phase 26) is the same body with its TABLES kept, in reading order, so a
+// paragraph saying "as the table below shows" is followed by that table; `facts`
+// is the page's infobox as label/value rows for the card's Details disclosure.
+// Both are optional: only the Encyclopedia realm has them, and a card renders
+// perfectly well without them. Neither is ever stored on a `Card`, so saved
+// trails and the cloud sync payload stay exactly the size they are.
+export type ExtendedBody = {
+  extract: string;
+  hasMore: boolean;
+  blocks?: Block[];
+  facts?: { label: string; value: string }[];
 };

@@ -7,6 +7,10 @@ import type { RealmId } from "@/lib/realms/types";
 import { summaryUrl, getRealm } from "@/lib/realms";
 import { proximityWord } from "@/lib/orbit";
 import { freshnessWord } from "@/lib/current";
+import { licenseFor } from "@/lib/licenses";
+import type { Block, Fact } from "@/lib/wikihtml";
+import type { ExtendedBody } from "@/lib/types";
+import { CardTable } from "./CardTable";
 import { ThreadChips, KindIcon, KIND_META, DoorwayIcon } from "./ThreadChips";
 import { ArtZoom } from "./ArtZoom";
 import { PaperCover } from "./PaperCover";
@@ -26,7 +30,10 @@ function ReactionButtons({
   const base =
     "flex h-8 w-8 items-center justify-center rounded-full border transition focus-ring";
   return (
-    <div data-tour="card-reactions" className="flex shrink-0 items-center gap-1.5">
+    <div
+      data-tour="card-reactions"
+      className="flex shrink-0 items-center gap-1.5"
+    >
       <button
         type="button"
         onClick={() => onReact("like")}
@@ -39,7 +46,17 @@ function ReactionButtons({
             : `${base} border-line-strong text-ink-soft hover:border-accent hover:text-accent-strong`
         }
       >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill={reaction === "like" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill={reaction === "like" ? "currentColor" : "none"}
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
           <path d="M7 10v12" />
           <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" />
         </svg>
@@ -56,7 +73,17 @@ function ReactionButtons({
             : `${base} border-line-strong text-ink-soft hover:border-ink hover:text-ink`
         }
       >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill={reaction === "dislike" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill={reaction === "dislike" ? "currentColor" : "none"}
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
           <path d="M17 14V2" />
           <path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z" />
         </svg>
@@ -76,7 +103,17 @@ function ShareButton({ onShare }: { onShare: () => void }) {
       title="Send to a friend"
       className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full focus-ring border border-line-strong text-ink-soft transition hover:border-accent/40 hover:text-accent-strong"
     >
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <svg
+        width="15"
+        height="15"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
         <path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z" />
       </svg>
     </button>
@@ -106,14 +143,24 @@ function OrbitButton({
         active ? "Stop drifting around this page" : "Drift around this page"
       }
       aria-pressed={active}
-      title={active ? "Drifting around this. Tap to stop." : "Drift around this"}
+      title={
+        active ? "Drifting around this. Tap to stop." : "Drift around this"
+      }
       className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition focus-ring ${
         active
           ? "border-accent bg-accent/15 text-accent-strong"
           : "border-line-strong text-ink-soft hover:border-accent hover:text-accent-strong"
       }`}
     >
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <svg
+        width="15"
+        height="15"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        aria-hidden="true"
+      >
         <circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none" />
         <ellipse cx="12" cy="12" rx="10" ry="4.4" />
       </svg>
@@ -124,7 +171,13 @@ function OrbitButton({
 // The mode chip answers "where am I?" — drifting (casual wandering) vs being on a
 // thread (a deliberate direction you pulled). Threads read prominent + sage;
 // drifting reads quiet + neutral.
-function ModeChip({ via, realmLabel }: { via: ArrivedVia; realmLabel: string }) {
+function ModeChip({
+  via,
+  realmLabel,
+}: {
+  via: ArrivedVia;
+  realmLabel: string;
+}) {
   if (via.type === "thread") {
     // A cross-realm doorway (Phase 15) reads "Crossed to {realm} · …"; a
     // directional thread (Phase 6) names its move ("Go deeper · Octopus"); a
@@ -137,7 +190,17 @@ function ModeChip({ via, realmLabel }: { via: ArrivedVia; realmLabel: string }) 
         ) : via.kind ? (
           <KindIcon kind={via.kind} size={12} />
         ) : (
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
             <circle cx="7" cy="7" r="3" />
             <path d="M9.2 9.2C13 13 15 15 21 21" />
           </svg>
@@ -159,7 +222,9 @@ function ModeChip({ via, realmLabel }: { via: ArrivedVia; realmLabel: string }) 
   if (via.type === "seed") {
     label = "Starting point";
   } else if (via.type === "drift" && crossedDrift) {
-    label = via.topic ? `Crossed to ${realmLabel} · ${via.topic.label}` : `Crossed to ${realmLabel}`;
+    label = via.topic
+      ? `Crossed to ${realmLabel} · ${via.topic.label}`
+      : `Crossed to ${realmLabel}`;
   } else if (via.type === "drift" && via.current) {
     // "In the news" (Phase 23). The banner already names the section, so the
     // chip carries the part only it knows: how current this article actually is,
@@ -186,7 +251,17 @@ function ModeChip({ via, realmLabel }: { via: ArrivedVia; realmLabel: string }) 
       {crossedDrift ? (
         <DoorwayIcon size={12} />
       ) : (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
           <path d="M2 12c2.5-4 5.5-4 8 0s5.5 4 8 0" />
         </svg>
       )}
@@ -258,7 +333,16 @@ function ImagePanel({ card, onZoom }: { card: Card; onZoom?: () => void }) {
             aria-hidden="true"
             className="pointer-events-none absolute bottom-3 right-3 flex h-8 w-8 items-center justify-center rounded-full bg-paper/85 text-ink opacity-75 shadow ring-1 ring-line transition group-hover:opacity-100"
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <circle cx="10" cy="10" r="6" />
               <path d="M14.5 14.5 20 20M10 7.5v5M7.5 10h5" />
             </svg>
@@ -332,7 +416,11 @@ function ThreadsSection({
       <p className="text-xs font-medium uppercase tracking-widest text-ink-soft">
         Pull a thread
       </p>
-      <ThreadChips threads={threads} loading={threadsLoading} onThread={onThread} />
+      <ThreadChips
+        threads={threads}
+        loading={threadsLoading}
+        onThread={onThread}
+      />
     </div>
   );
 }
@@ -378,6 +466,12 @@ export function CardView({
   // Local state resets per card because the parent re-keys CardView by pageTitle.
   const [open, setOpen] = useState(false);
   const [longText, setLongText] = useState<string | null>(null);
+  // The same body WITH its tables, in reading order (Phase 26). Encyclopedia only;
+  // `longText` stays the fallback for every other realm and for any page whose
+  // HTML we could not parse, so this can only ever add to the read.
+  const [longBlocks, setLongBlocks] = useState<Block[] | null>(null);
+  // The page's infobox, as rows for the Details disclosure below.
+  const [longFacts, setLongFacts] = useState<Fact[] | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   // The "museum label" (Phase 14): structured metadata, disclosed on tap so it
@@ -387,6 +481,14 @@ export function CardView({
   const [zoomOpen, setZoomOpen] = useState(false);
   const canZoom = card.source === "artic" && !!card.zoomUrl;
   const onZoom = canZoom ? () => setZoomOpen(true) : undefined;
+  // The licence this card's text is under, named and linked beside the source
+  // link below (see lib/licenses.ts for the two separate obligations).
+  const license = licenseFor(card.source);
+  // Does the expanded body finish with a table? (Drives the fade below.)
+  const endsOnTable = longBlocks?.[longBlocks.length - 1]?.kind === "table";
+  // The Details rows: art and papers carry their own; a Wikipedia card gains its
+  // infobox once the reader expands it, which is when we fetch the page's HTML.
+  const facts = card.facts ?? longFacts ?? undefined;
 
   // Phones inline the threads at the end of the reading flow (see
   // ThreadsSection), which buys back a lot of reading height but puts the
@@ -408,7 +510,8 @@ export function CardView({
     io.observe(el);
     return () => io.disconnect();
   }, [card.pageTitle]);
-  const showThreadHint = !threadsInView && !threadsLoading && threads.length > 0;
+  const showThreadHint =
+    !threadsInView && !threadsLoading && threads.length > 0;
 
   function scrollToThreads() {
     inlineThreadsRef.current?.scrollIntoView({
@@ -431,13 +534,14 @@ export function CardView({
           summaryUrl(realm, card.pageTitle, { extended: true }),
         );
         if (res.ok) {
-          const data = (await res.json()) as {
-            extract?: string;
-            hasMore?: boolean;
-          };
+          const data = (await res.json()) as Partial<ExtendedBody>;
           if (data?.extract) {
             setLongText(data.extract);
             setHasMore(!!data.hasMore);
+            // Both optional: a realm without them (or a page whose HTML did not
+            // parse) simply renders the paragraphs, exactly as before.
+            if (data.blocks?.length) setLongBlocks(data.blocks);
+            if (data.facts?.length) setLongFacts(data.facts);
           }
         }
       } catch {
@@ -482,7 +586,14 @@ export function CardView({
           reading side scrolls (image included on phones), and the feed's gesture
           handler reads this region's edges (via [data-drift-scroll]) to tell
           "scroll to read" from "overscroll to drift on" — see lib/gesture. */}
-      <div className="flex min-h-0 flex-1 flex-col">
+      {/* `min-w-0` matters as much as `min-h-0` here, and for the mirror-image
+          reason. A flex item defaults to `min-width: auto`, i.e. "never narrower
+          than my content", so ONE wide child sizes this whole column: with a wide
+          table in the body, the reading side grew from 554px to 976px and pushed
+          the prose off the screen (the table was fine — it was the article that
+          got too wide). Zero lets the column keep the width the card gives it, and
+          the table scrolls inside its own box instead. */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {/* `touch-pan-y`: this region pans VERTICALLY only. Without it the
             browser treats a sideways drag over scrollable prose as a possible
             vertical scroll, claims the gesture, and fires `touchcancel` — so the
@@ -495,7 +606,7 @@ export function CardView({
             as a fallback for a genuinely diagonal drag. */}
         <div
           data-drift-scroll
-          className="flex min-h-0 flex-1 touch-pan-y flex-col gap-3 overflow-y-auto overscroll-y-contain px-6 pb-4 pt-6 sm:px-8 sm:pt-8 md:px-10 md:pt-10 lg:px-12 lg:pt-12"
+          className="flex min-h-0 min-w-0 flex-1 touch-pan-y flex-col gap-3 overflow-y-auto overscroll-y-contain px-6 pb-4 pt-6 sm:px-8 sm:pt-8 md:px-10 md:pt-10 lg:px-12 lg:pt-12"
         >
           {/* Phone-only hero, full-bleed to the card's rounded top; it scrolls
               up out of the way as you read. */}
@@ -512,7 +623,9 @@ export function CardView({
           <div className="flex items-center justify-between gap-3">
             <ModeChip via={arrivedVia} realmLabel={getRealm(realm).label} />
             <div className="flex shrink-0 items-center gap-1.5">
-              {onReact && <ReactionButtons reaction={reaction} onReact={onReact} />}
+              {onReact && (
+                <ReactionButtons reaction={reaction} onReact={onReact} />
+              )}
               {onOrbit && <OrbitButton onOrbit={onOrbit} active={orbiting} />}
               {onShare && <ShareButton onShare={onShare} />}
             </div>
@@ -526,20 +639,47 @@ export function CardView({
           <h1 className="font-serif text-3xl leading-tight text-ink sm:text-4xl lg:text-5xl">
             {card.displayTitle}
           </h1>
-          <div className="relative flex flex-col gap-3">
-            {(open && longText ? longText.split("\n\n") : [card.extract]).map(
-              (para, i) => (
-                <p
-                  key={i}
-                  className="text-base leading-relaxed text-ink/85 sm:text-lg"
-                >
-                  <MathText text={para} />
-                </p>
-              ),
-            )}
+          {/* `min-w-0` again, for the same reason as the column above: the body
+              holds the one element that can be wider than the card. */}
+          <div className="relative flex min-w-0 flex-col gap-3">
+            {/* Three cases, in order of richness: the expanded body WITH its
+                tables (Phase 26), the expanded body as plain paragraphs (every
+                other realm, and any page whose HTML did not parse), or the
+                collapsed card's hook. The paragraph markup is identical in all
+                three, so an article with no tables reads exactly as it did. */}
+            {open && longBlocks
+              ? longBlocks.map((block, i) =>
+                  block.kind === "table" ? (
+                    <CardTable
+                      key={i}
+                      data={block.table}
+                      sourceUrl={card.sourceUrl}
+                    />
+                  ) : (
+                    <p
+                      key={i}
+                      className="text-base leading-relaxed text-ink/85 sm:text-lg"
+                    >
+                      <MathText text={block.text} />
+                    </p>
+                  ),
+                )
+              : (open && longText
+                  ? longText.split("\n\n")
+                  : [card.extract]
+                ).map((para, i) => (
+                  <p
+                    key={i}
+                    className="text-base leading-relaxed text-ink/85 sm:text-lg"
+                  >
+                    <MathText text={para} />
+                  </p>
+                ))}
             {/* Soft fade at the truncation point — a quiet "there's more at the
-                source" cue, not a tease to keep scrolling in-app. */}
-            {open && hasMore && !loadingMore && (
+                source" cue, not a tease to keep scrolling in-app. Suppressed when
+                the body ends on a table: a gradient washing over a table's last
+                row reads as a rendering fault, not as a cue. */}
+            {open && hasMore && !loadingMore && !endsOnTable && (
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-paper-raised to-transparent" />
             )}
           </div>
@@ -549,7 +689,7 @@ export function CardView({
           {/* The museum label — a calm, tap-to-open "Details" block (art only).
               Inline scroll content, so it never overlays or eats the viewport on
               a phone; the two-column list wraps long values instead of overflowing. */}
-          {card.facts && card.facts.length > 0 && (
+          {facts && facts.length > 0 && (
             <div className="flex flex-col gap-2">
               <button
                 type="button"
@@ -575,7 +715,7 @@ export function CardView({
               </button>
               {showDetails && (
                 <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
-                  {card.facts.map((f) => (
+                  {facts.map((f) => (
                     <Fragment key={f.label}>
                       <dt className="pt-0.5 text-xs font-medium uppercase tracking-wide text-ink-soft">
                         {f.label}
@@ -606,6 +746,21 @@ export function CardView({
             >
               {sourceLinkLabel(card.source)}
             </a>
+            {/* The licence notice, on the card itself. The link above is the
+                ATTRIBUTION (the article's history page lists its authors, which
+                the Terms of Use accept); this is the separate obligation to state
+                the licence AND link its text. It belongs where the content is
+                read, not only in the public footer. See lib/licenses.ts. */}
+            {license && (
+              <a
+                href={license.url}
+                target="_blank"
+                rel="license noopener noreferrer"
+                className="text-xs font-medium text-ink-soft underline decoration-ink/30 underline-offset-4 transition hover:text-accent-strong hover:decoration-accent"
+              >
+                {license.label} ↗
+              </a>
+            )}
           </div>
           {/* Phone only: the threads sit here, at the end of the read, so the
               text above them gets the card's full height. Desktop renders the
@@ -649,10 +804,21 @@ export function CardView({
                 showThreadHint ? "pointer-events-auto" : "pointer-events-none"
               }`}
             >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
                 <path d="M6 9l6 6 6-6" />
               </svg>
-              {threads.length} {threads.length === 1 ? "thread" : "threads"} below
+              {threads.length} {threads.length === 1 ? "thread" : "threads"}{" "}
+              below
             </button>
           </div>
         </div>

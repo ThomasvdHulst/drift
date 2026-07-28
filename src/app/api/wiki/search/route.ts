@@ -20,6 +20,7 @@ export async function GET(request: Request) {
       prop: "description|pageimages|pageprops",
       ppprop: "disambiguation",
       piprop: "thumbnail",
+      pilicense: "free", // never a fair-use file; see CARD_PROPS in lib/wiki-server.ts
       pithumbsize: "120",
       format: "json",
       formatversion: "2",

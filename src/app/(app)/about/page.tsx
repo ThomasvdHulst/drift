@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Monogram } from "@/components/BrandLogo";
 import { PublicFooter } from "@/components/PublicFooter";
+import { CC_BY_SA_4, CC0_1 } from "@/lib/licenses";
+import { LicenseLink } from "@/components/LicenseLink";
 
 export const metadata = {
   title: "About Drift",
@@ -113,10 +115,12 @@ export default function AboutPage() {
           <Section title="Where the content comes from">
             <p className="text-ink-soft">
               Every card is made from openly licensed, human curated knowledge:
-              Wikipedia articles (CC BY-SA) and public domain artworks from the
-              Art Institute of Chicago (CC0). Drift only reshapes that content
-              into cards and threads. It never invents facts, and it is never in
-              the driver&apos;s seat. You are.
+              Wikipedia articles, under <LicenseLink license={CC_BY_SA_4} />, and
+              public domain artworks from the Art Institute of Chicago, under{" "}
+              <LicenseLink license={CC0_1} />. Every card links back to the page it
+              came from, whose history credits the people who wrote it. Drift only
+              reshapes that content into cards and threads. It never invents facts,
+              and it is never in the driver&apos;s seat. You are.
             </p>
           </Section>
 
