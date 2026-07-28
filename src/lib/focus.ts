@@ -82,6 +82,41 @@ export function focusBucket(focus: Focus, ring: ArtistRing = 0): string | null {
 }
 
 /**
+ * The params that decide WHICH session /drift is showing: the realm, the focus
+ * and everything a focus is spelled with, plus the session mode and a continued
+ * trail. Anything not in here can change without disturbing a drift in progress.
+ */
+export const SESSION_PARAMS = [
+  "realm",
+  "focus",
+  "bucket",
+  "title",
+  "seed",
+  "section",
+  "form",
+  "era",
+  "artist",
+  "works",
+  "mode",
+  "continue",
+] as const;
+
+/**
+ * A stable string identifying the session those params ask for.
+ *
+ * /drift used to read its params ONCE, on mount, from `window.location.search`,
+ * which quietly assumed that arriving with new params always means a new
+ * component. When that assumption does not hold — a router that reuses the page,
+ * a restored client, anything — the params are simply never read, the drift keeps
+ * whatever it was doing, and picking a field or a page to orbit appears to do
+ * nothing at all until the app is reloaded. Comparing this key each render is what
+ * makes the session follow the URL instead of the mount.
+ */
+export function sessionKey(params: { get(key: string): string | null }): string {
+  return SESSION_PARAMS.map((k) => `${k}=${params.get(k) ?? ""}`).join("&");
+}
+
+/**
  * Parse a focus from /drift's query params, or null if none / invalid. A field
  * focus must name a known ORES topic keyword, a current focus a known news
  * section, and a form focus a slice we actually offer (all three guard junk +

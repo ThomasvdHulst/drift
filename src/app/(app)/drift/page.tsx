@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion, type Variants } from "motion/react";
 import type {
   ArrivedVia,
@@ -23,7 +24,7 @@ import {
 } from "@/lib/gesture";
 import { randomOffset, interleave } from "@/lib/discover";
 import { applyFeedback, type Interest, type Reaction } from "@/lib/interest";
-import { focusFromParams, focusBucket, type Focus } from "@/lib/focus";
+import { focusFromParams, focusBucket, sessionKey, type Focus } from "@/lib/focus";
 import {
   artistRingLabel,
   describeArtistRing,
@@ -168,8 +169,31 @@ function scrollRegionFrom(target: EventTarget | null): HTMLElement | null {
     : null;
 }
 
+// `useSearchParams` needs a Suspense boundary above it, and the feed already has
+// a "Finding a starting point…" state, so the boundary reuses it.
 export default function DriftPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-dvh items-center justify-center bg-paper">
+          <p className="animate-pulse font-serif text-xl text-ink-soft">
+            Finding a starting point…
+          </p>
+        </div>
+      }
+    >
+      <DriftFeed />
+    </Suspense>
+  );
+}
+
+function DriftFeed() {
   const { user, cloudConfigured } = useAuth();
+  // WHICH session the URL is asking for. The feed follows this, not its own
+  // mount: see `sessionKey` in lib/focus.ts for the bug that motivated it.
+  const searchParams = useSearchParams();
+  const paramsString = searchParams.toString();
+  const paramKey = sessionKey(searchParams);
   // The guided tour listens for real actions on this page (Phase 20). Each call
   // is a no-op unless the tour is active and waiting on that event. `holdNav` is
   // true while the user is "looking around" in the tour: navigation is frozen so
@@ -366,11 +390,58 @@ export default function DriftPage() {
   const cardForThreadsRef = useRef<Card | undefined>(undefined);
   cardForThreadsRef.current = current?.card;
 
-  // ----- initial card -----
+  // ----- the session the URL asks for -----
+  //
+  // Keyed on the params, NOT on the mount. This used to run once per mount and
+  // read `window.location.search`, which assumed that arriving with new params
+  // always means a fresh component. Whenever that assumption failed — a router
+  // that reuses the page, a client restored from cache — picking a field or a
+  // page to orbit did nothing at all: the previous drift simply carried on,
+  // wandering wherever it liked, until the app was reloaded. That is exactly the
+  // bug this fixes, and it also makes the intent honest: the feed shows the
+  // session in the URL, and the URL is the only thing that decides.
+  //
+  // `appliedKeyRef` is what keeps that from being disruptive: the feed rewrites
+  // its own URL when you anchor an orbit or let a focus go (see below), and those
+  // rewrites must not restart the session the reader is in the middle of.
+  const appliedKeyRef = useRef<string | null>(null);
   useEffect(() => {
+    if (appliedKeyRef.current === paramKey) return; // same session; nothing to do
+    const restarting = appliedKeyRef.current !== null;
+    appliedKeyRef.current = paramKey;
     let cancelled = false;
     (async () => {
-      const params = new URLSearchParams(window.location.search);
+      const params = new URLSearchParams(paramsString);
+      // Arriving at a DIFFERENT session in the same component: put the feed back
+      // to the state a fresh mount would have, or the new drift would inherit the
+      // old one's cards, buffers and trail. `seenRef` is kept on purpose — not
+      // repeating yourself is a property of the reader, not of the session.
+      if (restarting) {
+        setHistory([]);
+        setPos(0);
+        setEnded(false);
+        setError(null);
+        setInitialLoading(true);
+        setFocus(null);
+        setCaughtUp(false);
+        setEndless(false);
+        setArtistRing(0);
+        focusRef.current = null;
+        orbitRef.current = null;
+        randomBufferRef.current = [];
+        currentBufferRef.current = [];
+        currentSeedsRef.current = [];
+        currentRevisitRef.current = [];
+        currentOffsetRef.current = 0;
+        currentDryRef.current = false;
+        caughtUpRef.current = false;
+        artistProfileRef.current = null;
+        artistRingRef.current = 0;
+        artistOffsetRef.current = 0;
+        driftsSinceAdRef.current = 0;
+        sessionTrailRef.current = null;
+        sessionIdRef.current = ""; // a new session id is minted below
+      }
       const title = params.get("title");
       const seed = params.get("seed");
       const continueId = params.get("continue");
@@ -622,7 +693,9 @@ export default function DriftPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+    // `paramsString` is here so the values read above are the ones this render
+    // actually holds; `paramKey` is what decides whether anything happens at all.
+  }, [paramKey, paramsString]);
 
   // ----- threads for whichever card is displayed (live or a revisited one) -----
   // Aborting on cleanup cancels superseded requests during fast scrolling and
@@ -1471,6 +1544,10 @@ export default function DriftPage() {
       u.searchParams.set("title", card.pageTitle);
       u.searchParams.set("seed", card.displayTitle);
       ["bucket", "section"].forEach((k) => u.searchParams.delete(k));
+      // The session-watching effect must read this as "already applied", not as a
+      // new session to start: the reader anchored an orbit on the card they are
+      // on, they did not ask to begin again somewhere else.
+      appliedKeyRef.current = sessionKey(u.searchParams);
       window.history.replaceState(null, "", `${u.pathname}${u.search}`);
     } catch {
       /* non-fatal */
@@ -1498,6 +1575,9 @@ export default function DriftPage() {
       ["focus", "bucket", "seed", "title", "section"].forEach((k) =>
         u.searchParams.delete(k),
       );
+      // Same as the orbit rewrite: letting a focus go continues THIS drift, so
+      // the effect must not read the stripped URL as a request to start over.
+      appliedKeyRef.current = sessionKey(u.searchParams);
       window.history.replaceState(null, "", `${u.pathname}${u.search}`);
     } catch {
       /* URL API unavailable — non-fatal; focus is still cleared in memory */

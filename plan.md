@@ -2959,6 +2959,47 @@ whole Gallery realm are untouched. **698 unit tests**, build + lint clean, `npm 
 
 ---
 
+## Bug fix: a chosen field or orbit was silently ignored until the app was reloaded ✅ *(2026-07-28)*
+
+**The report (a second time).** On a phone, after drifting for a while, picking a field just kept
+drifting randomly and ignored the choice. Same for "drift around a page". Reloading cured it. The
+earlier fix (the field seed returning empty windows) was real but was **not this**: this one hits
+orbits too, and an orbit drift can never serve random cards, so the focus was never being applied at
+all.
+
+**Cause.** `/drift` read its params **once per mount**, from `window.location.search`. That quietly
+assumed arriving with new params always means a new component. Whenever that does not hold — a router
+that reuses the page, a client restored from cache — the params were simply never read: the previous
+drift carried on, wandering wherever it liked, and only a reload (a fresh mount) could clear it.
+
+**Reproduced deterministically** by simulating exactly that: change the URL to a field focus while
+the feed is NOT remounted. Old behaviour, verbatim from the run: `field arrived with no remount:
+FAIL banner=null … next drift: OFF FIELD chip=DRIFTING · LITERATURE`. The URL said Physics; the drift
+went to Rendang, then A Midsummer Night's Dream. (Ordinary navigation could not reproduce it here
+across 18 scripted runs, in dev AND in a production build, which is why the first pass missed it.)
+
+- [x] **The session now follows the URL, not the mount.** `sessionKey` (`lib/focus.ts`, unit-tested)
+      names the params that decide *which* session this is; the feed compares it each render and
+      (re)starts when it changes, resetting history, buffers, orbit and trail state — but never the
+      seen list, since not repeating yourself belongs to the reader, not the session.
+- [x] **The feed's own URL rewrites do not restart anything.** Anchoring an orbit with the eye and
+      letting a focus go with "Drift freely" both rewrite the URL; each now marks the new key as
+      already applied, so the drift you are in the middle of is undisturbed.
+- [x] `useSearchParams` replaces `window.location.search`, with a Suspense boundary reusing the
+      feed's existing "Finding a starting point…" state.
+- [x] A test pins that `sessionKey` covers **every param any focus kind writes**, so a future focus
+      that adds one cannot silently share a key and fail to start.
+
+**Verified:** the simulated failure now PASSES (field and orbit both take hold, the next drift is on
+topic) and the same script FAILS against a build with only this fix reverted, so the test has teeth.
+Regression: 6/6 scripted field/orbit navigations, 4/4 realistic paths (after the eye, after "Drift
+freely", after the back gesture, after ending a trail), and a heavy session (12 drifts, a like, a
+thread pull, two realm crossings) then a field and an orbit, all on topic. The eye re-anchors and
+"Drift freely" releases without restarting the trail (stops unchanged). **702 unit tests**, build +
+lint clean, zero page errors.
+
+---
+
 
 ## Out of scope for v1 (do not build unless asked)
 

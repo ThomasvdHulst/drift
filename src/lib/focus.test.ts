@@ -4,10 +4,61 @@ import {
   focusToParams,
   focusBucket,
   describeFocus,
+  sessionKey,
+  SESSION_PARAMS,
   type Focus,
 } from "./focus";
 
 const p = (qs: string) => new URLSearchParams(qs);
+
+// The key /drift compares each render to decide "are these params still the
+// session I am showing?". It exists because reading the params once per MOUNT
+// silently ignores a new field / orbit whenever the page is reused instead of
+// remounted: the drift carries on as if you had not picked anything, until the
+// app is reloaded. That is the bug it guards.
+describe("sessionKey", () => {
+  it("changes when the reader asks for a different session", () => {
+    const free = sessionKey(p("realm=encyclopedia"));
+    expect(sessionKey(p("realm=encyclopedia&focus=field&bucket=physics&seed=Physics"))).not.toBe(free);
+    expect(sessionKey(p("realm=encyclopedia&focus=orbit&title=Octopus&seed=Octopus"))).not.toBe(free);
+    // one field to another
+    expect(sessionKey(p("focus=field&bucket=physics"))).not.toBe(
+      sessionKey(p("focus=field&bucket=music")),
+    );
+    // and a realm change, or a continued trail
+    expect(sessionKey(p("realm=gallery"))).not.toBe(sessionKey(p("realm=encyclopedia")));
+    expect(sessionKey(p("continue=abc"))).not.toBe(sessionKey(p("")));
+  });
+
+  it("is stable for the same request, whatever the param order", () => {
+    expect(sessionKey(p("focus=field&bucket=physics&seed=Physics&realm=encyclopedia"))).toBe(
+      sessionKey(p("realm=encyclopedia&seed=Physics&focus=field&bucket=physics")),
+    );
+  });
+
+  it("ignores params that have nothing to do with which session this is", () => {
+    const base = sessionKey(p("realm=encyclopedia&focus=field&bucket=physics"));
+    expect(sessionKey(p("realm=encyclopedia&focus=field&bucket=physics&utm_source=x"))).toBe(base);
+  });
+
+  it("covers every param a focus is spelled with", () => {
+    // focusToParams is the writer; sessionKey is the reader. If a future focus
+    // kind adds a param and forgets to list it here, two different sessions
+    // would share a key and the second one would never start.
+    const focuses: Focus[] = [
+      { kind: "field", bucket: "physics", label: "Physics" },
+      { kind: "orbit", seedTitle: "Octopus", seedLabel: "Octopus" },
+      { kind: "current", section: "sport", label: "Sport" },
+      { kind: "form", form: "painting", era: "all", label: "Paintings" },
+      { kind: "artist", artistId: "123", label: "Someone", works: 8 },
+    ];
+    for (const f of focuses) {
+      for (const key of Object.keys(focusToParams(f))) {
+        expect(SESSION_PARAMS, `${f.kind} writes ${key}`).toContain(key);
+      }
+    }
+  });
+});
 
 describe("focusFromParams", () => {
   it("parses a valid field focus and resolves the friendly label", () => {
