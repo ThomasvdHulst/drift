@@ -85,8 +85,18 @@ export function FeedTopBar({
   onJump: (index: number) => void;
   onEnd: () => void;
 }) {
+  // Widths here have to survive more than a narrow phone: a reader who has turned
+  // Chrome's page-text scaling up (or Android's display size) grows every label,
+  // and with every child `shrink-0` the row simply outgrew the viewport. The feed
+  // shell is `overflow-hidden`, so the surplus was invisibly clipped, and once a
+  // control at the far end took focus the browser scrolled that hidden box
+  // sideways, sliding the monogram off the left edge too. So: tighter gaps and
+  // padding on a phone, a short label under `sm`, and the End button is the one
+  // child allowed to shrink, so the row can always fit.
+  // pt keeps the bar clear of a notch when Drift is installed standalone
+  // (viewportFit: "cover"); the inset is 0 in an ordinary browser tab.
   return (
-    <header className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6">
+    <header className="flex items-center justify-between gap-2 px-3 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] sm:gap-3 sm:px-6">
       <div className="flex shrink-0 items-center gap-2">
         <Link
           href="/"
@@ -106,7 +116,7 @@ export function FeedTopBar({
 
       {!endless && <TrailRail steps={steps} pos={pos} onJump={onJump} />}
 
-      <div className="flex shrink-0 items-center gap-3 sm:gap-4">
+      <div className="flex min-w-0 items-center gap-2 sm:gap-4">
         {onCrossRealm && otherRealm && (
           <button
             type="button"
@@ -115,23 +125,28 @@ export function FeedTopBar({
             data-realm={otherRealm.id}
             aria-label={`Cross to the ${otherRealm.label}`}
             title={`Cross to the ${otherRealm.label} (or swipe sideways)`}
-            className="inline-flex items-center gap-1 rounded-full border border-dashed border-accent/50 px-2.5 py-1 text-xs font-medium text-accent-strong transition hover:bg-accent/10"
+            className="inline-flex shrink-0 items-center gap-1 rounded-full border border-dashed border-accent/50 px-2.5 py-1 text-xs font-medium text-accent-strong transition hover:bg-accent/10"
           >
             <DoorwayIcon size={12} />
             <span aria-hidden="true">{otherRealm.glyph}</span>
             <span className="hidden sm:inline">{otherRealm.label}</span>
           </button>
         )}
-        <span className="text-sm tabular-nums text-ink-soft">
+        <span className="shrink-0 whitespace-nowrap text-sm tabular-nums text-ink-soft">
           {stops} {stops === 1 ? "stop" : "stops"}
         </span>
         <button
           type="button"
           data-tour="end-trail"
           onClick={onEnd}
-          className="rounded-full border border-line bg-paper-raised px-3.5 py-1.5 text-sm font-medium text-ink transition hover:border-accent/50 hover:text-accent-strong"
+          className="min-w-0 truncate rounded-full border border-line bg-paper-raised px-3.5 py-1.5 text-sm font-medium text-ink transition hover:border-accent/50 hover:text-accent-strong"
         >
-          {endless ? "Keep this trail" : "End & view trail"}
+          {/* A phone gets the short label. `display: none` keeps the wide one out
+              of the accessible name, so the button is announced as it reads. */}
+          <span className="sm:hidden">{endless ? "Keep trail" : "End trail"}</span>
+          <span className="hidden sm:inline">
+            {endless ? "Keep this trail" : "End & view trail"}
+          </span>
         </button>
       </div>
     </header>

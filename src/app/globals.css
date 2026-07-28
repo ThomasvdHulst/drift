@@ -111,6 +111,15 @@
 @utility pb-safe {
   padding-bottom: calc(1rem + env(safe-area-inset-bottom));
 }
+/* The same idea at the top, for the tour's top-placed coach card. This one was
+   being USED (TourOverlay) without ever having been defined, so on a notched
+   phone in standalone mode the card could sit under the status bar. Deliberately
+   the bare inset with no 1rem of its own: the card already carries its own
+   margin, so adding rems here would move it down in an ordinary tab too, where
+   the inset is 0 and nothing needs moving. */
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
 
 /* One focus indicator for the whole app (2026-07-28 contrast audit).
 

@@ -131,7 +131,7 @@ function ModeChip({ via, realmLabel }: { via: ArrivedVia; realmLabel: string }) 
     // plain/legacy thread reads "On a thread · …".
     const crossed = via.crossedFrom !== undefined;
     return (
-      <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-accent/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-accent-strong ring-1 ring-accent/30">
+      <span className="inline-flex w-fit min-w-0 items-center gap-1.5 break-words rounded-full bg-accent/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-accent-strong ring-1 ring-accent/30">
         {crossed ? (
           <DoorwayIcon size={12} />
         ) : via.kind ? (
@@ -182,7 +182,7 @@ function ModeChip({ via, realmLabel }: { via: ArrivedVia; realmLabel: string }) 
         : `Drifting · ${via.topic.label}`;
   }
   return (
-    <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-ink/5 px-3 py-1 text-xs font-medium uppercase tracking-wide text-ink-soft">
+    <span className="inline-flex w-fit min-w-0 items-center gap-1.5 break-words rounded-full bg-ink/5 px-3 py-1 text-xs font-medium uppercase tracking-wide text-ink-soft">
       {crossedDrift ? (
         <DoorwayIcon size={12} />
       ) : (
@@ -504,6 +504,11 @@ export function CardView({
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-paper-raised/70 to-transparent" />
           </div>
 
+          {/* The chip may be long ("Crossed to Gallery · …") and the icons are
+              fixed-width, so the chip is the side that gives: `min-w-0` (on the
+              chip itself) lets it shrink past its longest word, which it then
+              breaks. Without that, a 320px phone with scaled-up text pushed the
+              icon row past the card's edge. */}
           <div className="flex items-center justify-between gap-3">
             <ModeChip via={arrivedVia} realmLabel={getRealm(realm).label} />
             <div className="flex shrink-0 items-center gap-1.5">

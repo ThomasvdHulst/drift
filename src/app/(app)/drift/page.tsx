@@ -150,6 +150,13 @@ const ADS = adsConfig();
 // stops. The search endpoint isn't burst-limited, so refilling often is cheap.
 const REFILL_TOPICS = 3;
 const DISCOVER_LIMIT = 4;
+// How far down a bucket's ranking a SECOND-try refill may sample. The ordinary
+// window is the top ~400 pages (lib/discover.ts `randomOffset`), which keeps
+// drifted cards recognizable; a long session confined to one field can read that
+// stretch dry, and then every card in a refill is already seen. Reaching deeper
+// once beats telling the reader a 30,000-page field is empty. 1000 is the ceiling
+// the discover route accepts.
+const DEEP_OFFSET_MAX = 1000;
 
 // The card's inner scroll region under a wheel/touch event target, or null if the
 // gesture began outside it (the threads bar, the desktop image panel, gaps). The
@@ -499,16 +506,35 @@ export default function DriftPage() {
           // nearly every open.
           const SEED_LIMIT = 12;
           const artistSeed = parsedFocus?.kind === "artist";
-          const res = await fetch(
-            discoverUrl(realmRef.current, {
-              bucket: bucketParam,
-              offset: artistSeed ? 0 : randomOffset(),
-              limit: SEED_LIMIT,
-            }),
-          );
-          const cards = (await res.json()) as Card[];
-          if (!res.ok || !Array.isArray(cards) || cards.length === 0)
-            throw new Error("no card");
+          // One window can come back empty for reasons that have nothing to do
+          // with the bucket being poor: every page in it already junk-filtered
+          // away, or a moment of upstream throttling. Treating the first empty
+          // answer as fatal is what made "drift within a field" report
+          // "couldn't load" on a field that works perfectly a second later, so
+          // try another window before believing it. The artist seed is exempt:
+          // an oeuvre is a finite ordered set that MUST be read from the top
+          // (see above), so there is no other window to try.
+          const SEED_TRIES = artistSeed ? 1 : 3;
+          let cards: Card[] = [];
+          for (let attempt = 0; attempt < SEED_TRIES; attempt++) {
+            const res = await fetch(
+              discoverUrl(realmRef.current, {
+                bucket: bucketParam,
+                // The last try goes to the head of the bucket, which is always
+                // well-formed: variety matters less than actually opening.
+                offset:
+                  artistSeed || attempt === SEED_TRIES - 1 ? 0 : randomOffset(),
+                limit: SEED_LIMIT,
+              }),
+            );
+            if (cancelled) return;
+            const batch = (await res.json()) as Card[];
+            if (res.ok && Array.isArray(batch) && batch.length > 0) {
+              cards = batch;
+              break;
+            }
+          }
+          if (cards.length === 0) throw new Error("no card");
           card = cards[0];
           // The seed consumed the first page of the oeuvre; refills continue from
           // where it stopped rather than re-serving it.
@@ -898,9 +924,16 @@ export default function DriftPage() {
     // card, the next drift follows one of its related threads to "stay in the
     // stream" (instant, on-theme) — relatedness tied to an explicit signal, not
     // a blind coin flip that used to chain near-identical pages together.
-    const likedCurrent = current
-      ? reactions[cardId(current.card)] === "like"
-      : false;
+    // A focus is a promise about where the passive drift goes, and any focus still
+    // live at this point is bucket-pinned (orbit and current returned above). So
+    // the liked-card shortcut is suspended while one is set: following a thread on
+    // your behalf would quietly carry you out of the field you asked to stay in,
+    // while the banner still said you were inside it. Pulling a thread yourself
+    // stays free, as it always is under a focus.
+    const likedCurrent =
+      !focusRef.current && current
+        ? reactions[cardId(current.card)] === "like"
+        : false;
     const choice = pickDriftNext(threads, { likedCurrent });
     if (choice.type === "thread" && current) {
       pushStep(
@@ -938,7 +971,16 @@ export default function DriftPage() {
       // Refill failed (both discover and random unavailable). Keep advancing on
       // a *random* untapped thread (morelike stays healthy under throttling),
       // else a gentle hint. Never a silent dead button.
-      const t = pickRandomThread(threads);
+      //
+      // Except under a FIELD focus, where that thread is the bug the reader
+      // reported as "I picked a field and it just drifted randomly": a thread
+      // neighbour is not in the field, and it arrives labelled only "Drifting"
+      // while the banner still promises "Within Architecture". A field holds tens
+      // of thousands of pages and `refillRandomBuffer` has already reached deeper
+      // before giving up, so an empty buffer here means the source is unavailable,
+      // not that the field ran out. Say so, and keep the promise.
+      const t =
+        focusRef.current?.kind === "field" ? null : pickRandomThread(threads);
       if (t) {
         pushStep(candidateToCard(t.candidate), { type: "drift" }, "drift");
       } else {
@@ -1040,6 +1082,11 @@ export default function DriftPage() {
   // serendipity floor + truthful reason), else a plain uniform-random wander.
   async function fetchDiscoverBatch(
     rid: RealmId = realmRef.current,
+    // `deep` samples further down the bucket's ranking than the usual window.
+    // Used as a second try for a field focus, whose ordinary window is the top
+    // ~400 pages of the topic: a long session inside one field reads that dry,
+    // and then every card in a refill is already `seen` and the batch is empty.
+    opts: { deep?: boolean } = {},
   ): Promise<BufferedCard[]> {
     const rm = getRealm(rid);
     // A bucket-pinned focus makes every pick in the refill the SAME bucket, so
@@ -1104,7 +1151,9 @@ export default function DriftPage() {
           const res = await fetch(
             discoverUrl(rid, {
               bucket: pick.bucket,
-              offset: sequential ? base + i * DISCOVER_LIMIT : randomOffset(),
+              offset: sequential
+                ? base + i * DISCOVER_LIMIT
+                : randomOffset(Math.random, opts.deep ? DEEP_OFFSET_MAX : undefined),
               limit: DISCOVER_LIMIT,
             }),
             { signal: AbortSignal.timeout(6000) },
@@ -1200,13 +1249,24 @@ export default function DriftPage() {
       randomBufferRef.current.push(...batch);
       return;
     }
+    const focused = focusRef.current;
+    // A field drift samples the top ~400 pages of its topic, so a long stay in
+    // one field can leave a refill holding nothing but pages already seen. The
+    // field itself is nowhere near empty (tens of thousands of pages), so reach
+    // deeper once before the caller has to tell the reader anything.
+    if (focused?.kind === "field") {
+      const deeper = await fetchDiscoverBatch(realmRef.current, { deep: true });
+      if (deeper.length > 0) {
+        randomBufferRef.current.push(...deeper);
+        return;
+      }
+    }
     // An artist drift that comes back empty has read the current ring dry (an
     // oeuvre is finite: Van Gogh is 18 works here). Step outward — their
     // movement, then their period and medium — and try again, rather than
     // dead-ending on an artist we simply hold little of. Widening is announced
     // on the banner, never silent (§2.1). Threads stay untouched.
-    const focus = focusRef.current;
-    if (focus?.kind !== "artist") return;
+    if (focused?.kind !== "artist") return;
     const profile = artistProfileRef.current;
     if (!profile) return;
     while (true) {
@@ -1493,17 +1553,17 @@ export default function DriftPage() {
   const keyExtrasRef = useRef<{ pull: (i: number) => void; escape: () => void }>(
     { pull: () => {}, escape: () => {} },
   );
-  // The tour's "swipe sideways to cross realms" step cannot possibly work while a
+  // The tour's "cross into the other realm" step cannot possibly work while a
   // focus is set: crossing is a deliberately single-realm intent, so `crossEnabled`
-  // is false and the swipe is ignored. The step just before it now invites the
-  // reader to start an orbit, so without this the tour would ask for a gesture it
-  // had itself just disabled, and the swipe would look broken for no visible
-  // reason. Releasing here keeps the instruction honest; the banner step directly
-  // above has already explained what a focus is and how to let one go.
+  // is false, the top bar's doorway control is not rendered at all and a sideways
+  // swipe is ignored. The step just before it now invites the reader to start an
+  // orbit, so without this the tour would spotlight a control that isn't there.
+  // Releasing here keeps the instruction honest; the banner step directly above
+  // has already explained what a focus is and how to let one go.
   const focusedRef = useRef(false);
   focusedRef.current = !!focus;
   useEffect(() => {
-    if (tourStep?.id !== "try-horizontal") return;
+    if (tourStep?.id !== "cross-realm") return;
     if (focusedRef.current) queueMicrotask(() => clearFocusRef.current());
     // `clearFocus` is redefined every render; the ref keeps this effect keyed to
     // the step alone, so it fires once when that step opens.

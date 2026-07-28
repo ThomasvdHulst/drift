@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { listTrails, getSettings, setSettings } from "@/lib/storage";
 import { pickRandom } from "@/lib/pick";
 import { TOPICS, type Topic } from "@/lib/topics";
@@ -25,7 +25,7 @@ import { Wordmark } from "@/components/BrandLogo";
 export default function Home() {
   const router = useRouter();
   const { cloudConfigured } = useAuth();
-  const { start: startTour } = useTour();
+  const { start: startTour, active: tourActive } = useTour();
   const [stats, setStats] = useState<{ trails: number; stops: number } | null>(
     null,
   );
@@ -59,6 +59,16 @@ export default function Home() {
     [],
   );
 
+  // The tour is an Encyclopedia walk (its home steps spotlight the orbit search,
+  // the field grid and the news subjects, which only this realm's panel renders),
+  // so while it runs the panel must be Encyclopedia whatever realm the reader was
+  // last in. Read through a ref so the async settings restore below cannot land
+  // on top of it: the tour can begin before that promise resolves.
+  const tourActiveRef = useRef(tourActive);
+  useEffect(() => {
+    tourActiveRef.current = tourActive;
+  }, [tourActive]);
+
   useEffect(() => {
     listTrails().then((ts) => {
       if (ts.length === 0) return setStats(null);
@@ -68,11 +78,25 @@ export default function Home() {
       });
     });
     getSettings().then((s) => {
-      if (s.lastRealm && getRealm(s.lastRealm).id === s.lastRealm)
+      if (
+        !tourActiveRef.current &&
+        s.lastRealm &&
+        getRealm(s.lastRealm).id === s.lastRealm
+      )
         setActive(s.lastRealm);
       setKeepTrail(s.sessionMode !== "endless");
     });
   }, []);
+
+  // Taking the tour from the Gallery used to spotlight controls that were not on
+  // screen: "Take a tour" sits on this very page, so it was already mounted and
+  // no settings restore was going to run again. Switch the live panel over as the
+  // tour begins (TourProvider.start also persists the realm, for a fresh mount).
+  useEffect(() => {
+    if (!tourActive) return;
+    // Deferred off the effect body (React 19 render-purity rule).
+    queueMicrotask(() => setActive("encyclopedia"));
+  }, [tourActive]);
 
   function selectRealm(id: RealmId) {
     setActive(id);

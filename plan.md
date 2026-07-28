@@ -11,7 +11,20 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > in a small friends-and-colleagues beta. Two realms ship: **Encyclopedia** (Wikipedia) and
 > **Gallery** (Art Institute of Chicago, CC0).
 >
-> **Latest (2026-07-28): Phase 25 — the whole app now meets WCAG 2.2 Level AA on colour contrast.**
+> **Latest (2026-07-28): "drift within a field" was broken on Architecture and Visual Arts.** A
+> topic's incoming-links ranking holds long contiguous runs of "… listings in …" hub pages, which our
+> junk filter drops, so a whole window could come back empty: the seed reported "couldn't load", and
+> an empty refill quietly served off-field cards. The search now excludes those titles upstream, the
+> seed retries, and a focused drift never leaves its field silently. See the entry at the bottom.
+>
+> **Also (2026-07-28): the tour teaches crossing realms as a TAP on the top bar's doorway**
+> instead of forcing a sideways swipe, which on a laptop trackpad is the browser's own back gesture.
+> The swipe still works and the copy names it; only the tour changed. Plus two small fixes: the feed
+> header now fits any phone at any text scale (it used to overflow and get clipped), and starting the
+> tour from the Gallery switches to the Encyclopedia first, so its home steps always have their
+> targets. See the entries at the bottom.
+>
+> **Phase 25 — the whole app now meets WCAG 2.2 Level AA on colour contrast.**
 > The palette was designed by eye and had never been measured; an audit found 258 failing text
 > nodes. The worst was dark mode's start tiles, where a pale tint mixed over dark paper made a
 > mid-tone that left the card's own label at **3.42:1** and its blurb at **2.22:1**. Dark tile
@@ -2628,6 +2641,131 @@ has a visible focus indicator, none under 3:1. **641 unit tests**, build + lint 
 
 > **Also corrected during the work:** the audit first read two handle inputs as having no focus
 > indicator at all. They do — their wrapper carries `focus-within`. They were weak, not absent.
+
+---
+
+## The tour teaches crossing realms as a tap, not a swipe ✅ *(2026-07-28)*
+
+**The report.** The tour's "swipe sideways to cross realms" step works on a phone but fights the
+laptop: on a trackpad a horizontal two-finger swipe *is* the browser's back/forward gesture, so the
+tour was asking readers to navigate out of the app. An over-swipe on a phone can do the same. The
+top bar has carried a doorway control since Phase 15 that does the identical thing on every device.
+
+- [x] The step (`try-horizontal` → **`cross-realm`**) now spotlights `data-tour="cross-realm"`, the
+      real doorway control, with `gestureHint: "tap"`. It still advances on the genuine `"crossed"`
+      event, so the reader really crosses; nothing about the step is a mock.
+- [x] Copy: **"Cross into the other realm"** + "On a touchscreen a sideways swipe does the same
+      thing", so the gesture stays discoverable without being forced.
+- [x] The sideways swipe itself is **unchanged** and still crosses realms. Only the tour changed.
+- [x] A spotlight step means the scrim now *blocks* stray gestures here (a `swipe-side` hint made it
+      deliberately pass-through), so the tour can no longer trigger a browser back-navigation.
+- [x] The feed's focus-release effect follows the renamed step id: the doorway control is not
+      rendered while a focus is set (`crossEnabled = canCross && !focus`), so without it the step
+      would spotlight a control that is not there.
+- [x] Tests pin it: the step taps a spotlighted `cross-realm` target, **no step anywhere forces a
+      sideways swipe**, and the copy still mentions the swipe.
+
+**Verified:** driven with Playwright at 1280x860 and 390x844 (touch) — the coach card reads the new
+copy, the spotlight lands on the doorway pill (label on desktop, glyph only on a phone), a click
+through the spotlight hole crosses into the Gallery ("crossed to gallery"), and the tour advances to
+"End when you like". Zero console errors. **644 unit tests**, build + lint clean.
+
+---
+
+## Two small fixes: a header that fits every phone, and a tour that starts in the right realm ✅ *(2026-07-28)*
+
+**1. The feed's top bar was clipped on a beta tester's phone** (the monogram cut off on the left,
+"End & view trail" cut off on the right). Not a phone-size problem alone: **every child of the header
+was `shrink-0`**, so once the labels grew the row simply outgrew the viewport. Measured it, rather
+than guessed: at 360px with the root font at 19px (Chrome's page-text scaling, or Android's display
+size) the row is **364px wide in a 360px viewport**. The feed shell is `overflow-hidden`, so the
+surplus was clipped invisibly, and because a hidden box is still *programmatically* scrollable the
+browser slid the whole row sideways when a control at the far end took focus. That is why the logo
+looked cut off too.
+
+- [x] Tighter geometry on a phone (`gap-2`, `px-3`), full spacing from `sm` up.
+- [x] A **short label under `sm`**: "End trail" / "Keep trail", the long form from `sm` up. The wide
+      copy is `display: none`, so it stays out of the accessible name.
+- [x] The End button is the **one child allowed to shrink** (`min-w-0 truncate`), so the row can
+      always fit rather than overflow, however the text is scaled.
+- [x] Found while sweeping every element for overflow: the card's **chip + reactions row** did the
+      same thing at 320px with scaled text. The chip now shrinks past its longest word and breaks it.
+- [x] `pt-safe` **was being used by the tour overlay and had never been defined** as a utility, so it
+      did nothing. Defined (bare `env(safe-area-inset-top)`, a no-op in a browser tab) and the feed
+      header now carries the same top inset, so an installed PWA on a notched phone is clear of it.
+
+**Verified:** a Playwright sweep of `/drift` at 320 / 360 / 390 / 412 / 768 px, each at root font 16
+and 19-22px, asserting that **no element's box leaves the viewport**: previously 360@19 and 320@20
+overflowed, now **ALL WIDTHS OK**. Screenshots in both themes read calm, not cramped.
+`npm run audit:contrast` **PASS, 1456 nodes, 16 views x 2 themes** (the label change touches text, so
+this was re-run rather than assumed).
+
+**2. Starting the tour by hand from the Gallery broke it.** The tour is an Encyclopedia walk: its
+home steps spotlight the orbit search, the field grid and the news subjects, and the Gallery panel
+renders none of them, so the tour pointed at controls that were not on screen.
+
+- [x] `TourProvider.start()` now persists `lastRealm: "encyclopedia"`, so any later mount of the home
+      page restores it (covers the `/account` entry point, where home mounts fresh).
+- [x] The home page also switches its **live** panel over as the tour begins, because "Take a tour"
+      sits on that page: it is already mounted, and no settings restore was going to run again. The
+      async settings read is guarded so it cannot land on top of the tour's choice.
+- [x] **Verified** from both entry points, starting in the Gallery: before the tour the three
+      Encyclopedia-only targets are genuinely absent (the reported bug), and after it starts the
+      Encyclopedia tab is selected, the CTA reads "Surprise me in Encyclopedia", all five home
+      targets exist, and all four home steps reach their spotlight. Zero page errors.
+
+**644 unit tests**, build + lint clean.
+
+---
+
+## Bug fix: "drift within a field" broke on some fields, two ways ✅ *(2026-07-28)*
+
+**The report.** Two symptoms, both after having drifted normally first: on a phone, tapping a field
+drifted **random** cards instead of the field's (a reload cured it); on a laptop, tapping a field gave
+**"Couldn't load a card just now"**, and **only Architecture did it**, and later it worked.
+
+**One root cause, measured rather than guessed.** A field drift asks the discover route for a window
+of a topic's pages ranked by incoming links. Our junk filter drops list/index/navigation pages, and
+one of its rules is `/\blistings\b/`. Sorted by incoming links, those hubs are not scattered but
+**contiguous**: `articletopic:architecture` is hundreds of "National Register of Historic Places
+listings in …" pages deep, all densely inter-linked, so they rank high together. A whole 12-page
+window could therefore be **nothing but junk**, and the batch came back empty. Sampling 12 random
+offsets per field: **architecture returned ZERO cards 6 times out of 12** (average 1.3 cards per
+12-page window), **visual-arts 3 of 12**, and mathematics / linguistics / performing-arts / sports
+never. That is why it was Architecture.
+
+Both symptoms follow from that empty batch:
+
+- The **seed** treated one empty window as fatal, threw, and showed "Couldn't load a card just now".
+  A second attempt would have worked, which is exactly the reader's "and then after some time it
+  worked again".
+- A **refill** that came back empty fell through to `doDrift`'s generic last resort, a random
+  *thread* neighbour of the current card. That card is not in the field and arrives labelled only
+  "Drifting" while the banner still promises "Within Architecture": the phone's "it just drifted
+  randomly". A reload re-seeded with fresh offsets, so it looked fixed.
+
+- [x] **Fix the cause: exclude those titles in the SEARCH, not after the fact** (`topicSearch` in
+      `src/lib/wiki.ts`, used by `wikiDiscoverTopic`). The window is then spent on pages we can
+      actually use. Kept in step with `isListLikeTitle` by a unit test, since the two describe the
+      same pages.
+- [x] **The seed no longer believes the first empty answer**: up to 3 windows, the last at the head
+      of the bucket, which is always well-formed. The artist seed is exempt (an oeuvre is a finite
+      ordered set that must be read from the top).
+- [x] **A field refill reaches deeper before giving up.** The ordinary window is the top ~400 pages
+      of a topic, which a long stay in one field can read dry; a second try samples to 1000 rather
+      than pretending a 30,000-page field is empty.
+- [x] **A focused drift never leaves its field silently.** Under a field focus the off-field thread
+      fallback is gone (an honest "the source is catching its breath" instead), and **liking a card
+      no longer pulls the drift out of the field**: the liked-card follow is the passive drift
+      gesture, which is what a focus governs. Pulling a thread yourself is still free, as always
+      under a focus. Unfocused drifting still follows a like exactly as before.
+
+**Verified.** Same probe, after: **all 28 fields, 0 empty windows in 112 samples** (architecture went
+from 1.3 to **12.0 cards per window**). The reported flow driven in a browser (normal drift first,
+home, then a field) on a phone viewport: Architecture, Visual Arts and Mathematics each open cleanly
+and **every** drift is labelled with the field it promised. Liking a card inside a field drift keeps
+the field; liking one in an unfocused drift still follows the like. **648 unit tests**, build + lint
+clean, zero page errors.
 
 ---
 

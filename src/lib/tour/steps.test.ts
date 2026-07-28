@@ -199,7 +199,30 @@ describe("tour steps — the card's controls are all explained", () => {
   // and the feed releases the focus as it opens (see drift/page.tsx). Without
   // that the tour asks for a swipe it has itself just disabled.
   it("puts the cross-realm step after the orbit steps, never before", () => {
-    expect(ids.indexOf("try-horizontal")).toBeGreaterThan(ids.indexOf("orbit-banner"));
+    expect(ids.indexOf("cross-realm")).toBeGreaterThan(ids.indexOf("orbit-banner"));
+  });
+
+  // Crossing realms is taught as a TAP on the top bar's doorway control, never as
+  // a forced sideways swipe: on a laptop trackpad a horizontal swipe is the
+  // browser's own back/forward gesture, so forcing one asked the reader to
+  // navigate out of the app (an over-swipe on a phone can do the same). The
+  // gesture itself still works and the copy mentions it; nothing forces it.
+  it("teaches crossing realms by tapping the doorway control", () => {
+    const cross = stepById("cross-realm")!;
+    expect(cross.target).toBe("cross-realm");
+    expect(cross.spotlight).toBe(true);
+    expect(cross.gestureHint).toBe("tap");
+    expect(cross.advance).toBe("crossed");
+  });
+
+  it("forces no sideways swipe anywhere in the script", () => {
+    for (const s of TOUR_STEPS) {
+      expect(s.gestureHint, `step ${s.id}`).not.toBe("swipe-side");
+    }
+  });
+
+  it("still mentions the sideways swipe, so the gesture stays discoverable", () => {
+    expect(copyOf(stepById("cross-realm")!).toLowerCase()).toContain("swipe");
   });
 });
 

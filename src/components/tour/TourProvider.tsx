@@ -148,6 +148,14 @@ export function TourProvider({ children }: { children: ReactNode }) {
     setActive(true);
     setStepId(first.id);
     writeSession(first.id);
+    // The tour is an ENCYCLOPEDIA walk: its home steps spotlight the orbit
+    // search, the field grid and the news subjects, none of which the Gallery
+    // (or Papers) panel renders. Starting it from another realm therefore left
+    // the tour pointing at controls that were not on screen. Remember
+    // Encyclopedia as the realm so any later mount of the home page restores it;
+    // the home page also forces its live panel over, for the common case where
+    // it is already mounted (the "Take a tour" button lives on it).
+    void setSettings({ lastRealm: "encyclopedia" });
     // The route-orchestration effect escorts us to the first step's route if
     // we're not already there.
   }, []);

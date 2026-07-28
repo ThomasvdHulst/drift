@@ -113,6 +113,38 @@ export function isListLikeTitle(title: string): boolean {
   );
 }
 
+/** The title phrases above, as CirrusSearch exclusion terms. Keep in step with
+ *  `isListLikeTitle`: these are the same pages, refused a step earlier. */
+export const LIST_TITLE_PHRASES = [
+  "listings",
+  "list of",
+  "index of",
+  "outline of",
+  "glossary of",
+  "timeline of",
+] as const;
+
+/**
+ * The CirrusSearch query for one topic's discover batch: the ORES topic, minus
+ * the list/index titles the junk filter would throw away anyway.
+ *
+ * Filtering them in the QUERY rather than after the fact is what makes a field
+ * drift reliable. Sorted by incoming links, a topic's results contain long
+ * *contiguous* stretches of these navigation hubs, because they are densely
+ * inter-linked: `articletopic:architecture` is hundreds of "National Register of
+ * Historic Places listings in …" pages deep. A whole 12-page window could
+ * therefore be nothing but junk, and the batch came back EMPTY. Measured before
+ * this: 6 of 12 random offsets into `architecture` yielded zero cards (and 3 of
+ * 12 into `visual-arts`), which the reader met as "Couldn't load a card just
+ * now" when seeding a field, or as a drift that quietly wandered out of its
+ * field once the buffer ran dry. With the exclusions the same offsets yield a
+ * full window of real articles (Column, Oscar Niemeyer, Brooklyn Bridge …).
+ */
+export function topicSearch(keyword: string): string {
+  const exclusions = LIST_TITLE_PHRASES.map((p) => `-intitle:"${p}"`).join(" ");
+  return `articletopic:${keyword} ${exclusions}`;
+}
+
 /**
  * Normalize a `prefixsearch` generator response into ordered search suggestions,
  * dropping disambiguation + list/index pages. Suggestions have no extract (just a

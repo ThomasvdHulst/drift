@@ -8,6 +8,7 @@ import {
   firstPage,
   actionPageToCard,
   selectCardBatch,
+  topicSearch,
   type ActionPage,
 } from "@/lib/wiki";
 import { topParagraphs } from "@/lib/extract";
@@ -70,7 +71,10 @@ export async function wikiExtended(
 }
 
 /** A batch of popular, on-topic, varied cards for the Encyclopedia drift buffer
- *  (CirrusSearch `articletopic:` + incoming-links floor + random offset). */
+ *  (CirrusSearch `articletopic:` + incoming-links floor + random offset). The
+ *  search excludes list/index titles rather than filtering them afterwards; see
+ *  `topicSearch` for why that is the difference between a field drift working
+ *  and reporting "couldn't load". */
 export async function wikiDiscoverTopic(
   keyword: string,
   offset: number,
@@ -78,7 +82,7 @@ export async function wikiDiscoverTopic(
 ): Promise<Card[]> {
   const raw = await wikiQuery({
     generator: "search",
-    gsrsearch: `articletopic:${keyword}`,
+    gsrsearch: topicSearch(keyword),
     gsrsort: "incoming_links_desc",
     gsroffset: String(offset),
     gsrnamespace: "0",

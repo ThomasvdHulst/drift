@@ -31,6 +31,8 @@ export type TourAdvance =
   | TourEvent
   | { route: string; match?: RouteMatch };
 
+// The cue drawn on the coach card. "swipe-side" is still supported by the
+// overlay but no step forces one any more (see the cross-realm step below).
 export type GestureHint = "swipe-up" | "swipe-side" | "tap";
 
 export interface TourStep {
@@ -202,15 +204,25 @@ export const TOUR_STEPS: TourStep[] = [
     gestureHint: "swipe-up",
   },
   {
-    id: "try-horizontal",
+    // Crossing realms is TAUGHT as a tap, not as a swipe. The sideways swipe
+    // still works and is mentioned here, but it is a poor thing to force: on a
+    // laptop trackpad a horizontal two-finger swipe is the browser's own
+    // back/forward gesture, so the tour was asking people to navigate away from
+    // the app, and an over-swipe on a phone can trigger the same. The top bar's
+    // doorway control does the identical thing on every device, so the step
+    // spotlights that and names the swipe as an aside.
+    id: "cross-realm",
     route: TOUR_ROUTES.drift,
-    target: null,
-    placement: "center",
-    spotlight: false,
+    target: "cross-realm",
+    placement: "auto",
+    spotlight: true,
     advance: "crossed",
-    title: "Swipe sideways to cross realms",
-    body: "A sideways swipe carries you into the other realm, weaving both into one trail. Give it a try.",
-    gestureHint: "swipe-side",
+    title: "Cross into the other realm",
+    body: [
+      "This doorway carries you into the other realm, weaving both into one trail. Give it a tap.",
+      "On a touchscreen a sideways swipe does the same thing.",
+    ],
+    gestureHint: "tap",
   },
   {
     id: "end",

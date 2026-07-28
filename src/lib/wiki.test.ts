@@ -9,6 +9,9 @@ import {
   relatedToCandidates,
   candidateToCard,
   selectCardBatch,
+  isListLikeTitle,
+  topicSearch,
+  LIST_TITLE_PHRASES,
   type ActionPage,
 } from "./wiki";
 
@@ -235,6 +238,48 @@ describe("selectCardBatch", () => {
   it("returns [] for an empty / all-junk batch", () => {
     expect(selectCardBatch([])).toEqual([]);
     expect(selectCardBatch([{ title: "X", extract: "" }])).toEqual([]);
+  });
+
+  // The bug behind "I picked a field and got 'couldn't load a card'": sorted by
+  // incoming links, a topic's results hold long CONTIGUOUS runs of these
+  // navigation hubs, so a whole window could be nothing else and the batch came
+  // back empty. `topicSearch` now excludes them upstream; this pins what such a
+  // window used to look like, so the two halves of the fix stay tied together.
+  it("returns [] for a window that is all 'listings' hubs (the field-drift bug)", () => {
+    const window = [
+      "National Register of Historic Places listings in Dutchess County, New York",
+      "National Register of Historic Places listings in Erie County, New York",
+      "National Register of Historic Places listings in Buffalo, New York",
+    ].map(imaged);
+    expect(selectCardBatch(window)).toEqual([]);
+    for (const p of window) expect(isListLikeTitle(p.title!)).toBe(true);
+  });
+});
+
+describe("topicSearch", () => {
+  it("searches the ORES topic", () => {
+    expect(topicSearch("architecture")).toContain("articletopic:architecture");
+  });
+
+  it("excludes every list/index title phrase the junk filter would drop anyway", () => {
+    const q = topicSearch("architecture");
+    for (const phrase of LIST_TITLE_PHRASES) {
+      expect(q, `excludes ${phrase}`).toContain(`-intitle:"${phrase}"`);
+    }
+  });
+
+  // The exclusions exist to stop us paying for pages we then throw away, so each
+  // one has to correspond to a title `isListLikeTitle` really does reject. If a
+  // phrase here stopped matching a junk rule we would be narrowing the feed for
+  // no reason at all.
+  it("keeps every excluded phrase in step with isListLikeTitle", () => {
+    for (const phrase of LIST_TITLE_PHRASES) {
+      const title =
+        phrase === "listings"
+          ? "National Register of Historic Places listings in Ohio"
+          : `${phrase[0].toUpperCase()}${phrase.slice(1)} rivers of Wales`;
+      expect(isListLikeTitle(title), `${phrase} is junk`).toBe(true);
+    }
   });
 });
 
