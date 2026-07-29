@@ -11,7 +11,15 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > in a small friends-and-colleagues beta. Two realms ship: **Encyclopedia** (Wikipedia) and
 > **Gallery** (Art Institute of Chicago, CC0).
 >
-> **Latest (2026-07-29): starting a drift from the homepage hung on "Finding a starting point…"
+> **Latest (2026-07-29): on the installed app, a new drift inherited the last one.** Pick Physics
+> after Mathematics and you drifted Mathematics; tap Encyclopedia after a Gallery session and you got
+> the Gallery. The URL itself was wrong: Next's client Router Cache keys entries by path segment, so
+> every `/drift?…` session shares one, and a back gesture (how you navigate on a phone) left a stale
+> one that answered the next push. PWA-only because it needs a page that lives for days. `/drift` is
+> now a dynamic segment. A second cause with the same symptom is fixed too: the async settings restore
+> could overrule a realm the reader had already tapped. See the entry at the bottom.
+>
+> **Also (2026-07-29): starting a drift from the homepage hung on "Finding a starting point…"
 > in `npm run dev`.** A dev-only wedge (React StrictMode remounts the effect, the session guard made
 > the second run a no-op, and the cleanup had already cancelled the first), so the deployed site was
 > never affected and neither was the caching work that happened to land alongside it. Fixed, and the
@@ -3092,6 +3100,65 @@ eagerly, a closure cancel flag, a cleanup). It does not wedge today because `loa
 first pass, so the StrictMode double-invoke happens before the guard is claimed. Verified by
 observation: the welcome offer appears on every fresh profile. Worth revisiting if that effect's
 dependencies ever change.
+
+---
+
+## Bug fix: on the installed app, a new drift inherited the last one ✅ *(2026-07-29)*
+
+**The report (a third time, and this time reproduced).** On the home-screen PWA: finish a drift, start
+another, and it keeps the one you just left. Pick Physics after Mathematics and you drift Mathematics.
+Tap Encyclopedia after a Gallery session and you drift the Gallery. Restarting the app cures it. Only
+ever on the installed app, never in a browser tab. The two earlier fixes (the empty-window field seed,
+then "the session follows the URL, not the mount") were both real and neither was this: **the URL
+itself was wrong.**
+
+**Cause 1 (the reported one): Next's client Router Cache keys entries by PATH SEGMENT, not by URL.**
+`/drift` is the one route in Drift whose identity lives entirely in the query string, so every session
+shares one cache entry. Once a `popstate` — the phone's back gesture — has restored a `/drift` entry,
+the next `router.push("/drift?<other params>")` is answered with the URL already sitting in that
+entry. Traced live, the app asked for one thing and Next's own router pushed another:
+
+```
+DBG HOME startFocusedDrift push realm=encyclopedia&focus=field&bucket=physics&seed=Physics
+TRACE pushState  →  /drift?realm=encyclopedia&focus=field&bucket=mathematics&seed=Mathematics
+```
+
+Nothing downstream could have saved it: the feed follows the URL faithfully, and the URL said
+Mathematics. **It needs a long-lived page**, which is exactly why only the installed app had it: on a
+phone the back gesture IS navigation, and a home-screen PWA keeps one document alive for days, so the
+poisoned entry persists until you force-quit. That is the "restarting fixes it" from the report.
+
+- [x] **`/drift` is a dynamic segment** (`app/(app)/drift/layout.tsx`, `dynamic = "force-dynamic"`),
+      which keeps it out of that cache entirely. Isolated first: `router.push`, `router.replace`, a
+      raw `history.pushState` and **a unique nonce in the query string all still fail** (proof the key
+      is the segment, not the URL), while `router.refresh()` beforehand fixes it (proof it is the
+      cache). The cost is one small RSC request per drift start: `/drift`'s server output is a
+      client-component shell with no data, and it is login-gated and `Disallow`ed in robots.txt, so
+      there was nothing to prerender for.
+
+**Cause 2 (found while investigating, same symptom): the settings restore outranked the reader.**
+`/`'s realm panel starts on Encyclopedia and then restores `lastRealm` from IndexedDB asynchronously.
+On a phone that read can land AFTER a tap — storage is slower, and a whole session's writes are still
+draining through the localforage chains — so the button read "Surprise me in Encyclopedia" when they
+aimed at it, "Surprise me in Gallery" by the time they hit it, and started a Gallery drift.
+
+- [x] **A choice already made outranks a restored default.** `realmChosenRef` / `trailChoiceRef` gate
+      the restore, the same guard `tourActiveRef` already used one line above.
+
+**Verified** on an emulated phone against a production build, since the client Router Cache is a
+production-only behaviour (dev never reproduces it). The trigger matrix isolates the cause: a back
+gesture poisons it (3 of 3 shapes), a link-only route back does not. Before: mismatch on the very
+first repeat. After: **12 of 12 soak cycles** (pick a field → drift → end → save → view the trail →
+back → home → pick a different field) land on the field that was tapped, the Gallery-then-Encyclopedia
+case is right, and every entry point (fields, in the news, both realms' "Surprise me") still opens.
+Cause 2 is verified with the phone's slow storage simulated (a 1.5s settings read): the button no
+longer changes under the reader's thumb. Both tests fail against a build with only the fix removed.
+The earlier session-follows-the-URL suite still passes in dev and production. **705 unit tests**,
+build + lint clean, zero page errors.
+
+**Watch this if Next is upgraded:** the fix leans on a framework behaviour, so if `/drift` is ever made
+static again, re-run the trigger matrix. The durable alternative, if it comes back, is to move the
+session identity out of the query string and into the path.
 
 ---
 

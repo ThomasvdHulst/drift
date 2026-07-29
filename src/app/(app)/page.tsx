@@ -69,6 +69,17 @@ export default function Home() {
     tourActiveRef.current = tourActive;
   }, [tourActive]);
 
+  // Controls the reader has already touched on this visit. The settings restore
+  // below is asynchronous, and on a phone (slower storage, and a whole session's
+  // writes still draining through the localforage chains) it can land AFTER a
+  // tap. Without these it quietly put the panel back to the realm they had just
+  // left: the button said "Surprise me in Encyclopedia" when they aimed at it,
+  // said "Surprise me in Gallery" by the time they hit it, and started a Gallery
+  // drift. A restore is only ever restoring a DEFAULT, so a choice already made
+  // outranks it. Same reasoning as `tourActiveRef` above.
+  const realmChosenRef = useRef(false);
+  const trailChoiceRef = useRef(false);
+
   useEffect(() => {
     listTrails().then((ts) => {
       if (ts.length === 0) return setStats(null);
@@ -80,11 +91,12 @@ export default function Home() {
     getSettings().then((s) => {
       if (
         !tourActiveRef.current &&
+        !realmChosenRef.current &&
         s.lastRealm &&
         getRealm(s.lastRealm).id === s.lastRealm
       )
         setActive(s.lastRealm);
-      setKeepTrail(s.sessionMode !== "endless");
+      if (!trailChoiceRef.current) setKeepTrail(s.sessionMode !== "endless");
     });
   }, []);
 
@@ -99,12 +111,14 @@ export default function Home() {
   }, [tourActive]);
 
   function selectRealm(id: RealmId) {
+    realmChosenRef.current = true;
     setActive(id);
     setSettings({ lastRealm: id });
   }
 
   function toggleKeepTrail() {
     const next = !keepTrail;
+    trailChoiceRef.current = true;
     setKeepTrail(next);
     setSettings({ sessionMode: next ? "trail" : "endless" });
   }
