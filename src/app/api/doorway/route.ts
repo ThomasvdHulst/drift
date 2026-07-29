@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { crossRealmDoorway } from "@/lib/realms/server/doorway";
-import { cacheHeaders, CACHE_MEDIUM, NO_STORE } from "@/lib/cache-headers";
+import {
+  cacheHeaders,
+  CACHE_STABLE,
+  CACHE_SHORT,
+  NO_STORE,
+} from "@/lib/cache-headers";
 
 // GET /api/doorway?realm=<from>&id=<native id>
 // → { candidate } when there's a genuine cross-realm doorway, else {}.
@@ -13,11 +18,14 @@ export async function GET(request: Request) {
   if (!id) return NextResponse.json({}, { headers: NO_STORE });
   try {
     const candidate = await crossRealmDoorway(realm, id);
-    // Cache a found doorway (deterministic per card); never cache "no doorway",
-    // which may just be a failed lookup this time.
+    // A found doorway is deterministic per card, so it keeps for a day. "No
+    // doorway" keeps for ten minutes: measured live, about half of all cards have
+    // none, and answering that with NO_STORE meant the same fruitless lookup ran
+    // again for every reader of every one of those cards. A short cache stops the
+    // repetition without freezing what might have been a transient miss.
     return candidate
-      ? NextResponse.json({ candidate }, { headers: cacheHeaders(CACHE_MEDIUM) })
-      : NextResponse.json({}, { headers: NO_STORE });
+      ? NextResponse.json({ candidate }, { headers: cacheHeaders(CACHE_STABLE) })
+      : NextResponse.json({}, { headers: cacheHeaders(CACHE_SHORT) });
   } catch {
     return NextResponse.json({}, { headers: NO_STORE });
   }

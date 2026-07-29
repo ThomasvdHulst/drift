@@ -29,7 +29,44 @@ The four questions this answers:
 
 ## Q3 — The rate-limit problem (the important one), solved properly
 
-### What's actually happening
+> ### Update, 2026-07-28: measured, not estimated
+>
+> The analysis below was written before any caching existed and its "Nothing is cached" paragraph is
+> **out of date**. Current, measured state:
+>
+> - **Edge caching is live and verified in production.** Two identical GETs to
+>   `/api/realm/encyclopedia/summary` returned `x-vercel-cache: MISS` then `HIT`. Cache profiles live
+>   in `src/lib/cache-headers.ts`; every error/empty branch still sends `NO_STORE`.
+> - **Cost per card, measured over a real 12-card session** (Read more every 4th, a reaction every
+>   6th): **≈2.4 Wikimedia calls per card** — threads 1.0, discover ~0.5, Read more ~0.6 (the HTML
+>   body walks 1 to 4 sections), a reaction ~0.3 — plus **~1 Art Institute call** for the cross-realm
+>   doorway. A calm reader is ~5 Wikimedia calls/min.
+> - **So 10 concurrent readers ≈ 50 req/min, a quarter of the 200/min ceiling.** The wall is around
+>   35 to 40 concurrent readers; a fast drifter alone can reach ~30/min.
+> - The gate in `upstream.ts` paces ONE instance to 200/min exactly (300ms spacing). Vercel runs
+>   several instances under load, and each paces independently, so **the aggregate can exceed the
+>   limit while every instance behaves**. That is what would break first.
+>
+> **Cheap levers taken (2026-07-28), no auth and no new infrastructure:**
+>
+> 1. **Discover offsets are aligned to the window size** (`randomOffset(rng, max, step)`), so windows
+>    tile instead of overlapping: 401 distinct URLs per topic became 101 (refill) / 34 (seed), same
+>    range and same cards. Unaligned offsets were the reason the CDN almost never saw a discover URL
+>    twice.
+> 2. **Discover batches moved to `CACHE_STABLE`** (1 day fresh / 7 stale). With (1), a simulated day
+>    of 10 readers goes from **~3% of discover calls served by the edge to ~76%**; at 30 readers, 89%.
+> 3. **"No doorway" is cached for 10 minutes** (`CACHE_SHORT`). About half of all cards have no
+>    doorway (verified live) and that answer used to be `NO_STORE`, so the app's most repeated lookup
+>    was the one that never cached. A genuine upstream failure still throws and stays uncached.
+> 4. **429s are logged** (host + attempt) in `upstream.ts`, so the decision to authenticate is made
+>    on evidence.
+>
+> **The next lever, when it is needed:** authenticating as an established editor (OAuth 2.0
+> owner-only consumer) moves the bucket from 200/min to **2,000/min**. Deliberately not done yet.
+> More email addresses or User-Agents is NOT a lever: the limits are enforced per client identity,
+> Vercel's egress IPs are shared anyway, and it would risk the whole app.
+
+### What's actually happening (as of the original analysis — see the update above)
 
 Every card the user sees costs **live** calls to Wikimedia:
 - 1 call for the card summary (`/api/realm/wikipedia/summary`),

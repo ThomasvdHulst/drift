@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { serverRealm } from "@/lib/realms/server";
-import { cacheHeaders, CACHE_MEDIUM, NO_STORE } from "@/lib/cache-headers";
+import { cacheHeaders, CACHE_STABLE, NO_STORE } from "@/lib/cache-headers";
 
 // GET /api/realm/[realm]/discover?bucket=<slug>&offset=<n>&limit=<n>
 // → a batch of interesting, on-bucket, non-junk Cards for the drift buffer.
@@ -36,11 +36,17 @@ export async function GET(
 
   try {
     const cards = await r.discover({ bucket, offset, limit });
-    // Only cache a real batch. An empty result is more likely a transient upstream
-    // hiccup than a genuine "nothing here", and caching it would freeze the drift
-    // buffer empty for the whole edge population.
+    // A batch is as stable as a page summary — one window of a bucket's ranking,
+    // which barely moves in a day — so it gets the same day-long profile, and
+    // stale-while-revalidate refreshes it in the background. Since offsets are now
+    // aligned to the window size, a day of traffic lands on ~100 URLs per topic
+    // rather than scattering across thousands, which is what makes this worth it.
+    //
+    // Only ever cache a REAL batch. An empty result is more likely a transient
+    // upstream hiccup than a genuine "nothing here", and caching it would freeze
+    // the drift buffer empty for the whole edge population.
     return NextResponse.json(cards, {
-      headers: cards.length ? cacheHeaders(CACHE_MEDIUM) : NO_STORE,
+      headers: cards.length ? cacheHeaders(CACHE_STABLE) : NO_STORE,
     });
   } catch (err) {
     console.error(`[api/realm/${realm}/discover]`, err);

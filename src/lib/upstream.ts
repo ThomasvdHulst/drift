@@ -69,6 +69,16 @@ async function fetchUpstream(
     if (res.ok) return res;
 
     const retryable = res.status === 429 || res.status === 503;
+    // Say so, once per hit. Being rate-limited is currently invisible: the retry
+    // absorbs it and the reader never notices, which is the right behaviour and
+    // the wrong amount of information — the decision to raise our quota should be
+    // made on evidence that we are actually near it, not on a feeling. One line
+    // in the deploy logs is enough to see it coming.
+    if (retryable) {
+      console.warn(
+        `[upstream] ${res.status} from ${hostOf(url)} (attempt ${attempt + 1}/${retries + 1})`,
+      );
+    }
     if (retryable && attempt < retries) {
       const retryAfter = Number(res.headers.get("retry-after"));
       const base =
@@ -79,6 +89,15 @@ async function fetchUpstream(
       continue;
     }
     throw new Error(`Upstream responded ${res.status}`);
+  }
+}
+
+/** Just the host, for a log line that names the source without leaking a query. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "upstream";
   }
 }
 

@@ -24,9 +24,19 @@ export interface CacheProfile {
 // topic labels): fresh for a day, serve-stale-while-revalidate for a week.
 export const CACHE_STABLE: CacheProfile = { sMaxAge: 86_400, swr: 604_800 };
 
-// Deterministic but higher-cardinality / a touch more churn (discover batches,
-// search suggestions, cross-realm doorways): fresh for an hour, stale for a day.
+// Deterministic but higher-cardinality / a touch more churn (search
+// suggestions, artist lookups): fresh for an hour, stale for a day.
 export const CACHE_MEDIUM: CacheProfile = { sMaxAge: 3_600, swr: 86_400 };
+
+// For an answer we BELIEVE but do not want to freeze: fresh for ten minutes,
+// stale for an hour. It exists for "we looked and there is nothing there" —
+// specifically the cross-realm doorway, which finds nothing about half the time.
+// Those misses used to be NO_STORE, on the reasoning that a miss might be a
+// transient failure rather than a real absence. That reasoning is right and the
+// conclusion was too strong: it made the most repeated lookup in the app the one
+// that never cached, so every reader re-asked it for every card. Ten minutes
+// keeps a transient failure transient while stopping the repetition.
+export const CACHE_SHORT: CacheProfile = { sMaxAge: 600, swr: 3_600 };
 
 /**
  * Cache-Control value: the browser always revalidates (max-age=0) while the

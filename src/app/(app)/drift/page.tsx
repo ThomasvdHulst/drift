@@ -405,11 +405,32 @@ function DriftFeed() {
   // its own URL when you anchor an orbit or let a focus go (see below), and those
   // rewrites must not restart the session the reader is in the middle of.
   const appliedKeyRef = useRef<string | null>(null);
+  // The in-flight seed load, held in a REF rather than only in the effect's
+  // closure, so that a second entry into this effect for the SAME session can
+  // re-adopt it. That combination is the whole point:
+  //
+  //   React re-runs an effect by calling its cleanup and then the effect again.
+  //   In development it does that once on mount by design (StrictMode), which
+  //   here meant: run 1 claims the key and starts loading → cleanup cancels it →
+  //   run 2 sees its own key already applied and returns. Nothing was left to
+  //   finish the load, so `initialLoading` never cleared and the feed sat on
+  //   "Finding a starting point…" forever. Reloading the page appeared to fix it
+  //   because a hydration mount is not double-invoked, which is exactly why this
+  //   only ever bit a click-through from the homepage.
+  //
+  // So the guard below un-cancels instead of walking away. A cleanup with no
+  // successor is still a real teardown (leaving /drift mid-load), and that one
+  // still cancels — no stray fetches, no `persistSeen` for a card nobody saw.
+  const loadRef = useRef<{ cancelled: boolean }>({ cancelled: false });
   useEffect(() => {
-    if (appliedKeyRef.current === paramKey) return; // same session; nothing to do
+    if (appliedKeyRef.current === paramKey) {
+      loadRef.current.cancelled = false; // re-adopt (see above); no-op once loaded
+      return; // same session; nothing else to do
+    }
     const restarting = appliedKeyRef.current !== null;
     appliedKeyRef.current = paramKey;
-    let cancelled = false;
+    const load = { cancelled: false };
+    loadRef.current = load;
     (async () => {
       const params = new URLSearchParams(paramsString);
       // Arriving at a DIFFERENT session in the same component: put the feed back
@@ -486,16 +507,16 @@ function DriftFeed() {
           /* default: personalization on */
         }
         try {
-          if (!cancelled) setReactions(await getReactions());
+          if (!load.cancelled) setReactions(await getReactions());
         } catch {
           /* no reactions yet */
         }
-        if (cancelled) return;
+        if (load.cancelled) return;
 
         // Continue a saved trail: rehydrate its steps and resume at the last one.
         if (continueId) {
           const trail = await getTrail(continueId);
-          if (cancelled) return;
+          if (load.cancelled) return;
           if (trail && trail.steps.length > 0) {
             const trealm = getRealm(trail.realm).id;
             realmRef.current = trealm;
@@ -593,12 +614,17 @@ function DriftFeed() {
                 bucket: bucketParam,
                 // The last try goes to the head of the bucket, which is always
                 // well-formed: variety matters less than actually opening.
+                // Aligned to the window we are asking for, so two readers who
+                // land on the same stretch of a bucket share one upstream call
+                // (see `randomOffset`).
                 offset:
-                  artistSeed || attempt === SEED_TRIES - 1 ? 0 : randomOffset(),
+                  artistSeed || attempt === SEED_TRIES - 1
+                    ? 0
+                    : randomOffset(Math.random, 400, SEED_LIMIT),
                 limit: SEED_LIMIT,
               }),
             );
-            if (cancelled) return;
+            if (load.cancelled) return;
             const batch = (await res.json()) as Card[];
             if (res.ok && Array.isArray(batch) && batch.length > 0) {
               cards = batch;
@@ -651,7 +677,7 @@ function DriftFeed() {
             throw new Error("no card");
           }
         }
-        if (cancelled || !card) return;
+        if (load.cancelled || !card) return;
         seenRef.current.add(cardId(card));
         persistSeen([cardId(card)]);
         if (wantEndless) setEndless(true);
@@ -682,16 +708,16 @@ function DriftFeed() {
         ]);
         setPos(0);
       } catch {
-        if (!cancelled)
+        if (!load.cancelled)
           setError(
             "Couldn't load a card just now. Check your connection and try again.",
           );
       } finally {
-        if (!cancelled) setInitialLoading(false);
+        if (!load.cancelled) setInitialLoading(false);
       }
     })();
     return () => {
-      cancelled = true;
+      load.cancelled = true;
     };
     // `paramsString` is here so the values read above are the ones this render
     // actually holds; `paramKey` is what decides whether anything happens at all.
@@ -1224,9 +1250,15 @@ function DriftFeed() {
           const res = await fetch(
             discoverUrl(rid, {
               bucket: pick.bucket,
+              // Whole windows again (the sequential artist path already pages by
+              // DISCOVER_LIMIT, which is the same idea).
               offset: sequential
                 ? base + i * DISCOVER_LIMIT
-                : randomOffset(Math.random, opts.deep ? DEEP_OFFSET_MAX : undefined),
+                : randomOffset(
+                    Math.random,
+                    opts.deep ? DEEP_OFFSET_MAX : 400,
+                    DISCOVER_LIMIT,
+                  ),
               limit: DISCOVER_LIMIT,
             }),
             { signal: AbortSignal.timeout(6000) },

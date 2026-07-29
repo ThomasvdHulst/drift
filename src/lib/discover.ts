@@ -8,11 +8,30 @@ import { pickRandom } from "./pick";
 // model (M9) supplies weights to `weightedTopic`.
 // ---------------------------------------------------------------------------
 
-/** A bounded random offset into a topic's incoming-links-sorted results. Kept
+/**
+ * A bounded random offset into a topic's incoming-links-sorted results. Kept
  * small so drifted cards stay recognizable/interesting (deep offsets get
- * obscure) while still varying which popular pages surface. */
-export function randomOffset(rng: () => number = Math.random, max = 400): number {
-  return Math.floor(rng() * (max + 1));
+ * obscure) while still varying which popular pages surface.
+ *
+ * `step` is the size of the window the caller is about to ask for, and passing it
+ * is what makes the result CACHEABLE. Left to itself this returns any integer in
+ * 0..400, so a 4-card window could start at 0, 1, 2, 3… — 401 different URLs per
+ * topic, roughly 11,000 across the registry, which is why the shared edge cache
+ * almost never saw the same discover URL twice and every reader paid for their
+ * own upstream call. Aligned to the window size the offsets land on whole pages
+ * (0, 4, 8 …), so windows TILE instead of overlapping: the same range, the same
+ * cards, about a fifth of the URLs, and no page half-served at two offsets.
+ *
+ * The default of 1 keeps the old behaviour for any caller that has no window.
+ */
+export function randomOffset(
+  rng: () => number = Math.random,
+  max = 400,
+  step = 1,
+): number {
+  const size = Math.max(1, Math.floor(step));
+  const pages = Math.floor(max / size);
+  return Math.floor(rng() * (pages + 1)) * size;
 }
 
 /** Uniformly-random topic over the whole registry (cold start / serendipity). */

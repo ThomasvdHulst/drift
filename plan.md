@@ -5,13 +5,19 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 **tested with success**. Keep the "Current status" line accurate. Full product detail is in
 `drift-spec.md`; working rules are in `CLAUDE.md`.
 
-> ## Current status — 2026-07-28
+> ## Current status — 2026-07-29
 >
 > **Drift is live** at <https://www.usedrift.org> (Vercel + Supabase) as an installable PWA,
 > in a small friends-and-colleagues beta. Two realms ship: **Encyclopedia** (Wikipedia) and
 > **Gallery** (Art Institute of Chicago, CC0).
 >
-> **Latest (2026-07-28): Phase 26 — cards can carry TABLES.** "Read more" now builds the body from
+> **Latest (2026-07-29): starting a drift from the homepage hung on "Finding a starting point…"
+> in `npm run dev`.** A dev-only wedge (React StrictMode remounts the effect, the session guard made
+> the second run a no-op, and the cleanup had already cancelled the first), so the deployed site was
+> never affected and neither was the caching work that happened to land alongside it. Fixed, and the
+> guard is now safe against any repeat entry. See the entry at the bottom.
+>
+> **Phase 26 (2026-07-28) — cards can carry TABLES.** "Read more" now builds the body from
 > the article's real HTML, so a paragraph saying "as the table below shows" is followed by that
 > table, and the page's infobox fills the card's Details disclosure. Compliance was verified against
 > Wikipedia's own rules first (see M-W0): the one real gap, a licence notice that named CC BY-SA
@@ -3000,6 +3006,94 @@ lint clean, zero page errors.
 
 ---
 
+## Scaling, the cheap end: making the calls we already make count ✅ *(2026-07-28)*
+
+**The question.** At 200 req/min to Wikimedia, does the app hold up with ~10 concurrent readers, and
+is the answer "register more email addresses"? No, and no.
+
+**Measured first.** A real 12-card session costs **≈2.4 Wikimedia calls per card** (threads 1.0,
+discover ~0.5, Read more ~0.6, a reaction ~0.3) plus ~1 Art Institute call for the doorway. A calm
+reader is ~5 calls/min, so **10 readers ≈ 50/min: a quarter of the ceiling**, and the wall is around
+35 to 40 concurrent readers. Two facts shaped the work: **the edge cache already works** (verified in
+production, `x-vercel-cache: MISS` then `HIT`), so the lever is hit RATE; and **half of all doorway
+lookups find nothing and were `NO_STORE`**, making the most repeated lookup the one that never cached.
+
+- [x] **Discover offsets align to the window size** (`randomOffset(rng, max, step)` in
+      `lib/discover.ts`). Unaligned, a 4-card window could start at any of 401 offsets per topic
+      (~11,000 URLs across the registry), so the CDN almost never saw one twice. Aligned, windows
+      tile: 101 URLs per topic for refills, 34 for seeds, **same range, same cards**, no page
+      half-served at two offsets.
+- [x] **Discover batches are `CACHE_STABLE`** (1 day / 7 stale) rather than `CACHE_MEDIUM`. A bucket's
+      ranking barely moves in a day and stale-while-revalidate refreshes it in the background.
+- [x] **"No doorway" caches for 10 minutes** (new `CACHE_SHORT`), and a found doorway for a day. The
+      old reasoning — a miss might be a transient failure — was right, and the conclusion (`NO_STORE`)
+      too strong. `crossRealmDoorway` now **throws** on an upstream failure instead of swallowing it,
+      so `null` means only "we looked and there is nothing there": a real failure still answers with
+      no doorway and `NO_STORE`, and is never cached as if it were an answer.
+- [x] **429s are logged** with their host in `upstream.ts`. Being rate-limited was invisible: the
+      retry absorbed it and nobody could see us approaching the ceiling.
+
+**Deliberately not done:** client-side IndexedDB caches for threads or expanded bodies (Drift avoids
+repeats by design, so the hit rate would be near zero for real complexity), deferring the doorway
+prefetch (it feeds a visible chip, so that is a product change), authentication, and extra
+identities. On the last one: the limits are enforced **per client identity**, Vercel's egress IPs are
+shared regardless, and rotating identities to multiply quota risks the whole app. The sanctioned 10x
+is authenticating as an established editor (200 → **2,000/min**), which is a later decision.
+
+**Verified:** simulated over a day of traffic, discover goes from **~3% of calls served by the edge
+to ~76%** at 10 readers (89% at 30); locally, every requested offset is a whole window, 15 drifted
+cards were 15 distinct cards across 7 topics (variety untouched), a field drift still works, and the
+doorway now answers `s-maxage=600` for "nothing there" and `s-maxage=86400` for a hit. **705 unit
+tests**, build + lint clean. Numbers and the reasoning are written up in `docs/beta-readiness.md` Q3.
+
+---
+
+
+## Bug fix: starting a drift hung on "Finding a starting point…" in dev ✅ *(2026-07-29)*
+
+**The report.** Clicking a drift button on the homepage sat on "Finding a starting point…" forever.
+Reloading that same URL opened the first card normally. It appeared right after the caching work
+above, so that was the first suspect.
+
+**It was not the caching work, and it was not production.** The same failure reproduces on the
+commit *before* those changes, and a production build of that same unfixed commit **passes** (all
+nine scripted entry paths). It is dev-only, which is also why "reload and it works" was such a clean
+tell: React StrictMode double-invokes an effect on a client-rendered mount, and **not** on a
+hydration mount. A homepage click is client-rendered; a reload is hydrated.
+
+**Cause: the session guard and the cancel flag disagreed about what a cleanup means.** The seed
+effect claims its session key in `appliedKeyRef` *before* the load finishes, and returns early if the
+key is already claimed. React re-runs an effect by calling the cleanup and then the effect body, so
+StrictMode produced: run 1 claims the key and starts loading → cleanup sets `cancelled = true` → run 2
+sees its own key already applied and returns. Nothing was left to finish the load, the `finally` that
+clears `initialLoading` is itself guarded by `!cancelled`, and the feed sat there.
+
+Instrumented, verbatim from the run: `effect FIRE applied=null` → `before loadSeen` → `cleanup` →
+`effect FIRE applied=<same key>` → `effect BAILED (same key)` → `pre-continue, cancelled= true`, and
+**zero** network requests. After a reload the effect fires once and reaches `fetchDiscoverBatch`.
+
+- [x] **The in-flight load lives in a ref, so a repeat entry can re-adopt it.** The guard now clears
+      the cancel flag instead of walking away; a cleanup with **no** successor (really leaving
+      `/drift` mid-load) still cancels, so there are no stray fetches and no `persistSeen` for a card
+      nobody saw. This also hardens the guard against any future same-key re-fire in production, e.g.
+      a non-session param changing while the seed is still loading.
+
+**Verified** in a browser (headless Chromium, an isolated dev instance): the five soft-nav entry
+points that were all wedged — Encyclopedia "Surprise me", a field tile, an "in the news" tile, and
+Gallery "Surprise me" — now open a card, and so do a hard load and a forward-navigation back into a
+session. The guard's original job still holds: "Drift freely" rewrites the URL with the trail
+undisturbed (same card, no reload, no restart). The same script passes against a production build.
+**705 unit tests**, build + lint clean, zero page errors. No unit test was added: the defect is
+effect-lifecycle behaviour in a page component, and a pure-logic restatement of it would only test
+the copy.
+
+**Noted, not changed:** `TourProvider`'s welcome-offer effect has the same shape (`decidedRef` claimed
+eagerly, a closure cancel flag, a cleanup). It does not wedge today because `loading` is true on the
+first pass, so the StrictMode double-invoke happens before the guard is claimed. Verified by
+observation: the welcome offer appears on every fresh profile. Worth revisiting if that effect's
+dependencies ever change.
+
+---
 
 ## Out of scope for v1 (do not build unless asked)
 
