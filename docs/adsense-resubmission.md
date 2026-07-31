@@ -82,15 +82,20 @@ all are reachable from the footer on every public page.
       few things Google names explicitly, and a journal whose newest entry is three months old
       argues against you. Two more posts between now and October is enough.
 - [ ] **Resubmit** in the AdSense dashboard: Sites > your site > Request review.
-- [ ] **Leave the ad kill-switch off** until you are approved. `NEXT_PUBLIC_ADS_ENABLED` stays unset.
-      Ad slots on a site with no approval are pointless and the AdSense script sets third-party
-      cookies, which would make the current `/privacy` copy untrue.
+- [ ] **Leave the ad kill-switch off** until the consent gate exists. `NEXT_PUBLIC_ADS_ENABLED` stays
+      `0`. As of 31 July 2026 that switch governs *everything* Google: the loader script, the
+      ownership meta tag and the consent gate. Turning it on before the gate is built would recreate
+      the breach found at B-1 of the compliance audit.
+- [ ] **`public/ads.txt` is parked** at `docs/ads.txt.pending` (compliance audit Mi-6: it publicly
+      declared an intent to monetise while producing no revenue, which is one of the facts that
+      hardens the imprint obligation). Move it back to `public/ads.txt` on approval.
 
 ### If it is approved
 
 - [ ] **Set up the crawler login** so ads can serve inside the app. AdSense > Account > Access and
       authorization > Crawler login. This is the thing that does not exist until now.
-- [ ] **Check `public/ads.txt`** still matches your publisher id.
+- [ ] **Restore `ads.txt`**: move `docs/ads.txt.pending` back to `public/ads.txt` and check it still
+      matches your publisher id.
 - [ ] **Update `/privacy` and the `/faq` answer about ads** before flipping the switch. Both
       currently say there is no advertising cookie, which stops being true the moment the AdSense
       script loads. `privacy/page.tsx` already branches on `adsenseScriptEnabled`, so check what that

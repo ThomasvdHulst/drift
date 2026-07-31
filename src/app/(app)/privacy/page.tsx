@@ -79,22 +79,34 @@ export default function PrivacyPage() {
           <Section title="Cookies and storage">
             {USES_ADSENSE ? (
               <p className="text-ink-soft">
-                To help keep Drift free, it uses Google AdSense. With your
-                consent, AdSense may set third-party cookies, and you can change
-                that choice from the consent prompt in the app. Everything else is
-                essential only: a secure sign-in token so you stay logged in, your
-                saved trails and settings, and small preferences like dark mode.
-                Drift itself runs no tracking or analytics.
+                Drift uses Google AdSense to help keep it free. Nothing from
+                Google loads until you have made a choice, and if you decline,
+                nothing from Google loads at all. You can change or withdraw that
+                choice at any time from the &ldquo;Cookie settings&rdquo; link in
+                the footer. Everything else is essential only: a secure sign-in
+                token so you stay logged in, your saved trails and settings, and
+                small preferences like dark mode. Drift itself runs no tracking or
+                analytics.
               </p>
             ) : (
-              <p className="text-ink-soft">
-                Drift uses no tracking cookies, no advertising, and no third-party
-                analytics. It sets no browser cookies at all. To work, it keeps a
-                few essential things in your browser&apos;s own storage: a secure
-                sign-in token so you stay logged in, your saved trails and
-                settings, and small preferences like dark mode. Nothing here
-                follows you around the web, so there is nothing to opt out of.
-              </p>
+              <>
+                <p className="text-ink-soft">
+                  Drift uses no tracking cookies, no advertising, and no
+                  third-party analytics. It sets no browser cookies at all. To
+                  work, it keeps a few essential things in your browser&apos;s own
+                  storage: a secure sign-in token so you stay logged in, your
+                  saved trails and settings, and small preferences like dark mode.
+                  Nothing here follows you around the web, so there is nothing to
+                  opt out of.
+                </p>
+                <p className="mt-3 text-ink-soft">
+                  Drift does not currently show advertising and loads nothing from
+                  an advertising network. If advertising is introduced, this page
+                  will be updated first, and you will be asked before anything
+                  from an advertiser loads. You will be able to change or withdraw
+                  that choice at any time.
+                </p>
+              </>
             )}
           </Section>
 

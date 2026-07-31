@@ -3238,6 +3238,52 @@ the doc is to stop applying rather than keep padding.
 
 ---
 
+## Compliance audit, M0: the live breach ✅ *(2026-07-31)*
+
+An independent legal and copyright audit was commissioned (`docs/drift-compliance-audit.md`, and the
+brief it was given is at `docs/legal-audit-prompt.md`). Its verdict: Drift **could not lawfully
+operate as configured**, and the reason was not the plan to run ads, which every licence and source
+term permits. It was that the AdSense loader was already live on every public page with no consent
+mechanism, while `/privacy` described a consent prompt that had never been built.
+
+Measured live before the fix: a cold load of `/` contacted `pagead2.googlesyndication.com` **and**
+`fundingchoicesmessages.google.com`, and wrote an **`FCCDCF` cookie** to `.usedrift.org`. So this was
+not a latent script problem. A cookie was being set on every visitor, including logged-out EEA
+visitors, with no banner, no CMP and no consent signal, on a site earning nothing because the AdSense
+application had been refused.
+
+**Cause: two switches that disagreed.** `adsenseScriptEnabled` required only a publisher id, while
+`adsenseReady` (the visible ad units) required the kill switch. The reasoning was that the script had
+to be live for Google to review the site while ads stayed off. That produced the worst of both: full
+legal exposure, no revenue.
+
+- [x] **One switch.** `NEXT_PUBLIC_ADS_ENABLED` now governs everything Google: the loader script, the
+      ownership meta tag, and (in M4) the consent gate and the copy describing it. `adsenseScriptEnabled`
+      requires `enabled && client`. A test asserts the property directly: with the switch off there is
+      **no** combination of the other variables that puts Google on the page.
+- [x] **The false sentence on `/privacy` is gone.** With ads off the page now states plainly that Drift
+      shows no advertising and that consent will be asked for before anything from an advertiser loads.
+      The ads-on branch was rewritten to describe a gate that will actually exist, and is dormant until it does.
+- [x] **`ads.txt` parked** at `docs/ads.txt.pending` until the account is approved (audit Mi-6).
+- [x] **`StorageNotice` marked as informational only.** Audit C-13 is explicit that a "Got it"
+      dismissal cannot become valid consent by acquiring a second button; the comment says so where
+      the next person will read it.
+
+**Verified** against a production build carrying the **live publisher id** with the switch off, which
+is production's exact configuration: 10 public pages, **zero third-party requests, zero cookies**.
+The same script against the live site returns 2 third-party hosts and 1 cookie, so the check has
+teeth. 722 unit tests, build + lint clean.
+
+**Still open:** M1 to M5 of the audit (per-image credit, the legal documents, the Gallery EU
+public-domain filter, the consent gate, hygiene) plus the operator tasks (processor agreements,
+hosting regions, KvK/VAT, trademark searches). Four of the audit's open questions were resolved
+against the code: arXiv already has its own 3 s gate, the landing images are recorded as AIC CC0 /
+Haeckel / NASA-ESA-Hubble (the ESA ones still need checking, since ESA/Hubble material is usually
+CC BY 4.0 and not public domain), no cached route reads the session, and the inbox renders a received
+card with **no** licence notice, which is a real gap M1 closes.
+
+---
+
 ## Out of scope for v1 (do not build unless asked)
 
 Accounts / social / comments, mobile packaging, non-Wikipedia sources, and all

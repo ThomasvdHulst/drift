@@ -61,8 +61,13 @@ export function StorageNotice() {
     >
       <div className="flex w-full max-w-lg flex-col gap-3 rounded-2xl bg-paper-raised p-4 shadow-xl ring-1 ring-line sm:flex-row sm:items-center sm:gap-4 sm:p-5">
         <p className="text-sm leading-relaxed text-ink-soft">
+          {/* This notice INFORMS; it is not and must never become the consent
+              mechanism (compliance audit C-13: a "Got it" dismissal cannot become
+              valid consent by acquiring a second button). The ads branch is
+              dormant until the consent gate ships, and its wording is finalised
+              there so it describes a gate that exists. */}
           {USES_ADSENSE
-            ? "Drift keeps your account and trails so they work across your devices, and uses Google AdSense, which may set cookies with your consent. "
+            ? "Drift keeps your account and trails so they work across your devices, and uses Google AdSense. You choose whether anything from Google loads. "
             : "Drift keeps your account and trails so it works across your devices. No tracking, no ads, no third-party cookies. "}
           <Link
             href="/privacy"

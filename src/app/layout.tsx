@@ -76,13 +76,14 @@ export const metadata: Metadata = {
     title: "Drift",
     statusBarStyle: "default",
   },
-  // AdSense ownership verification (Phase 21). Rendered server-side into <head> as
-  // <meta name="google-adsense-account" content="ca-pub-..."> on EVERY page (incl.
-  // the logged-out landing), so Google's verifier sees it in the static HTML. This
-  // is separate from the adsbygoogle.js loader below (which serves ads): the loader
-  // is injected after hydration, so it is not reliable for ownership verification.
-  ...(ADS.client
-    ? { other: { "google-adsense-account": ADS.client } }
+  // AdSense ownership verification: <meta name="google-adsense-account"> in the
+  // static HTML. Gated on the SAME switch as the loader script below, not merely on
+  // a publisher id being configured. The meta tag alone sets no cookie, but it
+  // advertises an active ad integration on a site that must not have one until the
+  // consent gate exists, and keeping the two on one condition is what stops them
+  // drifting apart again (compliance audit B-1).
+  ...(adsenseScriptEnabled(ADS)
+    ? { other: { "google-adsense-account": ADS.client as string } }
     : {}),
 };
 
@@ -102,12 +103,15 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // Ads (Phase 21) are OFF by default. The AdSense loader script loads as soon as
-  // a publisher id (NEXT_PUBLIC_ADSENSE_CLIENT) is set — this is what actually
-  // serves ads later, independent of the ad kill switch (so the site can be "under
-  // review" with no visible ads). Ownership verification uses the meta tag above,
-  // not this loader. With no client id set, no third-party request is made and no
-  // cookies are set.
+  // Ads are OFF by default, and "off" now means genuinely nothing: no loader, no
+  // meta tag, no third-party request, no cookie. Both are gated on
+  // `adsenseScriptEnabled`, which requires NEXT_PUBLIC_ADS_ENABLED and not merely a
+  // publisher id. See lib/ads.ts for what that used to do and why it mattered.
+  //
+  // When the switch goes on, this loader must NOT be the first thing that happens:
+  // the consent gate has to run first and nothing third-party may load before the
+  // reader has chosen (compliance audit B-1). That gate is M4 of the audit
+  // implementation; until it exists, do not set NEXT_PUBLIC_ADS_ENABLED.
   return (
     <html
       lang="en"

@@ -56,13 +56,31 @@ export function shouldShowAd(driftsSinceAd: number, every: number): boolean {
   return every >= 1 && driftsSinceAd >= every;
 }
 
-/** Whether to load the AdSense loader script (adsbygoogle.js). Needs ONLY the
- *  publisher id, NOT the kill switch: the script must be live for Google to review
- *  the site (and it sets the third-party cookies), while visible in-feed ads stay
- *  off until `adsenseReady` is also true. Setting NEXT_PUBLIC_ADSENSE_CLIENT alone
- *  = the "under review, no visible ads" state. */
+/**
+ * Whether ANY Google advertising code may reach the page: the loader script, the
+ * ownership meta tag, and the consent gate that has to precede them.
+ *
+ * This requires the kill switch, not just a publisher id. It used to require only
+ * the id, on the reasoning that the script had to be live for Google to review the
+ * site while visible ads stayed off. That reasoning was wrong in a way that cost
+ * us: with a publisher id configured and ads switched off, production was serving
+ * `adsbygoogle.js` AND `fundingchoicesmessages.google.com` to every visitor,
+ * including logged-out EEA visitors, and writing an `FCCDCF` cookie, with no
+ * consent mechanism anywhere (compliance audit B-1, verified live 2026-07-31).
+ * Drift was carrying the entire legal exposure of an ad-funded site while earning
+ * nothing, because the AdSense application had been refused.
+ *
+ * So there is now ONE switch. `NEXT_PUBLIC_ADS_ENABLED` decides whether any of it
+ * exists: the script, the meta tag, the consent gate, and the wording on /privacy
+ * and /faq that describes them. Off means no third-party request and no cookie,
+ * and the copy that says so is true. On means the consent gate runs first and
+ * nothing third-party loads before a choice.
+ *
+ * Ownership verification is not a reason to weaken this. AdSense also verifies via
+ * `ads.txt` and via a site-level review that only needs the site reachable.
+ */
 export function adsenseScriptEnabled(cfg: AdsConfig): boolean {
-  return !!cfg.client;
+  return cfg.enabled && !!cfg.client;
 }
 
 /** Whether a real AdSense ad unit should actually render (kill switch on + adsense

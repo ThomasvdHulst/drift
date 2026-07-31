@@ -1,4 +1,4 @@
-import { NotePage, Section, P, Bullets, Lead, A } from "@/components/PublicPage";
+import { NotePage, Section, P, Bullets, Lead } from "@/components/PublicPage";
 import { noteBySlug } from "@/lib/notes";
 
 const SLUG = "why-drift-exists";

@@ -67,20 +67,56 @@ describe("shouldShowAd", () => {
 });
 
 describe("adsenseScriptEnabled", () => {
-  it("loads on just a client id (for review), independent of the kill switch", () => {
-    expect(
-      adsenseScriptEnabled(parseAdsConfig({ NEXT_PUBLIC_ADSENSE_CLIENT: "ca-pub-1" })),
-    ).toBe(true);
-    // review state: client set, ads still off -> script loads, no visible ad
-    const reviewCfg = parseAdsConfig({ NEXT_PUBLIC_ADSENSE_CLIENT: "ca-pub-1" });
-    expect(adsenseScriptEnabled(reviewCfg)).toBe(true);
-    expect(adsenseReady(reviewCfg)).toBe(false);
+  // The regression this pins is compliance audit B-1. A publisher id ALONE used
+  // to load the script, which meant production served adsbygoogle.js and Google's
+  // Funding Choices endpoint, and wrote an FCCDCF cookie, to every logged-out EEA
+  // visitor with no consent mechanism and with ads switched off. One switch now
+  // governs all of it.
+  it("needs the kill switch, not just a publisher id", () => {
+    const idOnly = parseAdsConfig({ NEXT_PUBLIC_ADSENSE_CLIENT: "ca-pub-1" });
+    expect(adsenseScriptEnabled(idOnly), "id alone must NOT load anything").toBe(
+      false,
+    );
+    expect(adsenseReady(idOnly)).toBe(false);
   });
+
+  it("loads once the switch is on and a publisher id is set", () => {
+    expect(
+      adsenseScriptEnabled(
+        parseAdsConfig({
+          NEXT_PUBLIC_ADS_ENABLED: "1",
+          NEXT_PUBLIC_ADSENSE_CLIENT: "ca-pub-1",
+        }),
+      ),
+    ).toBe(true);
+  });
+
   it("does not load without a client id", () => {
     expect(adsenseScriptEnabled(parseAdsConfig({}))).toBe(false);
     expect(
       adsenseScriptEnabled(parseAdsConfig({ NEXT_PUBLIC_ADS_ENABLED: "1" })),
     ).toBe(false);
+  });
+
+  // The property that actually matters, stated directly: with the switch off,
+  // there is no configuration of the other variables that puts Google on the page.
+  it("is off for EVERY config with the kill switch off", () => {
+    for (const client of [undefined, "ca-pub-1"]) {
+      for (const slot of [undefined, "slot-1"]) {
+        for (const mode of [undefined, "adsense", "placeholder"]) {
+          const cfg = parseAdsConfig({
+            NEXT_PUBLIC_ADSENSE_CLIENT: client,
+            NEXT_PUBLIC_ADSENSE_SLOT: slot,
+            NEXT_PUBLIC_ADS_MODE: mode,
+          });
+          expect(
+            adsenseScriptEnabled(cfg),
+            `client=${client} slot=${slot} mode=${mode}`,
+          ).toBe(false);
+          expect(adsenseReady(cfg)).toBe(false);
+        }
+      }
+    }
   });
 });
 
