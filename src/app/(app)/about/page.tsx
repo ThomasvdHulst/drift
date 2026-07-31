@@ -134,6 +134,42 @@ export default function AboutPage() {
             </p>
           </Section>
 
+          <Section title="Read further">
+            <p className="text-ink-soft">
+              This page is the short version. There is more detail on:
+            </p>
+            <ul className="mt-2 list-disc space-y-1.5 pl-5 text-ink-soft">
+              <li>
+                <Link href="/how-it-works" className="text-accent-strong hover:underline">
+                  How it works
+                </Link>
+                , with a demo you can try without an account.
+              </li>
+              <li>
+                <Link href="/principles" className="text-accent-strong hover:underline">
+                  Principles
+                </Link>
+                , the five rules Drift is built under and what each rules out.
+              </li>
+              <li>
+                <Link href="/sources" className="text-accent-strong hover:underline">
+                  Sources
+                </Link>
+                , where each card comes from and under which licence.
+              </li>
+              <li>
+                <Link href="/faq" className="text-accent-strong hover:underline">
+                  Questions
+                </Link>
+                , and{" "}
+                <Link href="/notes" className="text-accent-strong hover:underline">
+                  notes
+                </Link>{" "}
+                from building it.
+              </li>
+            </ul>
+          </Section>
+
           <Section title="Get in touch">
             <p className="text-ink-soft">
               A real person reads every message. Tell us what is working, what is

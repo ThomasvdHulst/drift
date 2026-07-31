@@ -41,6 +41,17 @@ const ROUTES = [
   { path: "/", keepModal: true },
   { path: "/" },
   { path: "/about" },
+  // The public reading section. All plain prose, but prose is exactly what the
+  // 4.5:1 rule is about, and these are the pages a stranger is most likely to
+  // land on cold, so they are audited like everything else. One note stands in
+  // for all four: they share a single shell and a single set of tokens.
+  { path: "/how-it-works" },
+  { path: "/principles" },
+  { path: "/sources" },
+  { path: "/faq" },
+  { path: "/notes" },
+  { path: "/notes/why-drift-exists" },
+  { path: "/colophon" },
   { path: "/privacy" },
   { path: "/install" },
   { path: "/contact" },

@@ -262,6 +262,32 @@ export function Landing() {
               </p>
             </div>
             <AuthForm initialMode="signup" />
+            {/* Reading, for anyone not ready to sign up yet. The footer carries
+                the same links, but this puts them where the decision is made. */}
+            <p className="mt-8 text-center text-sm leading-relaxed text-ink/75">
+              Or read more first:{" "}
+              <Link
+                href="/how-it-works"
+                className="text-accent-strong hover:underline"
+              >
+                how it works
+              </Link>
+              ,{" "}
+              <Link
+                href="/principles"
+                className="text-accent-strong hover:underline"
+              >
+                the principles it is built on
+              </Link>
+              , and{" "}
+              <Link
+                href="/sources"
+                className="text-accent-strong hover:underline"
+              >
+                where the content comes from
+              </Link>
+              .
+            </p>
           </div>
         </section>
       </main>

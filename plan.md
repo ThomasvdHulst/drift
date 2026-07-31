@@ -11,7 +11,15 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > in a small friends-and-colleagues beta. Two realms ship: **Encyclopedia** (Wikipedia) and
 > **Gallery** (Art Institute of Chicago, CC0).
 >
-> **Latest (2026-07-29): on the installed app, a new drift inherited the last one.** Pick Physics
+> **Latest (2026-07-29): Drift has a public reading section.** `/how-it-works`, `/principles`,
+> `/sources`, `/faq`, `/colophon` and a `/notes` journal, taking the crawlable surface from 5 URLs
+> and ~2,040 words to 15 and ~8,000. Prompted by an AdSense "Low value content" rejection, which
+> researched out as a 10-day-old domain plus a site with nothing on it to read. We deliberately did
+> NOT open the feed to signed-out visitors: that would have made Drift a republication of Wikipedia,
+> which is the exact thing Google screens for. Owner checklist in `docs/adsense-resubmission.md`.
+> See the entry at the bottom.
+>
+> **Also (2026-07-29): on the installed app, a new drift inherited the last one.** Pick Physics
 > after Mathematics and you drifted Mathematics; tap Encyclopedia after a Gallery session and you got
 > the Gallery. The URL itself was wrong: Next's client Router Cache keys entries by path segment, so
 > every `/drift?…` session shares one, and a back gesture (how you navigate on a phone) left a stale
@@ -3159,6 +3167,74 @@ build + lint clean, zero page errors.
 **Watch this if Next is upgraded:** the fix leans on a framework behaviour, so if `/drift` is ever made
 static again, re-run the trigger matrix. The durable alternative, if it comes back, is to move the
 session identity out of the query string and into the path.
+
+---
+
+## A public reading section, and the AdSense rejection behind it ✅ *(2026-07-29)*
+
+**The trigger.** AdSense refused the site for "Low value content". Researched before building
+anything, and it was not a verdict on the app:
+
+1. **The domain was 10 days old** (registered 2026-07-19, applied within the week). "Low value
+   content" is Google's catch-all for a site with no history; the practical bar is 3 to 6 months.
+   Nothing we build changes that one.
+2. **5 crawlable pages, ~2,040 words**, of which only `/` (595) and `/about` (605) were content.
+   `/privacy`, `/install` and `/contact` are utility pages that do not count. Google's own wording
+   for this rejection: "may not have enough text, and/or the site was deemed to be under construction."
+3. **The product is gated, and the fix does not exist pre-approval.** Verified verbatim: the AdSense
+   crawler login for login-protected pages works only *"After your account has been activated."*
+
+**The move we did NOT make.** Opening the feed to signed-out visitors was on the table and is the one
+change that would have hurt. A crawler at `/drift` gets one random Wikipedia extract in an app shell,
+which is precisely Google's named violation ("copy and republish content from other sites without
+adding any original content"), so it invites a worse rejection and a scraped-content suspension risk
+on a live account. It is also unnecessary: the landing already carries an interactive `ThreadDemo`
+and a rendered trail map, so a reviewer can already see how Drift works.
+
+- [x] **Six new public reading pages** plus a journal: `/how-it-works` (reusing the bundled
+      `ThreadDemo` + `EXAMPLE_TRAILS`, so it demonstrates without a single live upstream call),
+      `/principles` (the §2 rules and what each has cost, the most genuinely unique page on the
+      site), `/sources`, `/faq`, `/colophon`, and `/notes` with four real notes drawn from this
+      project's history (the dead related-pages endpoint, Portal:Current events over a news API, the
+      WCAG audit, why Drift exists).
+- [x] **`components/PublicPage.tsx`** lifts the shell `/about` had grown first (back link, monogram,
+      column width, footer, `Section`) so six pages are content-only, and stays server-only: these
+      pages exist to be read, and a crawler should not need to run JavaScript to find the words.
+- [x] **One list, two readers.** `lib/site.ts` now owns `PUBLIC_CONTENT_ROUTES`; `AuthGate` and
+      `sitemap.ts` both derive from it via `isPublicRoute`. They used to be maintained separately,
+      which is a standing invitation for a page that renders signed-out but is never indexed, or is
+      indexed but shows the sign-in screen (a soft 404). The old test pinned the literal list, which
+      only proved it had not changed; it now asserts the *invariant* in both directions.
+- [x] **`/notes/<slug>` is allowed through by prefix**, matched on `"/notes/"` with the slash, so
+      `/notesecret` stays gated. Pinned by a test.
+- [x] **The registry cannot drift from the routes.** `lib/notes.ts` holds metadata (pure, feeds the
+      index and the sitemap); bodies are static routes, since JSX cannot live in `src/lib` (§8.5).
+      `notes.test.ts` pins every slug to a real page file **and** fails on an orphan route, plus the
+      standing no-em-dash rule on all note copy.
+- [x] **Navigation stays calm for signed-in readers.** The new pages are linked from `PublicFooter`
+      only, which renders on the public pages and never on a signed-in reader's home (that keeps its
+      own short list: trails, atlas, interests, install, contact). The footer went to two rows,
+      reading above and small print below, because eleven links on one wrapped line is a pile.
+- [x] **`docs/adsense-resubmission.md`** is the part only the owner can do: Search Console
+      verification, sitemap submission, how to confirm the pages actually indexed, the earliest
+      sensible resubmission date (~20 October 2026, three months post-registration), the
+      post-approval crawler-login step, and an explicit "do not do this" list.
+- [x] **The contrast audit covers the new routes.** They were about to be the largest block of
+      untested text on the site.
+
+**Verified.** Public surface measured the same way before and after: **5 URLs / ~2,040 words → 15
+URLs / ~8,000 words**, 12 of them real content pages. Checked against a **real gated build** (`next
+start` with the Supabase env present, which is the only way to test this): all 15 render their own
+content to a signed-out visitor, all 7 gated routes still refuse, `/notesecret` 404s, and
+`sitemap.xml` lists exactly the 15 with nothing gated leaked. `npm run audit:contrast`: **2,450 text
+nodes across 24 views x 2 themes, all passing**. **720 unit tests** (15 new), build + lint clean.
+
+**Honest expectation, recorded so a later session does not relitigate it:** approval is still
+unlikely to hinge on any of this. A login-gated app with a dozen pages about itself is a thin case
+for a publisher network, and the deciding factors are domain age and organic traffic. The pages were
+worth building anyway: they are the SEO surface, the sign-up explanation, and the clearest statement
+of what Drift is for. If a second application is refused for the same reason, the recommendation in
+the doc is to stop applying rather than keep padding.
 
 ---
 

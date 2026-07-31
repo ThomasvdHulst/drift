@@ -31,15 +31,53 @@ export function siteUrl(): string {
 // and `sitemap.ts` + `robots.ts` both read it.
 // ---------------------------------------------------------------------------
 
-/** Routes that render real content to a signed-out visitor. `/` shows the
- *  landing page; the other four are AuthGate's PUBLIC_ROUTES allowlist. */
-export const INDEXABLE_ROUTES = [
-  "/",
+/**
+ * The reading pages: real content, rendered to a signed-out visitor. This is the
+ * SINGLE source of truth for that set. `AuthGate` lets these through the login
+ * gate and `sitemap.ts` submits them, so a page cannot end up public but
+ * unlisted, or listed but gated. Those two lists used to be maintained
+ * separately, which is a standing invitation for exactly that mismatch.
+ *
+ * `/notes` is the index. Each published note is its own URL, allowed through by
+ * `isPublicRoute` and added to the sitemap from the NOTES registry
+ * (`lib/notes.ts`), so publishing one never means editing this list.
+ */
+export const PUBLIC_CONTENT_ROUTES = [
   "/about",
+  "/how-it-works",
+  "/principles",
+  "/sources",
+  "/faq",
+  "/notes",
+  "/colophon",
   "/privacy",
   "/install",
   "/contact",
 ] as const;
+
+/**
+ * Public, but nothing to index. `/auth/confirm` is where confirmation and
+ * password-reset links land, so it MUST render signed out (behind the gate it
+ * would show the landing page and silently swallow the token), but it is a
+ * one-time landing strip with no content, so it stays out of the sitemap.
+ */
+export const PUBLIC_UTILITY_ROUTES = ["/auth/confirm"] as const;
+
+/** What search engines are pointed at: the landing page plus the reading pages.
+ *  Individual notes are appended by `sitemap.ts` from the NOTES registry. */
+export const INDEXABLE_ROUTES = ["/", ...PUBLIC_CONTENT_ROUTES] as const;
+
+/** Whether a path renders without an account. The auth gate's allowlist.
+ *  `/notes/<slug>` is matched by prefix (there is one route per published note);
+ *  deliberately `"/notes/"` with the slash, so a route that merely starts with
+ *  those letters is still gated. */
+export function isPublicRoute(pathname: string): boolean {
+  const exact: readonly string[] = [
+    ...PUBLIC_CONTENT_ROUTES,
+    ...PUBLIC_UTILITY_ROUTES,
+  ];
+  return exact.includes(pathname) || pathname.startsWith("/notes/");
+}
 
 /** Everything behind the gate: a crawler gets the sign-in screen, and the real
  *  content is one user's private data. `/api/` is machine-only. */

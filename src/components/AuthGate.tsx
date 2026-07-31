@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
+import { isPublicRoute } from "@/lib/site";
 import { Monogram } from "@/components/BrandLogo";
 import { Landing } from "@/components/landing/Landing";
 
@@ -17,7 +18,10 @@ import { Landing } from "@/components/landing/Landing";
 // links land, and the person opening one is by definition not signed in yet.
 // Behind the gate it would render the landing page and silently swallow the
 // token, which is the bug it was built to fix.
-const PUBLIC_ROUTES = ["/about", "/privacy", "/install", "/contact", "/auth/confirm"];
+// The allowlist lives in `lib/site.ts`, because the SAME set has to be what the
+// sitemap submits: a page that renders signed-out but is not indexed is wasted,
+// and a page that is indexed but renders the sign-in screen is a soft 404. One
+// list, two readers.
 
 // Phase 13: when the cloud IS configured (i.e. the hosted app), Drift requires an
 // account — a logged-out visitor sees a calm sign-in / create-account screen
@@ -33,7 +37,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   if (!cloudConfigured) return <>{children}</>;
 
   // Public informational routes render regardless of auth state.
-  if (pathname && PUBLIC_ROUTES.includes(pathname)) return <>{children}</>;
+  if (pathname && isPublicRoute(pathname)) return <>{children}</>;
 
   // Resolving the session. On `/` this renders the LANDING PAGE rather than a
   // placeholder, because that is what a signed-out visitor is about to get

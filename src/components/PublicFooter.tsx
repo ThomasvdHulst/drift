@@ -4,18 +4,37 @@ import { CC_BY_SA_4, CC0_1 } from "@/lib/licenses";
 import { LicenseLink } from "@/components/LicenseLink";
 
 // A calm, shared footer for every PUBLIC (signed-out-reachable) page: the landing
-// and the /about, /contact, /install, /privacy support pages. It gives each of
-// those a consistent, clear set of links to the others (the "easy to navigate,
-// with clear menus and links" a review looks for), plus the standard content
-// licensing note and a plain ownership line. Presentational and hook-free, so it
-// composes into both the client Landing and the server-rendered support pages.
+// and the explainer + support pages. It gives each of those a consistent, clear
+// set of links to the others (the "easy to navigate, with clear menus and links"
+// a review looks for), plus the standard content licensing note and a plain
+// ownership line. Presentational and hook-free, so it composes into both the
+// client Landing and the server-rendered pages.
+//
+// THIS IS THE ONLY PLACE the explainer pages are linked from, and it renders on
+// the public pages only. A signed-in reader's home has its own short list (trails,
+// atlas, interests, install, contact) and never sees this, so the reading section
+// cannot turn their home screen into twenty buttons. Someone signed in who wants
+// it can still reach every page: they are ordinary URLs, and /about links across.
+//
+// Two rows rather than one, because eleven links in a single wrapped line reads as
+// a pile. The first row is the reading: what Drift is and how it thinks. The
+// second is the small print.
 
-const LINKS: { href: string; label: string }[] = [
+const READ_LINKS: { href: string; label: string }[] = [
   { href: "/", label: "Home" },
   { href: "/about", label: "About" },
-  { href: "/contact", label: "Contact" },
+  { href: "/how-it-works", label: "How it works" },
+  { href: "/principles", label: "Principles" },
+  { href: "/sources", label: "Sources" },
+  { href: "/faq", label: "FAQ" },
+  { href: "/notes", label: "Notes" },
+];
+
+const UTILITY_LINKS: { href: string; label: string }[] = [
   { href: "/install", label: "Install" },
+  { href: "/contact", label: "Contact" },
   { href: "/privacy", label: "Privacy" },
+  { href: "/colophon", label: "Colophon" },
 ];
 
 export function PublicFooter() {
@@ -29,17 +48,30 @@ export function PublicFooter() {
         <Monogram className="h-6" />
         <nav
           aria-label="Site"
-          className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm"
+          className="flex flex-col items-center gap-y-3"
         >
-          {LINKS.map((l) => (
-            <Link
-              key={l.href}
-              href={l.href}
-              className="text-ink-soft underline-offset-2 transition hover:text-accent-strong hover:underline"
-            >
-              {l.label}
-            </Link>
-          ))}
+          <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm">
+            {READ_LINKS.map((l) => (
+              <Link
+                key={l.href}
+                href={l.href}
+                className="text-ink-soft underline-offset-2 transition hover:text-accent-strong hover:underline"
+              >
+                {l.label}
+              </Link>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs">
+            {UTILITY_LINKS.map((l) => (
+              <Link
+                key={l.href}
+                href={l.href}
+                className="text-ink-soft underline-offset-2 transition hover:text-accent-strong hover:underline"
+              >
+                {l.label}
+              </Link>
+            ))}
+          </div>
         </nav>
         {/* The standing licence notice. Both licences are LINKED, not merely
             named: reusing Wikipedia text requires a notice that reaches the
