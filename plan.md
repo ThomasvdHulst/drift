@@ -19,9 +19,13 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > shared cards. **M2** (this session) is the documents: `/terms` meeting DSA Article 14, an Article
 > 16 notice-and-action route, the Article 11/12 contact points, `/privacy` rewritten to the Article
 > 13 checklist, a data export button, the contact-form IP disclosure, and the Article 30 processing
-> record, plus **`/legal`**, the Article 3:15d BW imprint, now that the owner has supplied the
-> details. **M2 is complete.** **M3** (Gallery EU public-domain filter), **M4** (consent gate and age
-> gate) and **M5** (hygiene) are next. See the entries at the bottom.
+> record, plus **`/legal`**, the Article 3:15d BW imprint. **M3** filters the Gallery for the EU term
+> (life plus 70) rather than the museum's US determination. **M4** is the consent gate (nothing from
+> Google loads before a choice, Accept and Reject at measured-equal weight) and the 16+ age gate.
+> **M5** is hygiene: a structural shared-cache guard, gzip, `Retry-After` honoured, deletion
+> propagation proved against the migrations, and a licence line on the text export.
+> **The audit is now fully implemented in code**; what is left needs a dashboard or a decision and is
+> in `docs/owner-actions.md`. See the entries at the bottom.
 >
 > **Also (2026-07-31): a landing-page illustration was NonCommercial.** The Jupiter image was a
 > JunoCam frame processed by citizen scientists and credited `© CC NC SA` on JPL's own page. NASA
@@ -3561,37 +3565,135 @@ checked too: with the switch at its default, cards carry the museum's own URL ex
 
 ---
 
-**STILL TO DO FOR LEGAL AUDIT FIX**
+## Compliance audit, M3 + M4 + M5 ✅ *(2026-07-31)*
 
- M3 — Gallery EU public-domain filter (M-4, your choice: apply now)
+The last three milestones, done together. With these the audit is fully implemented in code; what
+remains is on the owner's list and needs a dashboard or a decision, not a commit.
 
- New pure src/lib/artic.publicdomain.ts: admit only where is_public_domain and every attributed
- artist has death_date <= currentYear - 71; where no death date, require artwork date_end < 1830.
- Unit-test the boundaries and the multi-artist case. Fetch artist agent records via the existing
- /agents path in src/lib/realms/server/artic.ts, cached in the module-level profileCache already
- there so it adds no per-request latency.
+### M3 — the Gallery is now filtered for EUROPE, not America (M-4)
 
- M4 — Consent, and everything ads needs (the switch's "on" side)
+The museum's `is_public_domain` is a **US** determination: 95 years from publication, so in 2026
+anything published before 1931. Europe runs on life of the author plus 70, counted from 31 December
+of the year of death, so the author must have died in **1955 or earlier**. The gap is not narrow, and
+the museum's own terms put the burden on the reuser.
 
- - src/components/ConsentGate.tsx: first-party, server-rendered, no third-party request before a
- choice. Accept and Reject side by side at equal visual weight, one click each, nothing pre-ticked,
- no cookie wall. Renders only when ADS.enabled.
- - Google consent mode v2 with ad_storage, ad_user_data, ad_personalization,
- analytics_storage defaulting to denied; the AdSense tag is injected only after acceptance.
- - Persistent "Cookie settings" in PublicFooter and the app chrome, reopening the choice.
- Withdrawal must delete the cookies.
- - Consent evidence stored per the audit: timestamp, choice, banner version.
- - M-8 age gate: a not-pre-ticked "I am 16 or older" at sign-up; store age_16_plus: boolean, not
- the date (data minimisation). Suppress personalised ads for under-18s.
- - Copy on /privacy and /faq switches to the true description, derived from the same
- adsConfig() read.
+- [x] **`lib/realms/artic.publicdomain.ts`**, pure and 20 tests. Admit only where **every** attributed
+      artist died at or before `currentYear - 71`, recomputed from the clock so the Gallery widens by
+      a year each 1 January with no edit. One unknown modern hand on a collaboration excludes the
+      whole work. Where there is no death date, or no artist at all, fall back to the artwork's own
+      end date and require it to precede 1830.
+- [x] **An unresolvable artist narrows rather than empties.** A failed agent lookup counts as "death
+      date unknown", which sends the work to the date proxy, so an upstream hiccup costs the modern
+      end of the Gallery rather than all of it.
+- [x] **One gate, every seam.** `usable()` in the server adapter is `isUsableArtwork` plus the term
+      test, and all seven card-producing paths go through it, including the thread candidates: a
+      chip promising somewhere to go must not lead somewhere Drift may not show. Artist search
+      drops in-copyright artists before offering them, so a name never resolves to an empty drift.
+- [x] **Costs one request per batch, not per artwork.** `/agents?ids=a,b,c` takes a list, and the
+      records are cached for the life of the instance.
 
- M5 — Hygiene
+**Verified against the live API**, which is the only way this could have been: *E-10: English Dining
+Room* by **Narcissa Niblack Thorne**, whom the museum flags `is_public_domain=true` and who **died in
+1966**, is now refused. Mondrian (1944), Pippin (1946), van Gogh (1890) and Matisse (1954, whose term
+expired one year ago) are all admitted. Antiquities with no named artist survive on the date proxy.
+"Thorne" returns no artist match at all.
 
- M-10 throw in the cacheHeaders helper if the request carried an Authorization header or a
- Supabase cookie, so the guard is structural rather than a comment. BP-3 Accept-Encoding: gzip
- on Wikimedia requests, and honour Retry-After instead of fixed backoff. BP-4 verify deletion
- propagates to shares already delivered. BP-2 licence line on the text export.
+⚠️ **The Gallery got smaller, and by more than the audit predicted.** Of a 20-item page: eight
+buckets lose 0 to 4, but **ukiyo-e drops to 13/20 and botanical to 9/20**. That is not modern
+copyright, it is the 1830 proxy catching nineteenth-century work whose artist has no recorded death
+date. The audit called that proxy "deliberately conservative" and it was left exactly as specified,
+because loosening it is a legal judgement, not a product tweak. If the owner wants that material
+back, the derivable alternative is `cutoff - 85` (1870 in 2026), on "made it at fifteen, lived to a
+hundred". Their call, and it is on their list.
+
+### M4 — the consent gate and the age gate (B-1, M-8)
+
+The "on" side of the switch M0 built. This is what has to exist before `NEXT_PUBLIC_ADS_ENABLED=1`
+is ever set.
+
+- [x] **`lib/consent.ts`** (pure, 13 tests) and **`components/ConsentGate.tsx`**. The provider, the
+      banner, the footer link and the AdSense loader in one file, because they are one mechanism.
+- [x] **One invariant, and it is the whole point.** `AdSenseLoader` renders the Google script if and
+      only if the switch is on **and** the stored choice is `granted`. It is the only path to a
+      third-party request in the app, which makes the claim on `/privacy` checkable.
+- [x] **Accept and Reject at genuinely equal weight**, expressed as one shared class string rather
+      than two that could drift. Measured on rendered pixels: identical width, height, font weight,
+      size, colour, background and border. Refusing is one click, the same as accepting. This is the
+      AP's published `vuistregels` standard and the single thing it writes most letters about.
+- [x] **Nothing pre-ticked** (there is nothing to tick: one purpose, two buttons), **no cookie wall**
+      (the page stays readable and refusing costs nothing), and **withdrawal from every page** via
+      "Cookie settings" in the footer, which reopens the choice. A withdrawal reloads, so the loader
+      never mounts again.
+- [x] **Google consent mode v2**, all four signals defaulting to `denied`, installed as a blocking
+      inline head script so it is in place before anything Google could run. A test asserts the
+      bootstrap contains no `'granted'` anywhere.
+- [x] **Consent evidence** (Article 7(1) puts the burden of demonstrating consent on us): the choice,
+      an ISO timestamp, and the version of the ask. A record answering an older version reads as
+      unset and re-asks, because consent does not carry across a change of purpose or recipient.
+- [x] **The 16+ age gate (M-8).** A never-pre-ticked declaration at sign-up, checked before the
+      password so nobody is asked to fix a password for an account they may not have. Only the
+      **boolean** is stored (`settings.age16Plus`): a date of birth would be a new category of
+      personal data to hold, protect, export and delete for an answer we do not need.
+- [x] **`/faq` copy joins `/privacy`** in deriving its advertising paragraph from the same
+      `adsConfig()` read that governs the loader, so neither page can describe a state the app is
+      not in. That was the B-3 failure.
+
+**Verified in a real browser against a build with ads ON and the live publisher id**, which is the
+configuration this exists for:
+
+| | third-party hosts | cookies |
+|---|---|---|
+| no choice made | **NONE** | **NONE** |
+| pressed Reject all | **NONE** | **NONE** |
+| pressed Accept all | `pagead2.googlesyndication.com` | none yet |
+
+That is the exact inverse of the M0 breach. Re-verified that **ads OFF is still genuinely nothing**
+across 10 pages with the live publisher id present: no banner, no `gtag`, no third-party request.
+Contrast PASS with the banner on screen on every page, both themes.
+
+⚠️ **This is not a certified CMP, and it cannot be.** Google separately requires a Google-certified
+IAB TCF v2.2 platform for personalised ads in the EEA and UK (audit B-2), and certification is a list
+you are on, not code you write. This gate is what makes Drift lawful under ePrivacy and the GDPR. It
+does not make Drift eligible for personalised ads. Also not built: suppressing personalised ads for
+under-18s, which needs an 18+ signal Drift does not collect and a Google API that cannot be tested
+without an approved account. Both are on the owner's list as BEFORE ADS.
+
+### M5 — hygiene (M-10, BP-2, BP-3, BP-4, C-3)
+
+- [x] **The cache guard is structural, not a comment (M-10).** `cacheHeaders(profile, request)` now
+      takes the request and refuses if it carries an `Authorization` header or a Supabase session
+      cookie. To cache anything you must hand over the object that proves you should not. It
+      **throws in development** and degrades to `no-store` in production: a route that stops caching
+      is a performance problem, and serving one reader's data to another is not a problem you fix
+      afterwards. All 11 call sites updated.
+- [x] **`Accept-Encoding: gzip` on Wikimedia requests (BP-3)**, which the robot policy asks for.
+- [x] **`Retry-After` is honoured rather than capped (C-3).** The old code did
+      `Math.min(retryAfter * 1000, 1500)`, which is not honouring it: told to wait five seconds and
+      returning after 1.5 is a faster way to be refused again, and repeated early retries are what
+      move a client into Wikimedia's lowest access class. Now the stated wait is taken in full, the
+      **HTTP-date form** is parsed (it used to read as absent), and a wait longer than 3 s means give
+      up rather than retry early.
+- [x] **Deletion propagation is proved, not assumed (BP-4).** `lib/deletion.test.ts` reads the real
+      migration SQL and asserts every column referencing `auth.users` carries `on delete cascade`,
+      including both ends of `shares`, so a share already delivered to a friend goes when either
+      party deletes their account. It also fails if a future migration adds a user reference without
+      one.
+- [x] **A licence line on the text export (BP-2)**, with the reasoning recorded next to it: the audit
+      is explicit that a text export of titles and URLs is *not* Adapted Material and does not engage
+      §3(a), so this is courtesy, and it does not claim the file is licensed.
+
+### One thing the verification found that the audit missed
+
+Measuring "ads off means zero cookies" turned up a cookie: **`WMF-Uniq`, set by `upload.wikimedia.org`
+whenever a card's picture loads.** Reproduced 4 out of 4. It is Wikimedia's own cookie on Wikimedia's
+own domain, httpOnly, unreadable by Drift, and it appears only once you are reading cards; **the 13
+public pages set nothing at all**. Not caused by any of this work, and not a tracker of ours, but
+`/privacy` said "no cookies" and that is now stated accurately instead. Removing it entirely would
+mean proxying every Wikipedia image the way Gallery images can be proxied, which is a real bandwidth
+decision and belongs to the owner.
+
+**Verified overall.** 855 unit tests (up from 798), build and lint clean, `npm run audit:contrast`
+PASS over 3,356 nodes across 27 views in both themes, and 3,551 with the consent banner on screen.
 
 
 ## Out of scope for v1 (do not build unless asked)

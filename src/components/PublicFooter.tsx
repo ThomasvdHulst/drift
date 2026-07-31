@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Monogram } from "@/components/BrandLogo";
 import { CC_BY_SA_4, CC0_1 } from "@/lib/licenses";
 import { LicenseLink } from "@/components/LicenseLink";
+import { CookieSettingsLink } from "@/components/ConsentGate";
 
 // A calm, shared footer for every PUBLIC (signed-out-reachable) page: the landing
 // and the explainer + support pages. It gives each of those a consistent, clear
@@ -73,6 +74,13 @@ export function PublicFooter() {
                 {l.label}
               </Link>
             ))}
+            {/* Withdrawal has to be as easy as giving it, from every page
+                (compliance audit B-1). Renders nothing while the ads switch is
+                off, so the footer never offers to manage a choice that does not
+                exist. It is a client component in an otherwise server-rendered
+                footer, which is why it is the only entry here that is not a
+                <Link>. */}
+            <CookieSettingsLink className="text-ink-soft underline-offset-2 transition hover:text-accent-strong hover:underline" />
           </div>
         </nav>
         {/* The standing licence notice. Both licences are LINKED, not merely

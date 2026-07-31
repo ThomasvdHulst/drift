@@ -46,7 +46,7 @@ export async function GET(
     // upstream hiccup than a genuine "nothing here", and caching it would freeze
     // the drift buffer empty for the whole edge population.
     return NextResponse.json(cards, {
-      headers: cards.length ? cacheHeaders(CACHE_STABLE) : NO_STORE,
+      headers: cards.length ? cacheHeaders(CACHE_STABLE, request) : NO_STORE,
     });
   } catch (err) {
     console.error(`[api/realm/${realm}/discover]`, err);

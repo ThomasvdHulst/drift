@@ -353,7 +353,64 @@ allowed. So this should only ever have affected you locally, and it is fixed the
 
 ---
 
-## 11. AdSense, in order
+## 11. Three decisions M3 to M5 left for you
+
+None is urgent. Each is a judgement I should not make on your behalf.
+
+### The Gallery got smaller, and one bucket got noticeably smaller
+
+The EU public-domain filter is live: a work is shown only if every attributed artist died in 1955 or
+earlier, or (with no named artist) the work was finished before 1830. Of a 20-item page, most buckets
+lose nothing to four. **Japanese prints drop to 13 and botanical to 9.**
+
+That is not modern copyright. It is the 1830 rule catching nineteenth-century work whose artist has
+no recorded death date at the museum. A print made in 1860 is certainly out of copyright here, but
+the filter cannot prove it, so it declines.
+
+- [ ] **Leave it** (the audit called the 1830 proxy "deliberately conservative" and I left it exactly
+      as specified), **or tell me to relax it** to 1870. The derivation for 1870: an artist was at
+      least fifteen when they made the work and lived at most a hundred years, so a work from year Y
+      implies death by Y + 85, and 1955 minus 85 is 1870. That is still very conservative and it
+      would recover most of what is being lost. It is a legal judgement, not a product tweak, which
+      is why I did not just do it.
+
+### A cookie arrives from Wikimedia, and it is not ours
+
+While verifying that "ads off" means zero cookies, I found one: **`WMF-Uniq`, set by
+`upload.wikimedia.org` every time a card's picture loads.** Reproduced 4 out of 4.
+
+It is Wikimedia's cookie on Wikimedia's domain, httpOnly, unreadable by us, and we get nothing from
+it. **The 13 public pages set nothing at all**; it only appears once you are reading cards, behind
+the login. It is not a tracker of ours and it is a very long way from the AdSense problem.
+
+`/privacy` and `/faq` now say this accurately instead of "no cookies", which is the important part.
+
+- [ ] **Nothing to do**, unless you want it gone. Removing it means proxying Wikipedia images through
+      Drift the way Gallery images already can be (`ARTIC_IMAGE_PROXY`), which puts card image
+      bandwidth on your Vercel bill. Say the word and I will build it; I did not, because it is your
+      money.
+
+### The consent gate exists but does not make you eligible for personalised ads
+
+`NEXT_PUBLIC_ADS_ENABLED=1` now produces a real gate: nothing from Google loads until someone chooses,
+Accept and Reject are identical buttons, and refusing costs nothing. Verified in a browser: zero
+third-party requests before a choice, zero after a refusal, and only then `googlesyndication.com`.
+
+**That makes you lawful under ePrivacy and the GDPR. It does not satisfy Google.** Google requires a
+Google-CERTIFIED IAB TCF v2.2 platform for personalised ads in the EEA and UK, and certification is a
+list you are on, not code I can write. Two things therefore stay open:
+
+- [ ] **[BEFORE ADS]** Use Google's own **Privacy & messaging** (Funding Choices) as the certified
+      layer once the AdSense account is approved. It is free and configured inside AdSense. Tell me
+      when it is on and I will make our gate read its signal instead of asking twice.
+- [ ] **[BEFORE ADS]** **Under-18s.** Google restricts ads personalisation for under-18s. Drift asks
+      only "are you 16 or older", so it cannot tell 16 from 18. Either we add a second declaration,
+      or the CMP handles it. Not built, because it needs an API I cannot test without an approved
+      account, and a guess would be worse than a gap.
+
+---
+
+## 12. AdSense, in order
 
 - [ ] **[WHEN APPROVED]** Move `docs/ads.txt.pending` back to `public/ads.txt`.
 - [ ] **[BEFORE ADS]** Accept the Google Ads Data Processing Terms in the AdSense account.
@@ -378,17 +435,13 @@ allowed. So this should only ever have affected you locally, and it is fixed the
 | **M2** | `/terms` meeting DSA Article 14 (and `/terms.md`, its machine-readable twin); the Article 16 notice-and-action route as a mode of `/contact`, anonymity included; the Article 11/12 contact points; `/privacy` rewritten to the full Article 13 checklist on a contract basis rather than consent; "Download your data" on `/account`; the contact-form IP disclosure; and `docs/processing-record.md`, the Article 30 record. |
 | **M2, closing pass** | **`/legal`, the imprint**, with your real details, linked from every public footer and naming you as the data controller on `/privacy` too. `contact@usedrift.org` is now the built-in published address. The NonCommercial Jupiter image is replaced and the Hubble pair credited on `/colophon`. Verified: 798 tests, contrast PASS across 27 views in both themes, and `/legal` rendering signed out against a real gated build. |
 
-**M2 is complete.** Every document the audit asked for exists. What is left in this file is genuine
-homework: the Supabase DPA check, saving two PDFs, the DPF certification dates, the VAT number if you
-are VAT-liable, and the trade mark conversation.
+| **M3** | The Gallery is filtered for the EU term (life plus 70) rather than the museum's US determination. A work by an artist who died after 1955 is now refused even though the museum flags it public domain. Verified live: a 1966 artist is out, Matisse (1954) is in. |
+| **M4** | The consent gate: nothing from Google loads before a choice, Accept and Reject as measured-identical buttons, no cookie wall, withdrawal from every page, Google consent mode v2 denied by default, and consent evidence. Plus the never-pre-ticked 16+ declaration at sign-up, storing only the boolean. |
+| **M5** | A structural shared-cache guard that throws in development, `Accept-Encoding: gzip`, `Retry-After` honoured in full including the date form, deletion propagation proved against the real migration SQL, and a licence line on the text export. |
 
-**Not yet built.** These are the rest of the approved plan:
+**The audit is now fully implemented in code.** Every finding that could be closed by a commit has
+been. What is left in this file is genuine homework that needs a dashboard or a decision: the
+Supabase DPA check, saving two PDFs, the DPF certification dates, the VAT number if you are
+VAT-liable, the trade mark conversation, and the three judgement calls at §11.
 
-- **M3, the Gallery EU filter.** `is_public_domain` is a US determination; the EU test is the artist
-  dying 1955 or earlier.
-- **M4, the consent gate and the age gate.** The "on" side of the ads switch. The 16+ term is now in
-  the terms and at sign-up; the self-declaration itself is M4.
-- **M5, hygiene.** The cache guard, `Accept-Encoding: gzip`, honouring `Retry-After`, deletion
-  propagation, and a licence line on the text export.
-
-Nothing in M3 to M5 is blocking today, because ads are off and the app is behind a login.
+Nothing outstanding is blocking today, because ads are off and the app is behind a login.

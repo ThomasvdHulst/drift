@@ -5,6 +5,13 @@ import Link from "next/link";
 import { useAuth } from "@/components/AuthProvider";
 import { PasswordField } from "@/components/PasswordField";
 import { passwordHint, passwordProblem } from "@/lib/auth";
+import {
+  MINIMUM_AGE,
+  AGE_SETTING_KEY,
+  mayCreateAccount,
+  ageDeclarationError,
+} from "@/lib/consent";
+import { setSettings } from "@/lib/storage";
 import { OAuthButtons } from "@/components/OAuthButtons";
 import { parseOAuthProviders } from "@/lib/auth";
 
@@ -30,6 +37,8 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: Mode } = {}
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  // Never pre-ticked: a pre-ticked box is a default, not a declaration.
+  const [age16Plus, setAge16Plus] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // When set, we show a dedicated panel instead of the form: "confirm" after a
   // sign-up that needs verification, "reset" after a reset email is sent.
@@ -66,6 +75,13 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: Mode } = {}
     }
 
     if (mode === "signup") {
+      // The age declaration first: refusing on age should not depend on the
+      // password being good, and someone under 16 should not be asked to fix a
+      // password for an account they may not have (compliance audit M-8).
+      if (!mayCreateAccount(age16Plus)) {
+        setBusy(false);
+        return setError(ageDeclarationError());
+      }
       const problem = passwordProblem(password);
       if (problem) {
         setBusy(false);
@@ -78,6 +94,12 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: Mode } = {}
     setBusy(false);
     setUnconfirmed(!!res.unconfirmed);
     if (res.error) return setError(res.error);
+    // Record the declaration once the account exists. Best-effort: it syncs with
+    // the rest of settings and appears in the data export, and a storage failure
+    // must never turn a successful sign-up into an error the user cannot act on.
+    if (mode === "signup") {
+      void setSettings({ [AGE_SETTING_KEY]: true }).catch(() => {});
+    }
     if (res.needsConfirm) {
       setSent({ kind: "confirm", email: addr });
       return;
@@ -254,30 +276,54 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: Mode } = {}
               : "Sign in"}
       </button>
 
-      {/* The terms are what make the account relationship a CONTRACT, which is
-          the Article 6(1)(b) GDPR basis /privacy relies on for nearly all of
-          Drift's processing. A contract nobody was shown is a weak one, so the
-          reference sits at the moment of signing up. The 16+ line is the term
-          itself; the audit's M-8 remedy also asks for a self-declaration at
-          sign-up, and that is M4. This does not pretend to be one. */}
+      {/* The age declaration (compliance audit M-8). The Dutch digital age of
+          consent is 16: the Netherlands did not exercise the Article 8(1) option
+          to lower it and Article 5 UAVG keeps it there. Separately, Article
+          1:234 BW makes a contract concluded by a minor voidable, and the terms
+          are a contract.
+
+          Self-declaration, not verification, which is what regulators expect
+          from a service that is not directed at children, and it is not
+          pretending otherwise. NEVER pre-ticked: a pre-ticked box is not a
+          declaration, it is a default nobody read.
+
+          Only the boolean is asked for. A date of birth would be a new category
+          of personal data to hold, protect, export and delete in exchange for an
+          answer we do not need (Article 5(1)(c) data minimisation). */}
       {mode === "signup" && (
-        <p className="mt-4 text-xs leading-relaxed text-ink-soft">
-          By creating an account you agree to{" "}
-          <Link
-            href="/terms"
-            className="text-accent-strong underline-offset-2 hover:underline"
-          >
-            the terms
-          </Link>
-          , and confirm you are 16 or older. See{" "}
-          <Link
-            href="/privacy"
-            className="text-accent-strong underline-offset-2 hover:underline"
-          >
-            what Drift stores
-          </Link>
-          .
-        </p>
+        <>
+          <label className="mt-4 flex items-start gap-3 text-xs leading-relaxed text-ink-soft">
+            <input
+              type="checkbox"
+              required
+              checked={age16Plus}
+              onChange={(e) => setAge16Plus(e.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)] focus-ring"
+            />
+            <span>I am {MINIMUM_AGE} or older.</span>
+          </label>
+          {/* The terms are what make the account relationship a CONTRACT, which
+              is the Article 6(1)(b) GDPR basis /privacy relies on for nearly all
+              of Drift's processing. A contract nobody was shown is a weak one,
+              so the reference sits at the moment of signing up. */}
+          <p className="mt-3 text-xs leading-relaxed text-ink-soft">
+            By creating an account you agree to{" "}
+            <Link
+              href="/terms"
+              className="text-accent-strong underline-offset-2 hover:underline"
+            >
+              the terms
+            </Link>
+            . See{" "}
+            <Link
+              href="/privacy"
+              className="text-accent-strong underline-offset-2 hover:underline"
+            >
+              what Drift stores
+            </Link>
+            .
+          </p>
+        </>
       )}
 
       {mode === "reset" && (

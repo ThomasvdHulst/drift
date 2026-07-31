@@ -315,8 +315,25 @@ export default function PrivacyPage() {
             <P>
               <Lead>Drift sets no browser cookies at all. </Lead>No tracking
               cookies, no advertising, no third-party analytics. There is nothing
-              here that follows you around the web, and therefore nothing to opt
-              out of.
+              of ours that follows you around the web, and therefore nothing to
+              opt out of.
+            </P>
+            {/* Found by measuring rather than by reading the code, which is why
+                it is here: a card's picture is loaded straight from Wikimedia's
+                servers, and Wikimedia sets its own `WMF-Uniq` cookie on its own
+                domain when it serves one. Drift cannot read it. The alternative
+                is to proxy every image through Drift, which is a real bandwidth
+                decision and is on the owner's list rather than done quietly.
+                Saying "no cookies" without this would be the same species of
+                inaccuracy the audit found at B-3. */}
+            <P>
+              <Lead>One cookie arrives anyway, and it is not ours. </Lead>Card
+              pictures are loaded straight from the source rather than copied
+              onto our servers, and when your browser asks Wikimedia for one,
+              Wikimedia sets a cookie of its own on its own domain. Drift cannot
+              read it, is not sent it, and gets nothing from it. It only appears
+              once you are reading cards; the public pages of this site set
+              nothing at all.
             </P>
             <P>
               To work at all it does keep a few things in your browser&apos;s own

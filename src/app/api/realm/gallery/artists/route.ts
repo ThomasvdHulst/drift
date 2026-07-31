@@ -32,7 +32,7 @@ export async function GET(request: Request) {
     try {
       const profile = await articArtistProfile(id);
       return NextResponse.json(profile, {
-        headers: profile ? cacheHeaders(CACHE_MEDIUM) : NO_STORE,
+        headers: profile ? cacheHeaders(CACHE_MEDIUM, request) : NO_STORE,
       });
     } catch (err) {
       console.error("[api/realm/gallery/artists] profile", err);
@@ -51,7 +51,7 @@ export async function GET(request: Request) {
     return NextResponse.json(artists, {
       // Only cache a real answer: an empty result may be a transient upstream
       // hiccup, and caching that would freeze the search empty at the edge.
-      headers: artists.length ? cacheHeaders(CACHE_MEDIUM) : NO_STORE,
+      headers: artists.length ? cacheHeaders(CACHE_MEDIUM, request) : NO_STORE,
     });
   } catch (err) {
     console.error("[api/realm/gallery/artists]", err);

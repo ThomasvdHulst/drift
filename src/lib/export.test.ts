@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { trailToText } from "./export";
+import { trailToText, TEXT_EXPORT_NOTICE } from "./export";
 import type { ArrivedVia, Trail, TrailStep } from "./types";
 
 function step(title: string, via: ArrivedVia): TrailStep {
@@ -53,5 +53,23 @@ describe("trailToText", () => {
   it("uses the singular 'stop' for a one-step trail", () => {
     const one = trailToText({ ...trail, steps: [trail.steps[0]] });
     expect(one.split("\n")[0]).toContain("· 1 stop");
+  });
+
+  // Not required, and worth knowing why (compliance audit BP-2, B-5 row iv): a
+  // text export of titles and URLs is not Adapted Material and does not even
+  // engage CC BY-SA §3(a), because titles are too short to carry protected
+  // expression and URLs are facts. This is one line of courtesy that makes the
+  // artefact self-describing once it has left Drift.
+  it("names the source and the licence, and says images are not included", () => {
+    expect(text).toContain(TEXT_EXPORT_NOTICE);
+    expect(text).toContain("CC BY-SA 4.0");
+    expect(text).toContain("creativecommons.org/licenses/by-sa/4.0");
+    expect(text).toContain("Images not included");
+  });
+
+  it("puts the notice above the signature, not after it", () => {
+    const lines = text.trim().split("\n");
+    expect(lines[lines.length - 1]).toBe("Mapped with Drift");
+    expect(lines[lines.length - 2]).toBe(TEXT_EXPORT_NOTICE);
   });
 });

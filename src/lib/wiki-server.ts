@@ -55,6 +55,16 @@ const wikiGate = makeGate(MIN_GAP_MS);
  * transient 429/503 responses. Signature/behaviour unchanged from before the
  * upstream.ts extraction (its unit tests still pin this).
  */
+/**
+ * Wikimedia's robot policy asks clients to "always request content with an
+ * `Accept-Encoding: gzip` HTTP header to reduce bandwidth usage" (audit BP-3).
+ * Node's fetch negotiates and decompresses transparently, so this changes
+ * nothing about the parsing; it is cheap goodwill with a source Drift depends on
+ * entirely, and Wikimedia has been progressively deprioritising clients that do
+ * not behave.
+ */
+const WIKI_ENCODING = { "Accept-Encoding": "gzip" } as const;
+
 export function wikiQuery(
   params: Record<string, string>,
   opts: { retries?: number; sleep?: (ms: number) => Promise<void> } = {},
@@ -62,7 +72,7 @@ export function wikiQuery(
   const ua = wikiUserAgent();
   const url = `${API}?${new URLSearchParams({ action: "query", ...params }).toString()}`;
   return fetchJson(url, {
-    headers: { "Api-User-Agent": ua, "User-Agent": ua },
+    headers: { "Api-User-Agent": ua, "User-Agent": ua, ...WIKI_ENCODING },
     gate: wikiGate,
     retries: opts.retries,
     sleep: opts.sleep,
@@ -162,7 +172,7 @@ export function wikiParse(params: Record<string, string>): Promise<unknown> {
     ...params,
   }).toString()}`;
   return fetchJson(url, {
-    headers: { "Api-User-Agent": ua, "User-Agent": ua },
+    headers: { "Api-User-Agent": ua, "User-Agent": ua, ...WIKI_ENCODING },
     gate: wikiGate,
   });
 }

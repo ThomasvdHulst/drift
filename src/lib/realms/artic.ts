@@ -60,6 +60,12 @@ export interface ArticArtwork {
   title?: string;
   artist_title?: string;
   artist_id?: number;
+  /** Every attributed artist, not just the primary one. The EU public-domain
+   *  test needs all of them: one hand still in copyright excludes the work. */
+  artist_ids?: number[];
+  /** Creation range, in years. The fallback when a work has no named artist. */
+  date_start?: number | null;
+  date_end?: number | null;
   date_display?: string;
   medium_display?: string;
   dimensions?: string | null;
@@ -91,6 +97,12 @@ export const ARTIC_FIELDS = [
   "id", "title", "artist_title", "artist_id", "date_display", "medium_display",
   "dimensions", "credit_line", "place_of_origin", "classification_title",
   "style_title", "subject_titles", "department_title", "image_id",
+  // `artist_ids`, `date_start` and `date_end` feed the EU public-domain test
+  // (artic.publicdomain.ts). The museum's `is_public_domain` is a US
+  // determination and admits work still in copyright here, so every attributed
+  // artist's death date has to be checked and an unattributed work falls back to
+  // its own date. Without these three fields that test cannot run.
+  "artist_ids", "date_start", "date_end",
   "is_public_domain", "short_description", "thumbnail",
 ].join(",");
 

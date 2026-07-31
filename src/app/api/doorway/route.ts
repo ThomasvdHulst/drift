@@ -24,8 +24,8 @@ export async function GET(request: Request) {
     // again for every reader of every one of those cards. A short cache stops the
     // repetition without freezing what might have been a transient miss.
     return candidate
-      ? NextResponse.json({ candidate }, { headers: cacheHeaders(CACHE_STABLE) })
-      : NextResponse.json({}, { headers: cacheHeaders(CACHE_SHORT) });
+      ? NextResponse.json({ candidate }, { headers: cacheHeaders(CACHE_STABLE, request) })
+      : NextResponse.json({}, { headers: cacheHeaders(CACHE_SHORT, request) });
   } catch {
     return NextResponse.json({}, { headers: NO_STORE });
   }

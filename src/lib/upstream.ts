@@ -80,17 +80,54 @@ async function fetchUpstream(
       );
     }
     if (retryable && attempt < retries) {
-      const retryAfter = Number(res.headers.get("retry-after"));
-      const base =
-        Number.isFinite(retryAfter) && retryAfter > 0
-          ? Math.min(retryAfter * 1000, 1500)
-          : 300 * (attempt + 1);
+      const stated = retryAfterMs(res.headers.get("retry-after"));
+      if (stated !== null && stated > MAX_RETRY_WAIT_MS) {
+        // The server told us how long to wait and it is longer than we are
+        // willing to hold a request open. Retrying EARLY is the worst of both
+        // worlds: it burns the shared rate budget and, on Wikimedia, is what
+        // moves a client into a lower access class. So give up now and let the
+        // caller degrade, which every caller already does.
+        console.warn(
+          `[upstream] ${hostOf(url)} asked for ${Math.round(stated / 1000)}s; not retrying`,
+        );
+        throw new Error(`Upstream responded ${res.status}`);
+      }
+      // Honour the stated wait in full when there is one. The old code capped it
+      // at 1500 ms, which is not honouring it: being told "wait 5 seconds" and
+      // returning after 1.5 is just a faster way to be refused again (audit C-3).
+      const base = stated ?? 300 * (attempt + 1);
       await sleep(base + Math.floor(Math.random() * 200));
       continue;
     }
     throw new Error(`Upstream responded ${res.status}`);
   }
 }
+
+/**
+ * How long a `Retry-After` header is asking for, in milliseconds, or null if it
+ * says nothing usable. RFC 9110 allows BOTH forms and servers use both: a count
+ * of seconds, or an HTTP date. Reading only the number silently treated every
+ * date-form header as absent.
+ */
+export function retryAfterMs(
+  header: string | null,
+  now: number = Date.now(),
+): number | null {
+  const raw = (header ?? "").trim();
+  if (!raw) return null;
+  if (/^\d+$/.test(raw)) {
+    const seconds = Number(raw);
+    return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : null;
+  }
+  const at = Date.parse(raw);
+  if (!Number.isFinite(at)) return null;
+  const wait = at - now;
+  return wait > 0 ? wait : null;
+}
+
+/** The longest we will hold a request open waiting out a throttle. Beyond this
+ *  the honest move is to fail and let the UI say so, rather than freeze. */
+const MAX_RETRY_WAIT_MS = 3000;
 
 /** Just the host, for a log line that names the source without leaking a query. */
 function hostOf(url: string): string {

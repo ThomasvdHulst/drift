@@ -27,7 +27,7 @@ export async function GET(
 
   try {
     return NextResponse.json(await r.related(id), {
-      headers: cacheHeaders(CACHE_STABLE),
+      headers: cacheHeaders(CACHE_STABLE, request),
     });
   } catch (err) {
     console.error(`[api/realm/${realm}/related]`, err);

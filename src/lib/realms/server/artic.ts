@@ -30,6 +30,12 @@ import {
   type ArtistProfile,
   type ArtistRing,
 } from "../artic.artist";
+import {
+  artworkEuPublicDomain,
+  artistsOutOfCopyright,
+  attributedArtistIds,
+  type ArticAgent,
+} from "../artic.publicdomain";
 
 const API = "https://api.artic.edu/api/v1";
 const UA =
@@ -81,6 +87,89 @@ async function searchMeta(
 
 async function search(params: Record<string, string>): Promise<ArticArtwork[]> {
   return (await searchMeta(params)).arts;
+}
+
+// ---------------------------------------------------------------------------
+// The EU public-domain gate (compliance audit M-4).
+//
+// `is_public_domain` is the museum's US determination: 95 years from
+// publication. Europe runs on life of the author plus 70, so the museum's flag
+// admits plenty of work that is still in copyright here. The rules live in
+// artic.publicdomain.ts; this half fetches the artist records they need.
+//
+// COST. One extra request per batch, not per artwork: `/agents?ids=a,b,c` takes
+// a list. Artist records are pure biography and change only when the museum
+// re-catalogues, so they are cached for the life of the serverless instance and
+// a long session usually pays for the lookup once. A cold instance re-measures,
+// which is the same bargain `profileCache` below already makes.
+//
+// FAILURE. A lookup that fails yields no agents, and an artist we cannot resolve
+// counts as "death date unknown", which sends the work to the pre-1830 date
+// proxy. So an upstream hiccup narrows the Gallery to old work rather than
+// emptying it.
+// ---------------------------------------------------------------------------
+
+const agentCache = new Map<number, ArticAgent>();
+
+/** Look up artist records for these ids, using the cache and asking upstream
+ *  only for the ones missing. Never throws. */
+async function fetchAgents(ids: number[]): Promise<Map<number, ArticAgent>> {
+  const out = new Map<number, ArticAgent>();
+  const missing: number[] = [];
+  for (const id of ids) {
+    const hit = agentCache.get(id);
+    if (hit) out.set(id, hit);
+    else missing.push(id);
+  }
+  if (missing.length === 0) return out;
+
+  // The museum caps a multi-id request; chunk rather than risk a silent truncation.
+  const CHUNK = 50;
+  for (let i = 0; i < missing.length; i += CHUNK) {
+    const chunk = missing.slice(i, i + CHUNK);
+    try {
+      const url = `${API}/agents?ids=${chunk.join(",")}&fields=id,title,birth_date,death_date&limit=${chunk.length}`;
+      const raw = await fetchJson(url, {
+        headers: headers(),
+        gate: articGate,
+        timeoutMs: 6000,
+      });
+      if (!isCC0Response(raw)) continue;
+      for (const a of ((raw as { data?: ArticAgent[] })?.data ?? [])) {
+        if (!a || !Number.isFinite(a.id)) continue;
+        agentCache.set(a.id, a);
+        out.set(a.id, a);
+      }
+    } catch {
+      // Leave them unresolved; the date proxy decides.
+    }
+  }
+  return out;
+}
+
+/**
+ * Keep only the artworks that are out of copyright in the EU. This is the one
+ * place the rule is applied, so every seam that produces a Gallery card goes
+ * through it and none can be added later that skips it.
+ */
+async function euPublicDomain(arts: ArticArtwork[]): Promise<ArticArtwork[]> {
+  if (arts.length === 0) return arts;
+  const ids = new Set<number>();
+  for (const a of arts) for (const id of attributedArtistIds(a)) ids.add(id);
+  const agents = await fetchAgents([...ids]);
+  const kept = arts.filter((a) => artworkEuPublicDomain(a, agents).ok);
+  if (kept.length !== arts.length) {
+    console.info(
+      `[artic] EU public-domain filter dropped ${arts.length - kept.length}/${arts.length}`,
+    );
+  }
+  return kept;
+}
+
+/** `filter(isUsableArtwork)` plus the EU term test, which is what every card
+ *  seam wants. Kept as one call so the two can never drift apart. */
+async function usable(arts: ArticArtwork[]): Promise<ArticArtwork[]> {
+  return euPublicDomain(arts.filter(isUsableArtwork));
 }
 
 async function detail(id: string): Promise<ArticArtwork | null> {
@@ -189,7 +278,7 @@ async function formDiscover(
       arts = (await searchMeta(pdForm(form, era, lim, retry))).arts;
     }
   }
-  return arts.filter(isUsableArtwork).map(articToCard);
+  return (await usable(arts)).map(articToCard);
 }
 
 // ----- "drift an artist" (Phase 24, M-G3) -----
@@ -342,9 +431,20 @@ export async function articArtistSearch(
   const ranked: ArtistMatch[] = rankArtists(hits, q);
   if (ranked.length === 0) return [];
 
+  // Drop artists still in copyright in the EU BEFORE offering them. Their works
+  // would be filtered out of the feed anyway, so offering the name would promise
+  // a drift that arrives empty, which is a worse answer than "no match". This is
+  // also the one place the rule can be applied to an artist directly rather than
+  // work by work.
+  const cleared = artistsOutOfCopyright([
+    ...(await fetchAgents(ranked.map((a) => a.id))).values(),
+  ]);
+  const eligible = ranked.filter((a) => cleared.has(a.id));
+  if (eligible.length === 0) return [];
+
   return (
     await Promise.all(
-      ranked.map(async (a) => {
+      eligible.map(async (a) => {
         try {
           const { total } = await searchAggs(byArtist(String(a.id)));
           if (total === 0) return null;
@@ -423,7 +523,7 @@ export async function articArtistDiscover(
     const retry = 1 + (offset % Math.min(FORM_SPREAD, res.totalPages));
     if (retry !== page) arts = (await searchMeta({ ...params, page: String(retry) })).arts;
   }
-  return arts.filter(isUsableArtwork).map(articToCard);
+  return (await usable(arts)).map(articToCard);
 }
 
 export async function articDiscover(
@@ -457,7 +557,7 @@ export async function articDiscover(
   if (arts.length === 0 && first.totalPages > 1) {
     arts = (await searchMeta({ ...base, page: String(pageWithin(first.totalPages)) })).arts;
   }
-  return arts.filter(isUsableArtwork).map(articToCard);
+  return (await usable(arts)).map(articToCard);
 }
 
 export async function articRelated(id: string): Promise<RelatedCandidate[]> {
@@ -467,9 +567,17 @@ export async function articRelated(id: string): Promise<RelatedCandidate[]> {
   const usedIds = new Set<string>([String(art.id)]);
   // `eyebrow` = the facet character shown above the label ("MORE BY" / "THE
   // MOVEMENT" / …); `label` = the destination entity (artist / movement / …).
-  const add = (list: ArticArtwork[], label: string, facet: string, eyebrow: string) => {
-    for (const a of list) {
-      if (!isUsableArtwork(a) || usedIds.has(String(a.id))) continue;
+  // `usable` is async because it may need artist records to decide the EU term,
+  // so the facets below await it. A thread chip is a promise of somewhere to go;
+  // pointing one at work Drift may not show in Europe would be a dead end.
+  const add = async (
+    list: ArticArtwork[],
+    label: string,
+    facet: string,
+    eyebrow: string,
+  ) => {
+    for (const a of await usable(list)) {
+      if (usedIds.has(String(a.id))) continue;
       usedIds.add(String(a.id));
       out.push(articToCandidate(a, label, facet, eyebrow));
     }
@@ -485,14 +593,14 @@ export async function articRelated(id: string): Promise<RelatedCandidate[]> {
     try {
       let byArtist = await search(pdTerm("artist_id", String(art.artist_id), 4));
       if (byArtist.length === 0) byArtist = await search(pdText(art.artist_title, 4));
-      add(byArtist, art.artist_title, `artist:${art.artist_id}`, "More by");
+      await add(byArtist, art.artist_title, `artist:${art.artist_id}`, "More by");
     } catch {
       /* facet best-effort */
     }
   }
   if (art.style_title) {
     try {
-      add(await search(pdText(art.style_title, 4)), art.style_title, `style:${art.style_title}`, "The movement");
+      await add(await search(pdText(art.style_title, 4)), art.style_title, `style:${art.style_title}`, "The movement");
     } catch {
       /* facet best-effort */
     }
@@ -500,14 +608,14 @@ export async function articRelated(id: string): Promise<RelatedCandidate[]> {
   const subject = (art.subject_titles ?? []).map((s) => s.trim()).filter(Boolean)[0];
   if (subject) {
     try {
-      add(await search(pdText(subject, 4)), subject, `subject:${subject}`, "The subject");
+      await add(await search(pdText(subject, 4)), subject, `subject:${subject}`, "The subject");
     } catch {
       /* facet best-effort */
     }
   }
   if (art.place_of_origin) {
     try {
-      add(await search(pdText(art.place_of_origin, 4)), art.place_of_origin, `place:${art.place_of_origin}`, "Also from");
+      await add(await search(pdText(art.place_of_origin, 4)), art.place_of_origin, `place:${art.place_of_origin}`, "Also from");
     } catch {
       /* facet best-effort */
     }
@@ -517,7 +625,9 @@ export async function articRelated(id: string): Promise<RelatedCandidate[]> {
 
 export async function articSummary(id: string): Promise<Card | null> {
   const art = await detail(id);
-  return isUsableArtwork(art) ? articToCard(art) : null;
+  if (!art) return null;
+  const [kept] = await usable([art]);
+  return kept ? articToCard(kept) : null;
 }
 
 // ----- cross-realm doorway helpers (Phase 15) -----
@@ -549,7 +659,7 @@ export async function articTopMatch(term: string): Promise<{
   const arts = await search(
     pdText(term, 5, { fields: `${ARTIC_FIELDS},term_titles` }),
   );
-  const art = arts.find(isUsableArtwork);
+  const [art] = await usable(arts);
   if (!art) return null;
   return {
     card: articToCard(art),

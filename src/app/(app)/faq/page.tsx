@@ -1,4 +1,9 @@
 import { PublicPage, Section, P, Bullets, Lead, A } from "@/components/PublicPage";
+import { adsConfig, adsenseScriptEnabled } from "@/lib/ads";
+
+// True only when the ads switch is on, read from the same place the loader reads
+// it. Off by default, so the honest "no advertising" branch is the norm.
+const USES_ADSENSE = adsenseScriptEnabled(adsConfig());
 
 export const metadata = {
   title: "Drift questions and answers",
@@ -41,12 +46,33 @@ export default function FaqPage() {
 
       <Section title="Do you sell my data? Is there tracking?">
         <P>
-          No. There is no analytics script, no third-party tracker and no
-          advertising cookie on the site at present. Your trails are readable by
-          you, and by anyone you deliberately send one to.{" "}
-          <A href="/privacy">What Drift stores</A> sets out the detail, and you
-          can delete your account and its contents from inside the app.
+          No. Nothing is sold, ever. Drift runs no analytics script, sets no
+          cookies of its own, and has no tracker on it. Your trails are readable
+          by you, and by anyone you deliberately send one to.{" "}
+          <A href="/privacy">What Drift stores</A> sets out the detail, including
+          the one cookie that arrives from Wikimedia when your browser fetches a
+          card&apos;s picture, and you can download all of it or delete your
+          account and its contents from inside the app.
         </P>
+        {/* Derived from the same `adsConfig()` read that governs the loader, so
+            this paragraph cannot describe a state the app is not in. That was
+            the audit's B-3 finding on /privacy: a page promising a control
+            nobody had built. */}
+        {USES_ADSENSE ? (
+          <P>
+            Drift carries advertising from Google to help keep it free. Nothing
+            from Google loads until you have chosen, refusing takes one click and
+            costs you nothing, and you can change your mind at any time from
+            &ldquo;Cookie settings&rdquo; at the bottom of any page. Drift itself
+            still runs no tracking and no analytics.
+          </P>
+        ) : (
+          <P>
+            There is no advertising either, and no advertising cookie. If that
+            changes, <A href="/privacy">the privacy page</A> is updated first and
+            you are asked before anything from an advertiser loads.
+          </P>
+        )}
       </Section>
 
       <Section title="Why is there no algorithm?">

@@ -38,7 +38,7 @@ export async function GET(
           { status: 404, headers: NO_STORE },
         );
       }
-      return NextResponse.json(out, { headers: cacheHeaders(CACHE_STABLE) });
+      return NextResponse.json(out, { headers: cacheHeaders(CACHE_STABLE, request) });
     }
     const card = await r.summary(id, { full });
     if (!card) {
@@ -47,7 +47,7 @@ export async function GET(
         { status: 404, headers: NO_STORE },
       );
     }
-    return NextResponse.json(card, { headers: cacheHeaders(CACHE_STABLE) });
+    return NextResponse.json(card, { headers: cacheHeaders(CACHE_STABLE, request) });
   } catch (err) {
     console.error(`[api/realm/${realm}/summary]`, err);
     return NextResponse.json(

@@ -1,9 +1,14 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Inter } from "next/font/google";
-import Script from "next/script";
 import "./globals.css";
 import "katex/dist/katex.min.css";
 import { adsConfig, adsenseScriptEnabled } from "@/lib/ads";
+import { consentModeBootstrap } from "@/lib/consent";
+import {
+  AdSenseLoader,
+  ConsentBanner,
+  ConsentProvider,
+} from "@/components/ConsentGate";
 import { siteUrl } from "@/lib/site";
 import { AUTH_STORAGE_KEY } from "@/lib/supabase/client";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -108,10 +113,10 @@ export default function RootLayout({
   // `adsenseScriptEnabled`, which requires NEXT_PUBLIC_ADS_ENABLED and not merely a
   // publisher id. See lib/ads.ts for what that used to do and why it mattered.
   //
-  // When the switch goes on, this loader must NOT be the first thing that happens:
-  // the consent gate has to run first and nothing third-party may load before the
-  // reader has chosen (compliance audit B-1). That gate is M4 of the audit
-  // implementation; until it exists, do not set NEXT_PUBLIC_ADS_ENABLED.
+  // When the switch goes on, the loader is NOT the first thing that happens: the
+  // consent gate runs first and nothing third-party loads before the reader has
+  // chosen (compliance audit B-1). `AdSenseLoader` is the only place a Google
+  // script can enter the page, and it requires the switch AND a granted choice.
   return (
     <html
       lang="en"
@@ -121,29 +126,34 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <script dangerouslySetInnerHTML={{ __html: sessionScript }} />
+        {/* Google consent mode v2, with every signal DENIED. It has to be in
+            place before anything Google could run, so it is a blocking inline
+            script in the head rather than an effect. Present only when the ads
+            switch is on: with ads off there is no Google anything to signal to,
+            and an unexplained `gtag` on an ad-free page is the sort of thing
+            that makes a privacy page harder to believe. */}
+        {adsenseScriptEnabled(ADS) && (
+          <script dangerouslySetInnerHTML={{ __html: consentModeBootstrap() }} />
+        )}
       </head>
       {/* suppressHydrationWarning: browser extensions (e.g. Grammarly) inject
           attributes like data-gr-ext-installed onto <body> before React hydrates,
           which otherwise trips a false-positive hydration mismatch. */}
       <body className="min-h-full" suppressHydrationWarning>
-        <AuthProvider>
-          {/* The login gate lives in `(app)/layout.tsx`, one level down, so that
-              it wraps the real pages but NOT `not-found.tsx` / the error
-              boundaries, which are siblings of that group. Gating the 404 meant
-              a signed-out visitor who mistyped a URL saw the landing page under
-              a "Page not found" tab title. */}
-          {children}
-          <ThemeToggle />
-          <StorageNotice />
-        </AuthProvider>
-        {adsenseScriptEnabled(ADS) && (
-          <Script
-            id="adsbygoogle-init"
-            src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADS.client}`}
-            strategy="afterInteractive"
-            crossOrigin="anonymous"
-          />
-        )}
+        <ConsentProvider>
+          <AuthProvider>
+            {/* The login gate lives in `(app)/layout.tsx`, one level down, so
+                that it wraps the real pages but NOT `not-found.tsx` / the error
+                boundaries, which are siblings of that group. Gating the 404
+                meant a signed-out visitor who mistyped a URL saw the landing
+                page under a "Page not found" tab title. */}
+            {children}
+            <ThemeToggle />
+            <StorageNotice />
+          </AuthProvider>
+          <ConsentBanner />
+          <AdSenseLoader />
+        </ConsentProvider>
       </body>
     </html>
   );

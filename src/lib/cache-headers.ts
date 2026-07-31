@@ -48,8 +48,59 @@ export function cacheControl(p: CacheProfile): string {
   return `public, max-age=0, s-maxage=${p.sMaxAge}, stale-while-revalidate=${p.swr}`;
 }
 
-/** Spread into a NextResponse.json success response to enable edge caching. */
-export function cacheHeaders(p: CacheProfile): { "Cache-Control": string } {
+// ---------------------------------------------------------------------------
+// The guard (compliance audit M-10).
+//
+// `Cache-Control: public` plus `s-maxage` on a shared edge is the standard
+// mechanism by which authenticated responses leak between users. Today no route
+// carrying one of these reads the session, so the risk is structural rather than
+// actual: the day someone adds a personalised thread ordering or an
+// interests-weighted batch to a cached route, the first user's response is
+// served to everyone for up to 24 hours, and stale for a further 7 days. That is
+// a personal data breach under Article 4(12) GDPR and notifiable under 33.
+//
+// A comment saying "do not do that" would not have survived. So the request is a
+// REQUIRED argument: to cache anything you have to hand over the request that
+// asked for it, and this looks at it. A route that is about to serve
+// user-specific data cannot reach `cacheControl` without passing the very object
+// that proves it.
+//
+// Failure mode is deliberately asymmetric. In development it THROWS, loudly, at
+// the moment the mistake is made. In production it degrades to `no-store` and
+// logs: a route that suddenly refuses to cache is a performance problem, and
+// serving one reader's data to another is not a problem you fix later.
+// ---------------------------------------------------------------------------
+
+/** Cookie names that mean a Supabase session is present. Supabase names its
+ *  auth cookie `sb-<project-ref>-auth-token`, sometimes chunked with a `.0`
+ *  suffix, so this matches the shape rather than one literal name. */
+const SESSION_COOKIE = /(^|;\s*)sb-[a-z0-9-]+-auth-token(\.\d+)?=/i;
+
+/** Whether this request carries anything that identifies a signed-in user. */
+export function carriesUserSession(request: Request): boolean {
+  if (request.headers.get("authorization")) return true;
+  const cookie = request.headers.get("cookie");
+  return !!cookie && SESSION_COOKIE.test(cookie);
+}
+
+/**
+ * Spread into a successful response to enable edge caching.
+ *
+ * Pass the request that asked for it. If it carries a session, this refuses:
+ * see the block above for why the argument is not optional.
+ */
+export function cacheHeaders(
+  p: CacheProfile,
+  request: Request,
+): { "Cache-Control": string } {
+  if (carriesUserSession(request)) {
+    const message =
+      "[cache-headers] refusing to set a public, shared-CDN cache on a response to a request carrying a user session. " +
+      "If this route must be both personalised and cached, use `Cache-Control: private, max-age=…` and never s-maxage.";
+    if (process.env.NODE_ENV !== "production") throw new Error(message);
+    console.error(message, new URL(request.url).pathname);
+    return NO_STORE;
+  }
   return { "Cache-Control": cacheControl(p) };
 }
 

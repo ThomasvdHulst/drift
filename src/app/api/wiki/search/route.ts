@@ -26,7 +26,7 @@ export async function GET(request: Request) {
       formatversion: "2",
     });
     return NextResponse.json(normalizeSearchResults(raw), {
-      headers: cacheHeaders(CACHE_MEDIUM),
+      headers: cacheHeaders(CACHE_MEDIUM, request),
     });
   } catch (err) {
     console.error("[api/wiki/search]", err);

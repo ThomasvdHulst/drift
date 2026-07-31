@@ -163,7 +163,7 @@ export async function GET(request: Request) {
       // Only cache a real batch: an empty result is more likely a transient
       // upstream hiccup than a genuinely quiet section, and caching that would
       // freeze the section empty for the whole edge population.
-      headers: cards.length ? cacheHeaders(CACHE_MEDIUM) : NO_STORE,
+      headers: cards.length ? cacheHeaders(CACHE_MEDIUM, request) : NO_STORE,
     });
   } catch (err) {
     console.error("[api/wiki/current]", err);

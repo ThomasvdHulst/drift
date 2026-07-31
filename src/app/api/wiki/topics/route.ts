@@ -79,7 +79,7 @@ export async function GET(request: Request) {
     // an empty one (it's indistinguishable from a Lift Wing hiccup).
     return NextResponse.json(
       { topics },
-      { headers: topics.length ? cacheHeaders(CACHE_STABLE) : NO_STORE },
+      { headers: topics.length ? cacheHeaders(CACHE_STABLE, request) : NO_STORE },
     );
   } catch (err) {
     console.error("[api/wiki/topics]", err);

@@ -356,6 +356,12 @@ export interface Settings {
   // Synced, so the welcome + tour is offered once per account across devices.
   // Undefined = not yet offered.
   tourStatus?: "done";
+  // The age declaration made at sign-up (compliance audit M-8). The BOOLEAN
+  // only: a date of birth would be a new category of personal data to hold,
+  // protect, export and delete in exchange for an answer we do not need
+  // (Article 5(1)(c) data minimisation). Undefined on an account created before
+  // the declaration existed, which is not the same as false.
+  age16Plus?: boolean;
 }
 
 export async function getSettings(): Promise<Settings> {
