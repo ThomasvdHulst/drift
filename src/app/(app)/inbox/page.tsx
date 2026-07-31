@@ -18,6 +18,8 @@ import {
 import { saveTrail } from "@/lib/storage";
 import { getRealm } from "@/lib/realms";
 import { stripMathMarkers } from "@/lib/mathtext";
+import { licenseFor, MODIFICATION_CARD } from "@/lib/licenses";
+import { mayDisplayImage } from "@/lib/imagecredit";
 import { TrailSparkline } from "@/components/TrailSparkline";
 import type { Card, Trail, TrailStep } from "@/lib/types";
 
@@ -241,6 +243,34 @@ function TrailShareCard({
   );
 }
 
+/**
+ * The licence notice on a RECEIVED card.
+ *
+ * Sending a card to a friend is Sharing under CC BY-SA 4.0 §1(k), so §3(a)'s
+ * conditions attach at that moment: the recipient's view has to carry the source
+ * link, the licence named and linked, and the indication that the text was
+ * modified. It carried only the source link, because the inbox renders a lighter
+ * component of its own rather than the full CardView (compliance audit Q-7,
+ * confirmed as a real gap).
+ */
+function ShareLicense({ card }: { card: Card }) {
+  const license = licenseFor(card.source);
+  if (!license) return null;
+  return (
+    <span className="text-xs text-ink-soft">
+      <a
+        href={license.url}
+        target="_blank"
+        rel="license noopener noreferrer"
+        className="underline decoration-ink/30 underline-offset-2 transition hover:text-accent-strong"
+      >
+        {license.label} ↗
+      </a>{" "}
+      · {MODIFICATION_CARD}
+    </span>
+  );
+}
+
 function CardShareCard({
   share,
   onDelete,
@@ -257,13 +287,18 @@ function CardShareCard({
     >
       <From share={share} />
       <div className="mt-2 flex gap-4">
-        {card.imageUrl && (
-          <img
-            src={card.imageUrl}
-            alt=""
-            className="h-20 w-20 shrink-0 rounded-lg object-cover"
-          />
-        )}
+        {/* Same fail-closed rule as the card itself: an image whose creator and
+            licence we cannot state is not shown (audit B-4). Cards shared before
+            credits existed simply arrive without a picture. */}
+        {card.imageUrl &&
+          ((card.source ?? "wikipedia") !== "wikipedia" ||
+            mayDisplayImage(card.imageCredit)) && (
+            <img
+              src={card.imageUrl}
+              alt=""
+              className="h-20 w-20 shrink-0 rounded-lg object-cover"
+            />
+          )}
         <div className="min-w-0">
           <p className="font-serif text-lg leading-tight text-ink">
             {card.displayTitle}
@@ -304,6 +339,7 @@ function CardShareCard({
             View source ↗
           </a>
         )}
+        <ShareLicense card={card} />
         <button
           type="button"
           onClick={onDelete}

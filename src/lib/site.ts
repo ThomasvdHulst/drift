@@ -21,6 +21,31 @@ export function siteUrl(): string {
 }
 
 // ---------------------------------------------------------------------------
+// The published contact address.
+//
+// DSA Articles 11 and 12 require a point of contact for authorities and one for
+// recipients of the service, both PUBLISHED and both allowing direct electronic
+// communication. Article 3:15d(1)(b) BW wants an email address on the imprint
+// for the same reason. `/contact`, `/privacy` and `/legal` all print this one.
+//
+// `contact@usedrift.org` is routed and confirmed working by the owner. It
+// replaced `noreply@usedrift.org`, which also worked but read badly: an address
+// beginning "noreply" tells a regulator not to write to it, which is the
+// opposite of what Article 11 is for.
+//
+// NEXT_PUBLIC_, because the pages that print it are server-rendered public copy.
+// `CONTACT_INBOX` is the separate server-side variable deciding where the
+// contact FORM delivers; the two should normally be the same address.
+// ---------------------------------------------------------------------------
+
+const DEFAULT_CONTACT_ADDRESS = "contact@usedrift.org";
+
+export function contactAddress(): string {
+  return (process.env.NEXT_PUBLIC_CONTACT_ADDRESS ?? "").trim() ||
+    DEFAULT_CONTACT_ADDRESS;
+}
+
+// ---------------------------------------------------------------------------
 // Which routes a search engine should see.
 //
 // Drift is login-gated whenever the cloud is configured (Phase 13), so most
@@ -51,6 +76,8 @@ export const PUBLIC_CONTENT_ROUTES = [
   "/notes",
   "/colophon",
   "/privacy",
+  "/terms",
+  "/legal",
   "/install",
   "/contact",
 ] as const;

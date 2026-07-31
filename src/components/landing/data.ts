@@ -136,9 +136,18 @@ export function nextCard(id: string): DemoCard | undefined {
 // nearby → sets the edge glyph), or drift() for a wander (a dotted grey edge).
 // Only the title + image are drawn, so the rest is kept minimal.
 //
-// Imagery credits (all publish-safe): art + ancient = the Art Institute of
-// Chicago (CC0); nature = Ernst Haeckel plates (public domain); cosmos =
-// NASA/ESA/Hubble (public domain).
+// Imagery credits: art + ancient = The Art Institute of Chicago (CC0); nature =
+// Ernst Haeckel plates (public domain, he died in 1919 so the EU term has expired
+// too); cosmos = NASA, except the two Hubble images, which are credited CC BY 4.0.
+// Every file is credited on /colophon and recorded in public/landing/CREDITS.md.
+//
+// ⚠️ BEFORE ADDING A COSMOS IMAGE: a NASA-hosted image is NOT automatically public
+// domain. Raw mission data processed by citizen scientists keeps their terms, and
+// those are routinely NonCommercial. `cosmos-jupiter.jpg` used to be one of those
+// (JunoCam "Jupiter Blues", credited "© CC NC SA" on JPL's own page) and had to be
+// replaced. Check the source page's credit line for a `©` first. These are hosted
+// copies on our own origin, on the only public indexed page, which makes the
+// attribution position stricter than for hotlinked card images.
 // ---------------------------------------------------------------------------
 
 type Via = TrailStep["arrivedVia"];

@@ -41,6 +41,24 @@ function headers() {
   return { "AIC-User-Agent": UA, "User-Agent": UA };
 }
 
+/**
+ * The Art Institute states the licence of every API response in `info.license_text`,
+ * and its own api-data repository asks callers to check it: "Note that all content
+ * may have different licensing terms. Please be mindful of the `info.license_text`
+ * and `info.license_links` fields within each JSON data file."
+ *
+ * Drift was not reading it, and was relying on `is_public_domain` alone plus an
+ * assumption about the terms (compliance audit Mi-1, Q-12). Since the museum's
+ * grant for commercial use is bounded BY the CC0 designation, a response that does
+ * not carry it is a response Drift may not use. So this refuses rather than
+ * assumes: no CC0 statement, no cards.
+ */
+function isCC0Response(raw: unknown): boolean {
+  const text = (raw as { info?: { license_text?: unknown } })?.info?.license_text;
+  if (typeof text !== "string") return false;
+  return /creative commons zero|\bcc0\b/i.test(text);
+}
+
 async function searchMeta(
   params: Record<string, string>,
 ): Promise<{ arts: ArticArtwork[]; totalPages: number }> {
@@ -50,6 +68,10 @@ async function searchMeta(
     gate: articGate,
     timeoutMs: 6000,
   })) as { data?: ArticArtwork[]; pagination?: { total_pages?: number } };
+  if (!isCC0Response(raw)) {
+    console.warn("[artic] response is not CC0-designated; refusing to use it");
+    return { arts: [], totalPages: 1 };
+  }
   const data = raw?.data;
   return {
     arts: Array.isArray(data) ? data : [],
@@ -68,6 +90,10 @@ async function detail(id: string): Promise<ArticArtwork | null> {
     gate: articGate,
     timeoutMs: 6000,
   });
+  if (!isCC0Response(raw)) {
+    console.warn("[artic] detail response is not CC0-designated; refusing it");
+    return null;
+  }
   const d = (raw as { data?: ArticArtwork })?.data;
   return d ?? null;
 }

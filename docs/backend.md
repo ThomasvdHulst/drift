@@ -188,8 +188,10 @@ When you outgrow "a few friends", look at these, roughly in order:
 8. **Backups.** Free tier backups are limited; Pro adds daily backups + PITR add-ons. Worth it
    once other people's data lives here.
 9. **Image hosting/CDN.** Card images are currently hotlinked from Wikimedia / Art Institute
-   (no storage cost). If you ever host your own images, use **Supabase Storage** (+ its CDN)
-   and mind the storage/egress tiers.
+   (no storage cost), except in local development, where `ARTIC_IMAGE_PROXY` defaults on and
+   Art Institute images pass through `/api/img/artic/...` because the museum's Cloudflare rules
+   refuse a localhost `Referer`. If you ever host your own images, use **Supabase Storage**
+   (+ its CDN) and mind the storage/egress tiers.
 10. **Social at scale (Phase 10+).** Before opening friends/sharing to strangers: add
     **blocking + report/abuse** controls and rate-limit friend requests + shares (an Edge
     Function or a `count`-based check); index `profiles.handle` (done) and consider a trigram

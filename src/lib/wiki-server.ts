@@ -7,6 +7,7 @@
 // the Wikimedia-specific wrapper (Action API URL + Api-User-Agent + its own gate).
 
 import { makeGate, fetchJson } from "./upstream";
+import { parseImageCredit, fileKey, type ImageCredit } from "./imagecredit";
 
 // A COMPLIANT User-Agent (resolvable URL + contact email) is what puts us in
 // Wikimedia's ~200 req/min-per-IP bucket instead of the ~10 req/min "unidentified"
@@ -26,7 +27,10 @@ export const CARD_PROPS: Record<string, string> = {
   exintro: "1",
   explaintext: "1",
   exsentences: "3",
-  piprop: "thumbnail",
+  // `name` as well as `thumbnail`: the file's own title is what lets us look up
+  // its creator and its own licence, which are NOT the article's (see
+  // lib/imagecredit.ts and `fetchImageCredits` below).
+  piprop: "thumbnail|name",
   // FREE-LICENSED IMAGES ONLY. An article may legitimately carry a non-free file
   // under fair use (a film poster, a logo, an album sleeve), and WP:Copyrights is
   // explicit that such a file is "not under the CC BY-SA or GFDL license as such"
@@ -79,6 +83,71 @@ export function wikiQuery(
  * `disable*` trims the response of chrome we would only throw away: the parser
  * report, section-edit links, the table of contents.
  */
+/**
+ * Creator + licence for a batch of file titles, keyed by file title.
+ *
+ * ONE request for a whole batch of cards, not one per card: the Action API takes
+ * up to 50 titles at a time, and a discover batch is 4 to 12. So the per-image
+ * credit that compliance audit B-4 requires costs a single extra Wikimedia call
+ * per batch, which the route then caches for a day like everything else.
+ *
+ * Never throws. A failed lookup yields no entry, and `mayDisplayImage` then
+ * refuses the image: an image with unknown provenance is not shown at all. That
+ * is the whole point of the fail-closed rule, so a transient upstream error must
+ * degrade to "no picture", never to "picture with no credit".
+ */
+export async function fetchImageCredits(
+  fileTitles: string[],
+): Promise<Map<string, ImageCredit>> {
+  const out = new Map<string, ImageCredit>();
+  const unique = [...new Set(fileTitles.filter(Boolean))];
+  if (unique.length === 0) return out;
+
+  // 50 is the Action API's per-request title cap for an unauthenticated client.
+  for (let i = 0; i < unique.length; i += 50) {
+    const chunk = unique.slice(i, i + 50);
+    try {
+      const raw = (await wikiQuery({
+        titles: chunk.map((t) => `File:${t}`).join("|"),
+        prop: "imageinfo",
+        iiprop: "extmetadata|url",
+        // Ask for only the fields a credit needs. The full extmetadata block
+        // carries descriptions in every language and is enormous.
+        iiextmetadatafilter:
+          "Artist|Attribution|AttributionRequired|LicenseShortName|LicenseUrl|ObjectName|Restrictions",
+        format: "json",
+        formatversion: "2",
+      })) as {
+        query?: {
+          pages?: {
+            title?: string;
+            missing?: boolean;
+            imageinfo?: { extmetadata?: unknown; descriptionurl?: unknown }[];
+          }[];
+        };
+      };
+      for (const page of raw?.query?.pages ?? []) {
+        // NOT `if (page.missing) continue`. Almost every Wikipedia image actually
+        // lives on Wikimedia Commons, and for those the local wiki reports the
+        // File: page as `missing: true` while still returning `imageinfo` from the
+        // shared repository. Skipping on `missing` silently dropped the credit for
+        // the majority of images, which the fail-closed rule then turned into
+        // "show no pictures at all". Found by testing against the live API.
+        if (!page.title) continue;
+        const info = page.imageinfo?.[0];
+        if (!info) continue;
+        out.set(
+          fileKey(page.title),
+          parseImageCredit(info.extmetadata, info.descriptionurl),
+        );
+      }
+    } catch {
+      /* leave this chunk uncredited; the images simply will not be shown */
+    }
+  }
+  return out;
+}
+
 export function wikiParse(params: Record<string, string>): Promise<unknown> {
   const ua = wikiUserAgent();
   const url = `${API}?${new URLSearchParams({

@@ -10,9 +10,18 @@ import {
   onSyncStatus,
   type SyncStatus,
 } from "@/lib/sync/replicator";
-import { getMyProfile, upsertProfile } from "@/lib/social/client";
+import { getMyProfile, upsertProfile, exportSocialData } from "@/lib/social/client";
 import { normalizeHandle, handleError } from "@/lib/social/handles";
 import { socialEnabled } from "@/lib/social/enabled";
+import {
+  listTrails,
+  getReactions,
+  getInterest,
+  getSettings,
+  loadSeen,
+  listSessions,
+} from "@/lib/storage";
+import { buildDataExport, dataExportFilename } from "@/lib/export-data";
 
 // The account screen (Phase 9, extended Phase 13). Calm, on-brand handle setup +
 // sign-out when signed in, and the shared email+password AuthForm when signed
@@ -56,6 +65,7 @@ export default function AccountPage() {
           <SignedIn email={user.email ?? "your account"} onSignOut={signOut} />
           <ChangePassword />
           {socialEnabled() && <ProfileSection />}
+          <DownloadData user={user} />
           <DeleteAccount />
         </div>
       ) : (
@@ -329,6 +339,112 @@ function ChangePassword() {
       {saved && !open && (
         <p className="mt-3 text-sm text-accent-strong" role="status">
           Password updated.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * "Download your data" (compliance audit Mi-3).
+ *
+ * GDPR Article 20 does not require a button, it requires requests to be
+ * fulfilled within a month. The button is the cheaper end of that: it removes
+ * the month, it removes a standing manual task, and it answers Article 15 access
+ * requests at the same time. It sits ABOVE the delete flow on purpose, because
+ * taking a copy is the thing you want to do first if you are about to delete.
+ *
+ * Local data is read from IndexedDB, which is the source of truth for a session
+ * and a mirror of the cloud. The social rows are the exception: profiles,
+ * friends and shares never sync locally, so `exportSocialData` fetches them.
+ * Both halves degrade the same way the rest of the app does, so a backend that
+ * is down produces an export missing a section rather than an error.
+ */
+function DownloadData({ user }: { user: { id: string; email?: string; created_at?: string } }) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run() {
+    setError(null);
+    setBusy(true);
+    try {
+      const [trails, reactions, interests, settings, seen, sessions, social] =
+        await Promise.all([
+          listTrails(),
+          getReactions(),
+          getInterest(),
+          getSettings(),
+          loadSeen(),
+          listSessions(),
+          socialEnabled() ? exportSocialData() : Promise.resolve(null),
+        ]);
+
+      const file = buildDataExport({
+        account: {
+          id: user.id,
+          ...(user.email ? { email: user.email } : {}),
+          ...(user.created_at ? { createdAt: user.created_at } : {}),
+        },
+        trails,
+        reactions,
+        interests,
+        settings,
+        seen,
+        sessions,
+        ...(social
+          ? {
+              profile: social.profile,
+              friends: social.friendRequests,
+              shares: social.shares,
+            }
+          : {}),
+      });
+
+      // A Blob rather than a data: URL. A long trail list can run to megabytes,
+      // and a data: URL that size is refused by some browsers.
+      const url = URL.createObjectURL(
+        new Blob([JSON.stringify(file, null, 2)], { type: "application/json" }),
+      );
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = dataExportFilename();
+      a.click();
+      URL.revokeObjectURL(url);
+      setDone(true);
+    } catch {
+      setError("Couldn't build the file just now. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-line bg-paper-raised p-6">
+      <p className="text-xs font-medium uppercase tracking-wide text-ink-soft">
+        Your data
+      </p>
+      <p className="mt-2 text-sm leading-relaxed text-ink-soft">
+        Take a copy of everything Drift holds about you: your account, trails,
+        reactions, interests, settings, and your handle, friends and shares if
+        you have them. One file, in a format any program can read.
+      </p>
+      {error && (
+        <p className="mt-3 text-sm text-ink" role="alert">
+          {error}
+        </p>
+      )}
+      <button
+        type="button"
+        disabled={busy}
+        onClick={run}
+        className="mt-4 rounded-full border border-line px-5 py-2.5 text-sm text-ink transition hover:border-accent/50 hover:text-accent-strong disabled:opacity-60"
+      >
+        {busy ? "Gathering…" : "Download your data"}
+      </button>
+      {done && !busy && (
+        <p className="mt-3 text-sm text-accent-strong" role="status">
+          Downloaded.
         </p>
       )}
     </div>

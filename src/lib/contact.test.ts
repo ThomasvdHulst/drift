@@ -5,8 +5,11 @@ import {
   fillTimeRemaining,
   notificationSubject,
   topicLabel,
+  isReportTopic,
   MESSAGE_MAX,
   MIN_FILL_MS,
+  REPORT_MESSAGE_MIN,
+  LOCATION_MAX,
   CONTACT_TOPICS,
 } from "./contact";
 
@@ -18,6 +21,16 @@ const good = {
   topic: "feedback",
   message: "I really enjoy the trail maps at the end of a session.",
   startedAt: T0,
+};
+// The same, in DSA Article 16 shape: a location, a substantiated explanation and
+// the good-faith statement.
+const goodReport = {
+  ...good,
+  topic: "report",
+  location: "@impostor, the display name",
+  goodFaith: true,
+  message:
+    "That handle uses my employer's registered trade mark and presents itself as their official account.",
 };
 const later = T0 + MIN_FILL_MS + 1000;
 
@@ -32,6 +45,7 @@ describe("validateContact", () => {
       topic: "feedback",
       topicLabel: "Feedback",
       message: "I really enjoy the trail maps at the end of a session.",
+      isReport: false,
     });
   });
 
@@ -65,8 +79,13 @@ describe("validateContact", () => {
 
   it("accepts every advertised topic", () => {
     for (const t of CONTACT_TOPICS) {
-      const res = validateContact({ ...good, topic: t.id }, later);
-      expect(res.ok).toBe(true);
+      // The report topic is a different form (see the Article 16 block below),
+      // so it gets the fields that form collects.
+      const extra = isReportTopic(t.id)
+        ? { location: "@impostor", goodFaith: true, message: goodReport.message }
+        : {};
+      const res = validateContact({ ...good, topic: t.id, ...extra }, later);
+      expect(res.ok, t.id).toBe(true);
       if (!res.ok) return;
       expect(res.value.topic).toBe(t.id);
       expect(res.value.topicLabel).toBe(t.label);
@@ -174,6 +193,105 @@ describe("validateFields (the half the client runs)", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// DSA Article 16 notice-and-action. The Article lists four things the mechanism
+// must facilitate, and one carve-out; each is a test.
+// ---------------------------------------------------------------------------
+describe("the Article 16 report mode", () => {
+  it("accepts a complete notice and marks it as one", () => {
+    const res = validateContact(goodReport, later);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.value.isReport).toBe(true);
+    expect(res.value.topicLabel).toBe("Report illegal content");
+    expect(res.value.location).toBe("@impostor, the display name");
+  });
+
+  it("16(2)(b): requires the location of the content", () => {
+    expect(validateContact({ ...goodReport, location: "  " }, later)).toMatchObject({
+      ok: false,
+      field: "location",
+    });
+    expect(
+      validateContact({ ...goodReport, location: "x".repeat(LOCATION_MAX + 1) }, later),
+    ).toMatchObject({ ok: false, field: "location" });
+  });
+
+  it("16(2)(a): requires an explanation substantial enough to act on", () => {
+    const thin = "It is bad.";
+    expect(thin.length).toBeLessThan(REPORT_MESSAGE_MIN);
+    expect(validateContact({ ...goodReport, message: thin }, later)).toMatchObject({
+      ok: false,
+      field: "message",
+    });
+    // The same text would be a perfectly good ordinary message, so the higher
+    // floor really is specific to a notice.
+    expect(validateContact({ ...good, message: thin }, later).ok).toBe(true);
+  });
+
+  it("16(2)(d): requires the good-faith statement, and never assumes it", () => {
+    for (const goodFaith of [undefined, false]) {
+      expect(validateContact({ ...goodReport, goodFaith }, later)).toMatchObject({
+        ok: false,
+        field: "goodFaith",
+      });
+    }
+  });
+
+  // 16(2)(c) requires name and email EXCEPT for notices about offences under
+  // Articles 3 to 7 of Directive 2011/93/EU. Rather than ask a notifier to
+  // self-classify into that category, the address is optional for every report.
+  // Permitting more anonymity than the Article requires is not a breach of it.
+  it("16(2)(c): lets a report be anonymous, but not an ordinary message", () => {
+    const anon = validateContact(
+      { ...goodReport, name: "", email: "" },
+      later,
+    );
+    expect(anon.ok).toBe(true);
+    if (!anon.ok) return;
+    expect(anon.value.email).toBe("");
+
+    expect(validateContact({ ...good, email: "" }, later)).toMatchObject({
+      ok: false,
+      field: "email",
+    });
+  });
+
+  it("still rejects an address that is given but unusable", () => {
+    // A malformed address is worse than none: the confirmation of receipt that
+    // Article 16(4) requires would go nowhere, silently.
+    expect(validateContact({ ...goodReport, email: "not-an-address" }, later)).toMatchObject(
+      { ok: false, field: "email" },
+    );
+  });
+
+  it("does not apply the report rules to an ordinary message", () => {
+    const res = validateContact(
+      { ...good, location: "ignored", goodFaith: false },
+      later,
+    );
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.value.isReport).toBe(false);
+    expect(res.value.location).toBeUndefined();
+  });
+
+  it("is still subject to the bot traps", () => {
+    expect(validateContact({ ...goodReport, website: "spam" }, later)).toMatchObject({
+      ok: false,
+      bot: true,
+    });
+  });
+
+  it("isReportTopic recognises only the report topic", () => {
+    expect(isReportTopic("report")).toBe(true);
+    for (const t of CONTACT_TOPICS.filter((t) => t.id !== "report")) {
+      expect(isReportTopic(t.id), t.id).toBe(false);
+    }
+    expect(isReportTopic(undefined)).toBe(false);
+  });
+});
+
 describe("fillTimeRemaining", () => {
   it("counts down the remaining floor", () => {
     expect(fillTimeRemaining(T0, T0)).toBe(MIN_FILL_MS);
@@ -213,6 +331,31 @@ describe("notificationSubject", () => {
     expect(
       notificationSubject({ topicLabel: "An idea", name: "", email: "ada@example.com" }),
     ).toBe("[Drift] An idea from ada@example.com");
+  });
+
+  // A notice starts a clock that a piece of feedback does not: confirm receipt
+  // without undue delay, then notify the outcome and the redress. It must not be
+  // possible to lose one in a run of ordinary mail.
+  it("marks an Article 16 notice as needing action", () => {
+    const s = notificationSubject({
+      topicLabel: "Report illegal content",
+      name: "Ada",
+      email: "ada@example.com",
+      isReport: true,
+    });
+    expect(s).toContain("ACTION");
+    expect(s).toContain("ada@example.com");
+  });
+
+  it("says so when a notice is anonymous rather than reading as from nobody", () => {
+    expect(
+      notificationSubject({
+        topicLabel: "Report illegal content",
+        name: "",
+        email: "",
+        isReport: true,
+      }),
+    ).toBe("[Drift] ACTION: illegal content report from an anonymous notifier");
   });
 });
 

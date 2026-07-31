@@ -7,7 +7,16 @@ import type { RealmId } from "@/lib/realms/types";
 import { summaryUrl, getRealm } from "@/lib/realms";
 import { proximityWord } from "@/lib/orbit";
 import { freshnessWord } from "@/lib/current";
-import { licenseFor } from "@/lib/licenses";
+import {
+  licenseFor,
+  MODIFICATION_CARD,
+  MODIFICATION_FULL,
+} from "@/lib/licenses";
+import {
+  mayDisplayImage,
+  creditLine,
+  type ImageCredit,
+} from "@/lib/imagecredit";
 import type { Block, Fact } from "@/lib/wikihtml";
 import type { ExtendedBody } from "@/lib/types";
 import { CardTable } from "./CardTable";
@@ -280,7 +289,20 @@ function ImagePanel({ card, onZoom }: { card: Card; onZoom?: () => void }) {
     const fieldLabel = card.facts?.find((f) => f.label === "Field")?.value;
     return <PaperCover cover={card.cover} label={fieldLabel} />;
   }
-  if (!card.imageUrl) {
+  // A Wikipedia image is a SEPARATE work from the article, with its own creator
+  // and its own licence, and it may only be shown if we can credit it properly.
+  // `mayDisplayImage` fails closed: unknown provenance, a licence needing a credit
+  // we do not have, or a file flagged with trademark / personality-rights
+  // restrictions all mean no picture (compliance audit B-4). Cards saved before
+  // this shipped have no credit, so they land here too, and the card falls back to
+  // the monogram below. A card without a picture is a small loss; an uncredited
+  // CC BY-SA photograph terminates our licence under §6(a).
+  const wikiImageBlocked =
+    (card.source ?? "wikipedia") === "wikipedia" &&
+    !!card.imageUrl &&
+    !mayDisplayImage(card.imageCredit);
+
+  if (!card.imageUrl || wikiImageBlocked) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-accent/10">
         {/* Decorative monogram standing in for a missing image. The card title
@@ -370,6 +392,59 @@ function ImagePanel({ card, onZoom }: { card: Card; onZoom?: () => void }) {
         className="relative h-full w-full object-cover"
         draggable={false}
       />
+      <ImageCreditChip credit={card.imageCredit} />
+    </div>
+  );
+}
+
+/**
+ * The image's own credit, on the image.
+ *
+ * CC BY-SA 4.0 §3(a)(1) wants the creator identified and the licence named AND
+ * linked; §3(a)(2) accepts a link to "a resource that includes the required
+ * information", which for a file is its description page, not the article. So the
+ * chip carries all three: who, the licence as a hyperlink, and the file page.
+ *
+ * A solid paper ground rather than text straight over the photograph: an overlay
+ * on an arbitrary image is exactly the unmeasurable composite the contrast work
+ * warned about (§10), whereas paper-on-ink is a pair the audit already covers.
+ */
+function ImageCreditChip({ credit }: { credit?: ImageCredit }) {
+  if (!credit) return null;
+  const who = creditLine({ ...credit, licenseShortName: undefined });
+  if (!who && !credit.licenseShortName) return null;
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-end p-2">
+      <p className="pointer-events-auto max-w-full truncate rounded-full bg-paper/90 px-2.5 py-1 text-[11px] leading-none text-ink-soft shadow-sm ring-1 ring-line">
+        {who && <span>{who}</span>}
+        {who && credit.licenseShortName && <span aria-hidden="true"> · </span>}
+        {credit.licenseShortName &&
+          (credit.licenseUrl ? (
+            <a
+              href={credit.licenseUrl}
+              target="_blank"
+              rel="license noopener noreferrer"
+              className="underline decoration-ink/30 underline-offset-2 transition hover:text-accent-strong"
+            >
+              {credit.licenseShortName}
+            </a>
+          ) : (
+            <span>{credit.licenseShortName}</span>
+          ))}
+        {credit.fileUrl && (
+          <>
+            <span aria-hidden="true"> · </span>
+            <a
+              href={credit.fileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline decoration-ink/30 underline-offset-2 transition hover:text-accent-strong"
+            >
+              file
+            </a>
+          </>
+        )}
+      </p>
     </div>
   );
 }
@@ -427,7 +502,12 @@ function ThreadsSection({
 
 // The "from the source" link label, per realm's content source.
 function sourceLinkLabel(source?: string): string {
-  if (source === "artic") return "View at the Art Institute ↗";
+  // The museum's full name, not a short form: AIC REQUESTS the caption "Artist.
+  // Title, Date. The Art Institute of Chicago." The card already carries the
+  // artist, title and date (title + description), so naming the institution in
+  // full here completes it (compliance audit Mi-1). CC0 imposes no attribution
+  // condition, so this is courtesy rather than obligation.
+  if (source === "artic") return "The Art Institute of Chicago ↗";
   if (source === "gutenberg") return "Read the full text ↗";
   if (source === "arxiv") return "Read the full paper ↗";
   return "From Wikipedia ↗";
@@ -686,6 +766,30 @@ export function CardView({
           {open && loadingMore && (
             <p className="text-sm italic text-ink-soft">Fetching the rest…</p>
           )}
+          {/* Wikipedia articles are not uniformly CC BY-SA with attribution
+              satisfied by the history page: some incorporate text from external
+              sources that attach their own attribution requirements, and
+              Wikipedia flags those in the page footer or on the talk page. Drift's
+              parser takes paragraphs, tables and the infobox, and never the
+              footer, so for exactly that subset it reproduced the article and
+              dropped the notice saying who else must be credited (audit M-3).
+              CC BY-SA 4.0 §3(a)(2) accepts a link to a resource carrying the
+              required information, and the article link is right here. */}
+          {open && (card.source ?? "wikipedia") === "wikipedia" && (
+            <p className="text-xs leading-relaxed text-ink-soft">
+              This article may incorporate text from other sources with their own
+              attribution requirements.{" "}
+              <a
+                href={card.sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline decoration-ink/30 underline-offset-2 transition hover:text-accent-strong"
+              >
+                See the article on Wikipedia
+              </a>{" "}
+              for its full licensing footer.
+            </p>
+          )}
           {/* The museum label — a calm, tap-to-open "Details" block (art only).
               Inline scroll content, so it never overlays or eats the viewport on
               a phone; the two-column list wraps long values instead of overflowing. */}
@@ -746,20 +850,33 @@ export function CardView({
             >
               {sourceLinkLabel(card.source)}
             </a>
-            {/* The licence notice, on the card itself. The link above is the
-                ATTRIBUTION (the article's history page lists its authors, which
-                the Terms of Use accept); this is the separate obligation to state
-                the licence AND link its text. It belongs where the content is
-                read, not only in the public footer. See lib/licenses.ts. */}
+            {/* The licence notice for the card's TEXT, on the card itself. The
+                link above is the ATTRIBUTION (the article's history page lists
+                its authors, which the Terms of Use accept); this is the separate
+                obligation to state the licence AND link its text. It belongs
+                where the content is read, not only in the public footer.
+
+                The trailing "excerpted and reformatted" is a THIRD and equally
+                mandatory limb: CC BY-SA 4.0 §3(a)(1)(B) requires modification to
+                be indicated, and it is satisfied by neither of the other two
+                (compliance audit M-2). Drift truncates every article to a few
+                sentences and re-lays out the rest.
+
+                This notice covers the text only. The image beside it is a
+                separate work with its own creator and licence, credited under the
+                image itself. See lib/licenses.ts and lib/imagecredit.ts. */}
             {license && (
-              <a
-                href={license.url}
-                target="_blank"
-                rel="license noopener noreferrer"
-                className="text-xs font-medium text-ink-soft underline decoration-ink/30 underline-offset-4 transition hover:text-accent-strong hover:decoration-accent"
-              >
-                {license.label} ↗
-              </a>
+              <span className="text-xs text-ink-soft">
+                <a
+                  href={license.url}
+                  target="_blank"
+                  rel="license noopener noreferrer"
+                  className="font-medium underline decoration-ink/30 underline-offset-4 transition hover:text-accent-strong hover:decoration-accent"
+                >
+                  {license.label} ↗
+                </a>{" "}
+                · {open ? MODIFICATION_FULL : MODIFICATION_CARD}
+              </span>
             )}
           </div>
           {/* Phone only: the threads sit here, at the end of the read, so the

@@ -1,6 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
+  articImageProxied,
   articImageUrl,
+  articUpstreamImageUrl,
   articPageUrl,
   articToCard,
   articToCandidate,
@@ -23,6 +25,17 @@ const monet: ArticArtwork = {
   image_id: "3c27b499-af56-f0d5-93b5-a7f2f1ad5813",
   is_public_domain: true,
 };
+
+// The image URL depends on whether the passthrough is on, and under vitest
+// NODE_ENV is "test" — i.e. not production — so it would default ON. Pin it OFF
+// for the mapper tests, which are about the museum's own URL shape, and exercise
+// the switch on its own below.
+beforeEach(() => {
+  process.env.ARTIC_IMAGE_PROXY = "0";
+});
+afterEach(() => {
+  delete process.env.ARTIC_IMAGE_PROXY;
+});
 
 describe("artic mappers", () => {
   it("builds an IIIF image url", () => {
@@ -116,6 +129,40 @@ describe("artFacts (museum label)", () => {
     expect(c.blurDataUrl).toBeUndefined();
     expect(c.imageAlt).toBeUndefined();
     expect(c.zoomUrl).toBeDefined(); // has an image_id
+  });
+});
+
+// The museum's image host is behind Cloudflare bot management, which refuses a
+// browser-shaped request carrying a localhost `Referer` — every Gallery image in
+// local development. The passthrough route exists for that; this is the switch
+// that decides whether a card points at it.
+describe("artic image passthrough switch", () => {
+  it("is on by default outside production and off inside it", () => {
+    delete process.env.ARTIC_IMAGE_PROXY;
+    expect(articImageProxied()).toBe(process.env.NODE_ENV !== "production");
+  });
+
+  it("routes card and zoom images through our own origin when on", () => {
+    process.env.ARTIC_IMAGE_PROXY = "1";
+    expect(articImageUrl("abc")).toBe("/api/img/artic/abc/843");
+    const c = articToCard({ ...monet, image_id: "abc" });
+    expect(c.imageUrl).toBe("/api/img/artic/abc/843");
+    expect(c.zoomUrl).toBe("/api/img/artic/abc/1686");
+  });
+
+  it("keeps the museum's own URL reachable for the route to fetch", () => {
+    process.env.ARTIC_IMAGE_PROXY = "1";
+    expect(articUpstreamImageUrl("abc", 1686)).toBe(
+      "https://www.artic.edu/iiif/2/abc/full/1686,/0/default.jpg",
+    );
+    expect(articUpstreamImageUrl(null)).toBeUndefined();
+  });
+
+  it("treats an explicit 0 or false as off", () => {
+    for (const off of ["0", "false", "FALSE"]) {
+      process.env.ARTIC_IMAGE_PROXY = off;
+      expect(articImageProxied()).toBe(false);
+    }
   });
 });
 

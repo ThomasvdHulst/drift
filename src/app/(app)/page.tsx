@@ -7,6 +7,7 @@ import { listTrails, getSettings, setSettings } from "@/lib/storage";
 import { pickRandom } from "@/lib/pick";
 import { TOPICS, type Topic } from "@/lib/topics";
 import { CURRENT_SECTIONS } from "@/lib/current";
+import { CC_BY_SA_4 } from "@/lib/licenses";
 import { focusToParams, type Focus } from "@/lib/focus";
 import { listRealms, getRealm } from "@/lib/realms";
 import type { RealmId, SeedTile } from "@/lib/realms/types";
@@ -317,6 +318,30 @@ export default function Home() {
               tiles={newsTiles}
               onPick={openCurrent}
             />
+            {/* The selection itself is Wikipedia's, and selection can carry
+                copyright of its own, so the portal is credited alongside the
+                articles it points at (compliance audit Mi-2). */}
+            <p className="mt-3 max-w-md text-center text-xs leading-relaxed text-ink-soft">
+              Subjects are selected from Wikipedia&apos;s{" "}
+              <a
+                href="https://en.wikipedia.org/wiki/Portal:Current_events"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline decoration-ink/30 underline-offset-2 transition hover:text-accent-strong"
+              >
+                Current events portal
+              </a>
+              , under{" "}
+              <a
+                href={CC_BY_SA_4.url}
+                target="_blank"
+                rel="license noopener noreferrer"
+                className="underline decoration-ink/30 underline-offset-2 transition hover:text-accent-strong"
+              >
+                {CC_BY_SA_4.label}
+              </a>
+              . Drift reads only which articles are linked, never the reporting.
+            </p>
           </>
         ) : active === "gallery" ? (
           /* Directed drift for the Gallery (Phase 24), mirroring the two

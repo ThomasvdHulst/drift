@@ -3,6 +3,7 @@
 
 import type { SourceId, RealmId } from "./realms/types";
 import type { Block } from "./wikihtml";
+import type { ImageCredit } from "./imagecredit";
 
 export type Card = {
   // Source-native id / key. For Wikipedia this is the canonical title (used in
@@ -28,6 +29,28 @@ export type Card = {
   // A generated, field-themed "cover" for image-less realms (Phase 17 — Papers):
   // a hue + motif + seed the card renders instead of a photo. Only arXiv sets it.
   cover?: { hue: string; motif: string; seed: number };
+  // Creator + licence of `imageUrl`, which is a SEPARATE work from the article
+  // text with its own author and its own licence (compliance audit B-4). Absent
+  // means "not looked up", and `mayDisplayImage` treats that as "do not show the
+  // image" — which is what makes cards saved before this existed fail closed.
+  // See lib/imagecredit.ts.
+  imageCredit?: ImageCredit;
+  // The licence of the card's TEXT, carried with the data rather than living only
+  // in the rendered card (audit M-11). Every persisted card and every cached API
+  // payload gets one, so a trail in the database, a share in transit and an export
+  // are all self-describing rather than looking like unattributed extracts.
+  attribution?: Attribution;
+};
+
+/** The licence of a card's text, travelling with the card. */
+export type Attribution = {
+  source: string; // "English Wikipedia"
+  sourceUrl: string;
+  license: string; // "CC BY-SA 4.0"
+  licenseUrl: string;
+  /** CC BY-SA 4.0 §3(a)(1)(B) requires modification to be indicated. */
+  modified: boolean;
+  modification?: string; // "excerpted and reformatted"
 };
 
 // A related page returned by a realm's "related" endpoint — already carries
@@ -41,6 +64,10 @@ export type RelatedCandidate = {
   description?: string;
   extract?: string;
   imageUrl?: string;
+  /** File name of `imageUrl`, so a candidate that LANDS on a card can have its
+   *  image credited without a second lookup (see lib/imagecredit.ts). */
+  imageFile?: string;
+  imageCredit?: ImageCredit;
   source?: SourceId;
   sourceUrl?: string; // set by non-Wikipedia realms (Wikipedia synthesizes it)
   threadLabel?: string;

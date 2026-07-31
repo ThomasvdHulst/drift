@@ -1,5 +1,7 @@
 import type { Card, RelatedCandidate } from "./types";
 import { preprocessMath } from "./mathtext";
+import { attributionFor } from "./licenses";
+import { fileKey, type ImageCredit } from "./imagecredit";
 
 // ---------------------------------------------------------------------------
 // Pure Wikipedia helpers — no network here. Route handlers do the fetching (so
@@ -26,6 +28,9 @@ export interface ActionPage {
   description?: string;
   extract?: string;
   thumbnail?: RawImage;
+  /** The file name of `thumbnail`, from `piprop=name`. The key for looking up the
+   *  image's own creator and licence, which are not the article's. */
+  pageimage?: string;
   canonicalurl?: string;
   fullurl?: string;
   pageprops?: Record<string, string>;
@@ -82,17 +87,28 @@ export function firstPage(raw: unknown): ActionPage | null {
 }
 
 /** Normalize an Action API page into a Card. */
-export function actionPageToCard(page: ActionPage): Card {
+export function actionPageToCard(
+  page: ActionPage,
+  credits?: Map<string, ImageCredit>,
+): Card {
   const pageTitle = page.title ?? "";
+  const sourceUrl =
+    page.canonicalurl ?? page.fullurl ?? titleToSourceUrl(pageTitle);
+  const credit = page.pageimage
+    ? credits?.get(fileKey(page.pageimage))
+    : undefined;
   return {
     pageTitle,
     displayTitle: pageTitle,
     description: page.description,
     extract: preprocessMath(page.extract ?? ""),
     imageUrl: page.thumbnail?.source,
-    sourceUrl:
-      page.canonicalurl ?? page.fullurl ?? titleToSourceUrl(pageTitle),
+    sourceUrl,
     source: "wikipedia",
+    ...(credit ? { imageCredit: credit } : {}),
+    ...(attributionFor("wikipedia", sourceUrl)
+      ? { attribution: attributionFor("wikipedia", sourceUrl)! }
+      : {}),
   };
 }
 
@@ -177,6 +193,7 @@ export function relatedToCandidates(raw: unknown): RelatedCandidate[] {
       description: p.description,
       extract: p.extract ? preprocessMath(p.extract) : p.extract,
       imageUrl: p.thumbnail?.source,
+      imageFile: p.pageimage,
       source: "wikipedia" as const,
     }))
     .filter((c) => c.pageTitle.length > 0);
@@ -192,7 +209,7 @@ export function relatedToCandidates(raw: unknown): RelatedCandidate[] {
  */
 export function selectCardBatch(
   pages: ActionPage[],
-  opts: { maxImagelessRatio?: number } = {},
+  opts: { maxImagelessRatio?: number; credits?: Map<string, ImageCredit> } = {},
 ): Card[] {
   const maxRatio = opts.maxImagelessRatio ?? 0.25;
   const clean = pages.filter((p) => !isJunkPage(p));
@@ -202,7 +219,9 @@ export function selectCardBatch(
     imaged.length === 0
       ? imageless.length
       : Math.floor((imaged.length * maxRatio) / (1 - maxRatio));
-  return [...imaged, ...imageless.slice(0, cap)].map(actionPageToCard);
+  return [...imaged, ...imageless.slice(0, cap)].map((p) =>
+    actionPageToCard(p, opts.credits),
+  );
 }
 
 /** Build a full Card from a related candidate (no extra fetch needed). For
@@ -210,15 +229,21 @@ export function selectCardBatch(
  *  ready `sourceUrl` — respect them; only synthesize the Wikipedia URL. */
 export function candidateToCard(c: RelatedCandidate): Card {
   const source = c.source ?? "wikipedia";
+  const sourceUrl =
+    source === "wikipedia" ? titleToSourceUrl(c.pageTitle) : c.sourceUrl ?? "";
+  const attribution = attributionFor(source, sourceUrl);
   return {
     pageTitle: c.pageTitle,
     displayTitle: c.displayTitle || c.pageTitle,
     description: c.description,
     extract: c.extract ?? "",
     imageUrl: c.imageUrl,
-    sourceUrl:
-      source === "wikipedia" ? titleToSourceUrl(c.pageTitle) : c.sourceUrl ?? "",
+    sourceUrl,
     source,
+    // The image's own creator + licence, resolved when the candidate was fetched
+    // so pulling a thread does not cost another lookup (audit B-4).
+    ...(c.imageCredit ? { imageCredit: c.imageCredit } : {}),
+    ...(attribution ? { attribution } : {}),
     // Carry the Phase-14 rich fields so landing on an art card keeps its museum
     // label / zoom / blur / alt (absent on Wikipedia candidates).
     ...(c.zoomUrl ? { zoomUrl: c.zoomUrl } : {}),

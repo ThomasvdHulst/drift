@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useAuth } from "@/components/AuthProvider";
 import { PasswordField } from "@/components/PasswordField";
 import { passwordHint, passwordProblem } from "@/lib/auth";
@@ -252,6 +253,32 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: Mode } = {}
               ? "Send reset link"
               : "Sign in"}
       </button>
+
+      {/* The terms are what make the account relationship a CONTRACT, which is
+          the Article 6(1)(b) GDPR basis /privacy relies on for nearly all of
+          Drift's processing. A contract nobody was shown is a weak one, so the
+          reference sits at the moment of signing up. The 16+ line is the term
+          itself; the audit's M-8 remedy also asks for a self-declaration at
+          sign-up, and that is M4. This does not pretend to be one. */}
+      {mode === "signup" && (
+        <p className="mt-4 text-xs leading-relaxed text-ink-soft">
+          By creating an account you agree to{" "}
+          <Link
+            href="/terms"
+            className="text-accent-strong underline-offset-2 hover:underline"
+          >
+            the terms
+          </Link>
+          , and confirm you are 16 or older. See{" "}
+          <Link
+            href="/privacy"
+            className="text-accent-strong underline-offset-2 hover:underline"
+          >
+            what Drift stores
+          </Link>
+          .
+        </p>
+      )}
 
       {mode === "reset" && (
         <button

@@ -5,16 +5,31 @@
 // re-runs every one of them, because anything the browser asserts can be forged.
 
 /** What the user picked as the subject of their message. Kept as a small closed
- *  set so the notification subject line is scannable in an inbox. */
+ *  set so the notification subject line is scannable in an inbox.
+ *
+ *  `report` is the DSA Article 16 notice-and-action mechanism (compliance audit
+ *  M-5), which the Article requires every hosting service to provide regardless
+ *  of size. It is a mode of this form rather than a separate page, because the
+ *  Article asks for a mechanism that is "easy to access" and "user-friendly",
+ *  and one more page to find is neither. It is last in the list on purpose: it
+ *  is the rarest reason to write and the heaviest form to fill in. */
 export const CONTACT_TOPICS = [
   { id: "feedback", label: "Feedback" },
   { id: "bug", label: "Something is broken" },
   { id: "idea", label: "An idea" },
   { id: "account", label: "Help with my account" },
   { id: "other", label: "Something else" },
+  { id: "report", label: "Report illegal content" },
 ] as const;
 
 export type ContactTopicId = (typeof CONTACT_TOPICS)[number]["id"];
+
+/** The Article 16 mode. One predicate, so the client, the validator and the
+ *  route agree on when the extra rules apply. */
+export const REPORT_TOPIC: ContactTopicId = "report";
+export function isReportTopic(id: string | undefined): boolean {
+  return id === REPORT_TOPIC;
+}
 
 export function topicLabel(id: string): string {
   return CONTACT_TOPICS.find((t) => t.id === id)?.label ?? "Message";
@@ -22,6 +37,12 @@ export function topicLabel(id: string): string {
 
 export const MESSAGE_MAX = 4000;
 export const MESSAGE_MIN = 10;
+/** Article 16(2)(a) wants "a sufficiently substantiated explanation of the
+ *  reasons why" the content is alleged to be illegal. A one-line report is not
+ *  one, and a notice that cannot be acted on helps nobody, so the floor is
+ *  higher here than for an ordinary message. */
+export const REPORT_MESSAGE_MIN = 40;
+export const LOCATION_MAX = 500;
 export const NAME_MAX = 80;
 export const EMAIL_MAX = 254; // RFC 5321 practical maximum
 
@@ -40,27 +61,39 @@ export interface ContactInput {
   email?: string;
   topic?: string;
   message?: string;
+  /** Article 16(2)(b): "a clear indication of the exact electronic location of
+   *  that information". Report mode only. */
+  location?: string;
+  /** Article 16(2)(d): the notifier's bona fide statement. Report mode only. */
+  goodFaith?: boolean;
   /** Honeypot: a field hidden from humans, so any value means a bot filled it. */
   website?: string;
   /** Client clock at form mount, used for the fill-time check. */
   startedAt?: number;
 }
 
+export interface ContactDetailsValue {
+  name: string;
+  /** May be EMPTY for an Article 16 report. See `validateFields`. */
+  email: string;
+  topic: ContactTopicId;
+  topicLabel: string;
+  message: string;
+  /** Report mode only: where the content is. */
+  location?: string;
+  /** True when this is an Article 16 notice rather than an ordinary message. */
+  isReport: boolean;
+}
+
 export interface ContactValid {
   ok: true;
-  value: {
-    name: string;
-    email: string;
-    topic: ContactTopicId;
-    topicLabel: string;
-    message: string;
-  };
+  value: ContactDetailsValue;
 }
 
 export interface ContactInvalid {
   ok: false;
   /** Which field to point the user at, or null for a silent bot rejection. */
-  field: "name" | "email" | "message" | null;
+  field: "name" | "email" | "message" | "location" | "goodFaith" | null;
   error: string;
   /** True when the submission looks automated. The caller should answer with a
    *  normal-looking success so a bot learns nothing about why it failed. */
@@ -88,26 +121,76 @@ export function fillTimeRemaining(
  * Validate only the fields a person actually filled in. This is the half the
  * client runs, so its errors are always about something the user can see and fix.
  * The bot traps live in validateContact and are the server's business.
+ *
+ * TWO SHAPES, one function. An ordinary message needs an address, because the
+ * whole point is a reply. An Article 16 notice does not: Article 16(2)(c)
+ * requires the name and email "except in the case of information considered to
+ * involve one of the offences referred to in Articles 3 to 7 of Directive
+ * 2011/93/EU" — child sexual abuse material, where the person reporting may have
+ * every reason not to identify themselves. Rather than make a notifier
+ * self-classify into that category on a web form, which is both a horrible thing
+ * to ask and a bad way to get accurate answers, the address is optional for every
+ * report and the form explains what is lost by leaving it out. Permitting more
+ * anonymity than the Article requires is not a breach of it.
  */
 export function validateFields(input: ContactInput): ContactResult {
   const name = (input.name ?? "").trim().slice(0, NAME_MAX);
   const email = (input.email ?? "").trim().toLowerCase();
   const message = (input.message ?? "").trim();
+  const topic = (CONTACT_TOPICS.find((t) => t.id === input.topic)?.id ??
+    "feedback") as ContactTopicId;
+  const report = isReportTopic(topic);
+  const location = (input.location ?? "").trim();
 
-  if (!email) {
+  // Optional for a report, required otherwise. Either way, an address that IS
+  // given has to be usable, or the confirmation of receipt goes nowhere.
+  if (!email && !report) {
     return { ok: false, field: "email", error: "Please add your email so we can reply." };
   }
-  if (email.length > EMAIL_MAX || !EMAIL_RE.test(email)) {
+  if (email && (email.length > EMAIL_MAX || !EMAIL_RE.test(email))) {
     return { ok: false, field: "email", error: "That email address doesn't look right." };
   }
-  if (!message) {
-    return { ok: false, field: "message", error: "Please write a message." };
+
+  if (report) {
+    if (!location) {
+      return {
+        ok: false,
+        field: "location",
+        error: "Please say where the content is, so it can be found.",
+      };
+    }
+    if (location.length > LOCATION_MAX) {
+      return {
+        ok: false,
+        field: "location",
+        error: `Please keep the location under ${LOCATION_MAX} characters.`,
+      };
+    }
+    if (!input.goodFaith) {
+      return {
+        ok: false,
+        field: "goodFaith",
+        error:
+          "Please confirm that what you have written is accurate and complete to the best of your knowledge.",
+      };
+    }
   }
-  if (message.length < MESSAGE_MIN) {
+
+  const min = report ? REPORT_MESSAGE_MIN : MESSAGE_MIN;
+  if (!message) {
     return {
       ok: false,
       field: "message",
-      error: "Could you say a little more? A sentence or two helps.",
+      error: report ? "Please explain why you believe it is illegal." : "Please write a message.",
+    };
+  }
+  if (message.length < min) {
+    return {
+      ok: false,
+      field: "message",
+      error: report
+        ? "A report needs enough detail to act on. Please say what makes this illegal, and under which law if you know it."
+        : "Could you say a little more? A sentence or two helps.",
     };
   }
   if (message.length > MESSAGE_MAX) {
@@ -118,12 +201,17 @@ export function validateFields(input: ContactInput): ContactResult {
     };
   }
 
-  const topic = (CONTACT_TOPICS.find((t) => t.id === input.topic)?.id ??
-    "feedback") as ContactTopicId;
-
   return {
     ok: true,
-    value: { name, email, topic, topicLabel: topicLabel(topic), message },
+    value: {
+      name,
+      email,
+      topic,
+      topicLabel: topicLabel(topic),
+      message,
+      ...(report ? { location } : {}),
+      isReport: report,
+    },
   };
 }
 
@@ -152,12 +240,21 @@ export function validateContact(
 }
 
 /** The owner-facing subject line. Front-loads the topic and who it's from, so the
- *  forwarded copy is triageable from an inbox list without opening it. */
+ *  forwarded copy is triageable from an inbox list without opening it.
+ *
+ *  An Article 16 notice is marked so it cannot be lost in a run of feedback: it
+ *  starts a clock (confirm receipt without undue delay, then notify the outcome)
+ *  and ordinary messages do not. An anonymous notice says so rather than reading
+ *  as a message from nobody. */
 export function notificationSubject(v: {
   topicLabel: string;
   name: string;
   email: string;
+  isReport?: boolean;
 }): string {
   const who = v.name ? `${v.name} (${v.email})` : v.email;
+  if (v.isReport) {
+    return `[Drift] ACTION: illegal content report from ${who || "an anonymous notifier"}`;
+  }
   return `[Drift] ${v.topicLabel} from ${who}`;
 }

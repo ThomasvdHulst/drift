@@ -34,6 +34,8 @@ const UTILITY_LINKS: { href: string; label: string }[] = [
   { href: "/install", label: "Install" },
   { href: "/contact", label: "Contact" },
   { href: "/privacy", label: "Privacy" },
+  { href: "/terms", label: "Terms" },
+  { href: "/legal", label: "Legal" },
   { href: "/colophon", label: "Colophon" },
 ];
 
@@ -81,6 +83,35 @@ export function PublicFooter() {
           public domain artworks from the Art Institute of Chicago, under{" "}
           <LicenseLink license={CC0_1} />. Drift only reshapes it. It never
           invents facts.
+        </p>
+        {/* The landing page's illustrations are HOSTED COPIES on our own origin,
+            not hotlinked like card images, which makes them reproduction and
+            distribution by us and the attribution position stricter (audit M-1).
+            They appear as small trail-map thumbnails and demo cards, where a
+            credit beside each one is not a workable medium, so the per-image
+            credits live on /colophon and this line links to them. CC BY 4.0
+            §3(a)(2) allows attribution "by providing a URI or hyperlink to a
+            resource that includes the required information", which is exactly
+            that. See public/landing/CREDITS.md for the per-file record. */}
+        <p className="max-w-md text-xs leading-relaxed text-ink-soft">
+          Illustrations on this site: The Art Institute of Chicago (CC0), Ernst
+          Haeckel (public domain), and NASA.{" "}
+          <Link
+            href="/colophon#illustrations"
+            className="underline decoration-ink/30 underline-offset-2 transition hover:text-accent-strong"
+          >
+            Full credits
+          </Link>
+          .
+        </p>
+        {/* CC BY-SA 4.0 §2(a)(6) and the Wikimedia trademark policy both allow
+            naming a source to say where content came from, but not implying an
+            association with it. Drift's copy leans on words like "vetted" and
+            "curated", which edges toward implying an editorial relationship, so
+            the disclaimer is cheap insurance (compliance audit Mi-7). */}
+        <p className="max-w-md text-xs leading-relaxed text-ink-soft">
+          Drift is an independent project, not affiliated with, endorsed by or
+          sponsored by the Wikimedia Foundation or The Art Institute of Chicago.
         </p>
         <p className="text-xs text-ink-soft">
           © {year} Drift. A calm corner of the internet, for the curious.

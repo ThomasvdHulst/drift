@@ -29,8 +29,8 @@ export default function SourcesPage() {
       <Section title="Wikipedia">
         <P>
           The Encyclopedia realm is English Wikipedia: card titles,
-          descriptions, extracts, the full article body behind &ldquo;read
-          more&rdquo;, and the freely licensed images on those pages.
+          descriptions, extracts, and the full article body behind &ldquo;read
+          more&rdquo;.
         </P>
         <P>
           The text is used under <LicenseLink license={CC_BY_SA_4} />. That
@@ -56,12 +56,33 @@ export default function SourcesPage() {
         </P>
       </Section>
 
+      <Section title="Images are not covered by the article's licence">
+        <P>
+          Worth stating separately, because it is easy to get wrong and Drift got
+          it wrong until July 2026. A photograph on a Wikipedia article is a{" "}
+          <Lead>separate work </Lead>from the article. It has its own author, who
+          is usually not among the article&apos;s authors, and its own licence,
+          which may be CC BY-SA, CC BY, CC0, a public domain dedication or
+          something else. The article&apos;s licence does not cover it.
+        </P>
+        <P>
+          So Drift reads each file&apos;s own creator and licence from Wikipedia
+          and shows them on the card, with a link to that file&apos;s description
+          page. If a file&apos;s licence requires a credit and Drift cannot
+          establish one, or if the file is flagged as carrying trademark or
+          personality rights, the image is not displayed at all. A card without a
+          picture is the correct outcome there.
+        </P>
+      </Section>
+
       <Section title="The Art Institute of Chicago">
         <P>
-          The Gallery realm is the Art Institute of Chicago&apos;s open access
-          collection, under <LicenseLink license={CC0_1} />. Drift serves only
-          works the museum itself marks as public domain, with the artist, date,
-          medium and dimensions from its catalogue.
+          The Gallery realm is The Art Institute of Chicago&apos;s
+          <span aria-hidden="true">®</span> open access collection, under{" "}
+          <LicenseLink license={CC0_1} />. Drift serves only works the museum
+          itself marks as public domain, with the artist, date, medium and
+          dimensions from its catalogue, and it checks the licence the museum
+          states on every response rather than assuming it.
         </P>
       </Section>
 
@@ -111,6 +132,14 @@ export default function SourcesPage() {
           If Drift itself is at fault, for example misattributing something,
           mislabelling a thread, or showing an image it should not,{" "}
           <A href="/contact">let me know</A>.
+        </P>
+      </Section>
+
+      <Section title="Independence">
+        <P>
+          Drift is an independent project. It is not affiliated with, endorsed by
+          or sponsored by the Wikimedia Foundation or The Art Institute of
+          Chicago. It uses their names only to say where the content came from.
         </P>
       </Section>
     </PublicPage>

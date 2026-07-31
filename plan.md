@@ -5,11 +5,33 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 **tested with success**. Keep the "Current status" line accurate. Full product detail is in
 `drift-spec.md`; working rules are in `CLAUDE.md`.
 
-> ## Current status — 2026-07-29
+> ## Current status — 2026-07-31
 >
 > **Drift is live** at <https://www.usedrift.org> (Vercel + Supabase) as an installable PWA,
 > in a small friends-and-colleagues beta. Two realms ship: **Encyclopedia** (Wikipedia) and
 > **Gallery** (Art Institute of Chicago, CC0).
+>
+> **Latest (2026-07-31): an independent legal and copyright audit is being implemented.**
+> `docs/drift-compliance-audit.md` is the report; `docs/owner-actions.md` is everything that needs a
+> human rather than code. **M0** closed the one live breach (the AdSense loader was running, and
+> setting a cookie, on every public page with no consent mechanism, while earning nothing).
+> **M1** gave every image its own creator and licence, and made attribution travel with saved and
+> shared cards. **M2** (this session) is the documents: `/terms` meeting DSA Article 14, an Article
+> 16 notice-and-action route, the Article 11/12 contact points, `/privacy` rewritten to the Article
+> 13 checklist, a data export button, the contact-form IP disclosure, and the Article 30 processing
+> record, plus **`/legal`**, the Article 3:15d BW imprint, now that the owner has supplied the
+> details. **M2 is complete.** **M3** (Gallery EU public-domain filter), **M4** (consent gate and age
+> gate) and **M5** (hygiene) are next. See the entries at the bottom.
+>
+> **Also (2026-07-31): a landing-page illustration was NonCommercial.** The Jupiter image was a
+> JunoCam frame processed by citizen scientists and credited `© CC NC SA` on JPL's own page. NASA
+> hosting an image does not make it public domain. Replaced with a Cassini portrait; the two Hubble
+> images are now credited on `/colophon`.
+>
+> **Also (2026-07-31): Gallery cards had lost their pictures in local development.** Not a
+> regression: the museum's image host now sits behind Cloudflare bot management that 403s a
+> browser-shaped request with a localhost `Referer`. The live origin is allowed, so production was
+> never affected. Fixed with a same-origin passthrough, on outside production and off inside it.
 >
 > **Latest (2026-07-29): Drift has a public reading section.** `/how-it-works`, `/principles`,
 > `/sources`, `/faq`, `/colophon` and a `/notes` journal, taking the crawlable surface from 5 URLs
@@ -3283,6 +3305,294 @@ CC BY 4.0 and not public domain), no cached route reads the session, and the inb
 card with **no** licence notice, which is a real gap M1 closes.
 
 ---
+
+## Compliance audit, M1: attribution that travels ✅ *(2026-07-31)*
+
+The audit's copyright findings. Article *text* was already handled well; images were not, and
+nothing said the text had been modified.
+
+- [x] **Per-image credit (B-4).** A Wikipedia image is a separate work with its own author and
+      licence, and the card asserted the ARTICLE's licence over it. `lib/imagecredit.ts` (pure, 16
+      tests) parses each file's `extmetadata`; `fetchImageCredits` in `wiki-server.ts` gets it in
+      **one batched call per card batch**, not one per card. The card now shows creator, the licence
+      named and hyperlinked, and a link to the file description page.
+- [x] **Two fail-closed rules.** No image is displayed if its licence needs a credit we cannot
+      establish, or if the file carries `Restrictions` (trademark / personality rights: copyright-free
+      is not use-free). Unknown provenance counts as "cannot establish", so cards saved before this
+      shipped show no picture rather than an uncredited one.
+- [x] **Modification indicated (M-2).** `excerpted and reformatted by Drift` on the card,
+      `reformatted by Drift; images removed` when expanded. CC BY-SA §3(a)(1)(B) is a separate limb
+      from creator and licence, satisfied by neither.
+- [x] **The notice travels with the data (M-11).** Every card carries an `attribution` block, so a
+      trail in Postgres, a share in transit and a cached payload are self-describing.
+- [x] **Received cards carry the notice (Q-7).** The inbox rendered a lighter component with a source
+      link and no licence. It now has both, and the same fail-closed image rule.
+- [x] **The PNG export drops images (B-5).** Arranging third-party images into a composite is the
+      strongest ShareAlike trigger in the product, and the export is the one artefact built to leave
+      Drift. Titles and shape only, with a burned-in `Titles from Wikipedia · CC BY-SA 4.0` line. The
+      on-screen map keeps its pictures. `NodeThumb` now renders the monogram *under* the image so the
+      export is not a row of empty circles.
+- [x] **AIC (Mi-1).** Cards name `The Art Institute of Chicago` in full, completing the caption the
+      museum requests, and every AIC response is checked against its own `info.license_text` and
+      refused if it is not CC0 — which the code never read before.
+- [x] **Current events credited (Mi-2)**, `/sources` corrected to stop describing images as covered
+      by the article's licence, and an independence disclaimer added (Mi-7).
+- [x] **`public/landing/CREDITS.md`** records all 24 hosted landing images. ⚠️ The cosmos group is
+      **unverified**: "public domain" is right for NASA and wrong for ESA, whose Hubble releases are
+      normally CC BY 4.0. Flagged in the file, in `data.ts`, and on the owner's action list.
+
+**Two bugs found only by testing against the live API**, both of which would have silently disabled
+every image: Commons-hosted files report `missing: true` on en.wikipedia while still returning
+`imageinfo`, and `piprop=name` returns underscores where API titles use spaces. Neither is visible by
+reading the code.
+
+**Verified live:** Seville Cathedral credits `Ingo Mehling · CC BY-SA 4.0` with the licence and the
+file page both linked; Monet resolves to `Nadar · Public domain`; Octopus to `albert kok · CC BY-SA
+3.0`. 738 unit tests, build + lint clean.
+
+---
+
+## Compliance audit, M2: the legal documents ✅ *(2026-07-31)*
+
+The obligations that have **no size threshold**. M0 and M1 fixed things that were live and wrong;
+none of M2 was breaching anything today, because ads are off and the app is behind a login. It is
+still the most valuable of the remaining milestones: DSA Articles 11, 12, 14, 16, 17 and 18 apply to
+every intermediary service regardless of size, and `/privacy` was missing most of what GDPR Article
+13 requires.
+
+**The DSA classification the audit did is load-bearing and was not redone.** Drift is a **hosting
+service** under Article 3(g)(iii) but **not an online platform**, because sharing reaches only mutual
+friends and that restriction is enforced by a database policy (`are_friends()` in the `shares` insert
+RLS policy) rather than by the interface. That removes Articles 20 to 28 entirely: no internal
+complaint-handling system, no out-of-court dispute body, no trusted flaggers. Article 15(2) exempts a
+micro enterprise from transparency reporting. Nothing built below promises any of those, and a test
+asserts the terms do not.
+
+- [x] **`/terms` (M-5).** The Terms of Service, covering the Article 14(1) list: what users may not
+      do, how moderation works, what happens on breach, and how to complain. The words live in
+      `lib/terms.ts` as data and are rendered twice, at `/terms` for people and `/terms.md` for
+      anything reading it as a document, which is how Article 14(1)'s "machine-readable format" is
+      satisfied without two copies that can disagree. `lib/inline.ts` is the two-rule
+      (`**strong**`, `[label](href)`) parser that makes one source serve both.
+- [x] **The CC BY-SA trap, avoided on purpose.** A boilerplate "you may not copy or redistribute
+      content from this service" clause would breach **§2(a)(5)(C)** (no downstream restrictions) of
+      the licence covering nearly all the content, caused by the very document written to close a
+      compliance gap. The terms instead say Drift **claims no rights and adds no conditions**, and
+      that the source material stays available under its own licence. Two tests guard it: one for
+      the carve-out, one asserting no clause anywhere tells a reader they may not redistribute.
+- [x] **Article 16 notice-and-action.** A mode of `/contact` rather than a page of its own, since
+      Article 16(2) asks for a mechanism that is easy to access. Choosing "Report illegal content"
+      adds the location field (16(2)(b)), raises the explanation floor to 40 characters (16(2)(a),
+      "sufficiently substantiated"), and requires an unticked good-faith checkbox (16(2)(d)).
+      The receipt email IS the 16(4) confirmation and carries the 16(5) promise; the inbox copy is
+      subject-lined `ACTION` and lists what still has to happen, so the duty is not left in a spec.
+- [x] **Anonymity, and why it is broader than the Article requires.** 16(2)(c) requires name and
+      email **except** for offences under Articles 3 to 7 of Directive 2011/93/EU. Rather than make
+      a notifier self-classify into the child sexual abuse category on a web form, the address is
+      optional for **every** report and the form says what is lost by omitting it. Permitting more
+      anonymity than the Article requires is not a breach of it.
+- [x] **Articles 11 and 12 contact points** published on `/contact`: the single point of contact for
+      Member State authorities, the Commission and the Board, the languages accepted, and that
+      recipients may use the same address. `contactAddress()` in `lib/site.ts` (see below).
+- [x] **`/privacy` rewritten to the Article 13 checklist (M-7)**, in the same plain voice the audit
+      called a virtue. Layered: a five-line summary over the full detail (Art 12(1)). Every one of
+      the twelve items in the audit's table is now present, including the ones that are answered by
+      saying "none": no DPO and why, no automated decision-making within Article 22, no consent to
+      withdraw.
+- [x] **The basis is CONTRACT, not consent.** Article 6(1)(b), performance of the terms, covers
+      almost everything; two rows are 6(1)(f) with the interest stated; advertising is 6(1)(a) and
+      only 6(1)(a). Writing "with your consent" across a notice is both inaccurate and strategically
+      bad, because it would make every operation in the app individually revocable.
+- [x] **Nothing described that does not exist.** The B-3 failure was a sentence promising a consent
+      prompt nobody had built. Every conditional passage now reads the same flag the feature does:
+      the Turnstile sentence appears only with a site key, the OAuth recipient only with a provider
+      configured, the ads branch only with the switch on.
+- [x] **Data export (Mi-3).** "Download your data" on `/account`, above the delete flow, because
+      taking a copy is what you want before deleting. One JSON file covering Articles 15 and 20.
+      Local stores come from IndexedDB; `exportSocialData` fetches the three tables that never sync
+      locally (profile, friend requests, shares in both directions), scoped by the same RLS the
+      delete path relies on. Absent sections mean "not held", never `null`, and the file says so.
+- [x] **Contact-form IP disclosure (Mi-5).** Article 13 requires disclosure at the time the data are
+      obtained, so it is at the form, not only on `/privacy`. Accurate about the throttle: a counter
+      in the memory of a short-lived server process, never written to disk.
+- [x] **`docs/processing-record.md` (Mi-4).** The Article 30 record. The "fewer than 250 employees"
+      exemption does **not** apply: the carve-outs are disjunctive and Drift's processing is
+      continuous rather than occasional. Eight activities, five processors, the Article 32 measures,
+      and a breach procedure worth having written down before it is needed.
+- [x] **Sign-up references the terms.** A contract nobody was shown is a weak one, and it is the
+      Article 6(1)(b) basis the whole privacy notice rests on. The 16+ line is the term; the
+      self-declaration at sign-up is M4 and this does not pretend to be one.
+
+**Verified.** 789 unit tests (up from 738), build and lint clean. `npm run audit:contrast` PASS over
+3,156 text nodes across 26 views in both themes, including `/terms` and a new `/contact [report]`
+row that drives the form into its Article 16 mode so the extra fields, the checkbox label and the
+anonymity note are actually measured. Against a **real gated production build** with the live
+Supabase env, all 12 public pages render their own content to a signed-out visitor and all 7 private
+routes still show the sign-in screen. `/sitemap.xml` lists `/terms`; `/robots.txt` leaked nothing.
+The Article 16 validation was exercised through the real route (five rejection paths, each naming
+the right field) and in a real browser (an incomplete notice never reaches the network, and the
+good-faith box is never pre-ticked).
+
+**Deliberately left.**
+
+- **`/legal`, the Article 3:15d BW imprint, is NOT built.** It needs the operator's legal name and
+  establishment address, which is item 4 of `docs/owner-actions.md` and the one thing the audit
+  recommends a lawyer for (§6.1), because the answer decides whether a home address gets published.
+  A placeholder imprint is worse than none. Consequence to be honest about: **Article 13(1)(a) GDPR
+  is therefore only partly met on `/privacy`** too, which names the controller as one person in the
+  Netherlands and gives contact details but no legal name. Both close together, in an hour, once
+  that decision is made.
+- **The published contact address defaults to `noreply@usedrift.org`**, which is the address known
+  to work (Cloudflare Email Routing forwards it). It reads badly on an Article 11 line, which is why
+  `NEXT_PUBLIC_CONTACT_ADDRESS` exists and why routing something like `contact@` is now on the
+  owner's list. Publishing a nicer address that bounces would be worse.
+- **The export button was not clicked end to end.** Its pure core is unit tested, it type-checks and
+  builds, and the storage reads it uses are the app's existing ones, but the card only renders for a
+  signed-in user and there are no test credentials for the production backend. One click for the
+  owner. Flagged rather than assumed.
+- **M3 (Gallery EU public-domain filter), M4 (consent gate and age gate) and M5 (hygiene)** are next
+  and untouched.
+
+---
+
+## Compliance audit, M2 closing pass ✅ *(2026-07-31)*
+
+The owner answered the open questions and pushed back on one instruction that was wrong. This closes
+M2 completely.
+
+- [x] **`/legal`, the imprint (M-6), is built.** The owner supplied the details, so the reason it was
+      withheld is gone. Thomas van der Hulst, trading as Usedrift (a trade name on the same KvK
+      registration as RiskOptimix), Uilenstede 138, 1183 AN Amstelveen, KvK 90992318. Linked from
+      every public footer, in the sitemap, and rendering to a signed-out visitor. Details live in
+      `lib/imprint.ts`, so `/privacy` names the same controller and the two cannot disagree: that
+      also closes the **Article 13(1)(a)** gap flagged last session.
+- [x] **No VAT number is published, deliberately, and the page says why.** Article 3:15d(1)(f) BW
+      requires it only "insofar as" a VAT-liable activity is carried on, and Drift is free, carries
+      no advertising and earns nothing. A test pins the omission so it cannot be quietly filled in
+      without also removing the explanation. It becomes required the day an advert renders.
+- [x] **`contact@usedrift.org` is the built-in default**, the owner having routed it. `/contact`,
+      `/privacy` and `/legal` all publish it, and the contact form delivers there unless
+      `CONTACT_INBOX` says otherwise. The `noreply@` address it replaced worked but read as an
+      instruction not to write, which is the opposite of what DSA Article 11 is for.
+- [x] **The processor-agreement instruction was wrong and is corrected.** The owner could not find
+      the "accept" buttons because for most providers there are none. **Vercel and Resend are already
+      in force**: both DPAs are pre-signed addenda that bind "upon Customer entering into the
+      Agreement", with the SCCs signed by deeming. **Cloudflare's does not** bind automatically and
+      needs accepting, but only matters if Turnstile is switched on. Supabase publishes one under
+      Organisation → Legal Documents and needs a look. `docs/owner-actions.md` §3 now explains what a
+      DPA is, why a pre-signed PDF looks unsigned, and `docs/processing-record.md` records the
+      per-provider position.
+- [x] **The landing-page cosmos images (M-1, Q-1) are resolved, and one was worse than the audit
+      guessed.** `cosmos-jupiter.jpg` was the JunoCam "Jupiter Blues" close-up, whose credit on JPL's
+      own page reads `NASA/JPL-Caltech/SwRI/MSSS/Gerald Eichstadt/Sean Doran © CC NC SA`. That is
+      **CC BY-NC-SA**: citizen-scientist processing of raw mission data carries the processors' own
+      terms even though NASA hosts the result. **NonCommercial cannot be cured by crediting** and is
+      squarely wrong for a site being prepared to carry advertising, on the only public indexed page.
+      Replaced with the Cassini Jupiter portrait (PIA04866) from `images.nasa.gov`.
+- [x] **The two Hubble images are credited rather than replaced.** The same file has two publishers
+      with two positions: NASA states Hubble outreach imagery is "generally not subject to copyright"
+      (and `hubblesite.org/copyright` now 301-redirects to that page, verified this session), while
+      ESA/Hubble publishes the same files under CC BY 4.0. Provenance was never recorded, so rather
+      than argue it, both are credited on a new **Illustrations** section of `/colophon` naming the
+      creators and linking CC BY 4.0, with every public footer linking there. Compliant on ESA's
+      reading, merely polite on NASA's. §3(a)(2) expressly allows attribution by link, which is the
+      only workable medium when the images appear as trail-map thumbnails.
+- [x] **The lesson is written where the next person will hit it.** `CREDITS.md` and
+      `landing/data.ts` now say that a NASA-hosted image is **not** automatically public domain, that
+      NC and ND are never acceptable here, and that the source URL must be recorded on adding a file.
+      Half the work in this pass came from not knowing where an image had been downloaded from.
+
+**Verified.** 798 unit tests, build and lint clean. `npm run audit:contrast` PASS over 3,347 text
+nodes across 27 views in both themes, `/legal` included. Against a real gated production build with
+the live Supabase env, `/legal` renders its own content to a signed-out visitor and carries the name,
+address, KvK number, email and the VAT explanation; `/privacy` names the same controller; `/contact`
+publishes the DSA address; `/colophon` carries the Hubble credit with the licence linked; the footer
+links to it. `/sitemap.xml` lists `/legal`.
+
+**Still with the owner**, and none of it is code: check the Supabase DPA, save the Vercel and Resend
+DPAs as dated PDFs, record the DPF certification dates, supply a VAT number if VAT-liable, click the
+data export once, and have the €200 to €400 trade mark conversation. On that last one the owner's own
+search turned up **Studio Drift Holding B.V.** holding DRIFT in Nice classes 9, 41 and 42 in the
+Benelux, which is exactly the escalation trigger the audit set at Mi-8. `docs/owner-actions.md` §6
+explains trade names versus trade marks, what the classes mean, and the bounded question to ask.
+
+---
+
+## Gallery images were not loading, and it was not us ✅ *(2026-07-31)*
+
+Reported alongside M2: every card in the Gallery realm showed its title and description over the
+monogram placeholder, with no artwork. It looked like a regression from M1's fail-closed image rule,
+which is what makes it worth writing down: **it was not.** That rule is scoped to Wikipedia images,
+and the Art Institute path never touched it.
+
+**The museum's image host is behind Cloudflare bot management, and its rules changed.** A request
+that looks like a browser but carries a `Referer` from a localhost origin gets a 403 challenge page,
+which the browser then discards as `ERR_BLOCKED_BY_ORB`. Measured, deterministically, 5 out of 5
+each way:
+
+| Request | Result |
+|---|---|
+| `Referer: http://localhost:3000/`, browser UA | **403** |
+| no `Referer`, browser UA | **403** |
+| `Referer: https://www.usedrift.org/`, browser UA | 200 |
+| no `Referer`, our own `Drift/1.0 (url; email)` UA | 200 |
+
+So this only ever bit **local development**, and the live origin is unaffected. Note the last row:
+an honest, identifying User-Agent passes where a browser-shaped one without a referrer does not,
+which means the fix needs no header spoofing at all. Worth recording against audit **C-6**, which
+found on 31 July that "AIC's IIIF image server imposes no anti-hotlinking condition": still true as a
+matter of terms, no longer true as a matter of what a server returns.
+
+- [x] **`/api/img/artic/[id]/[width]`**, a same-origin passthrough that fetches with the same
+      identifying User-Agent the JSON API gets. The upstream URL is BUILT from a validated UUID and
+      a bounded width, never taken from the caller, so it cannot be pointed at another host. Streams
+      rather than buffers, and caches for the museum's own 30 days.
+- [x] **`ARTIC_IMAGE_PROXY`, on outside production and off inside it.** Proxying moves image bytes
+      onto our bandwidth, and `docs/beta-readiness.md` deliberately relies on card images not doing
+      that, so production keeps linking to the museum. Set it to `1` in Vercel if the museum ever
+      starts refusing the live origin too; budget roughly 250 KB per artwork and 1 MB per zoom.
+      Licence-wise the switch is free either way: every artwork is CC0 and checked per response
+      against the museum's own `info.license_text`.
+
+**Verified** in a real Chromium: from a page on `http://localhost:3000`, a direct museum URL fails
+with `ERR_BLOCKED_BY_ORB` and the same three artworks load through the passthrough at their full
+843px. The route rejects a path-traversal id and an out-of-range width with 400. Production mode was
+checked too: with the switch at its default, cards carry the museum's own URL exactly as before.
+
+---
+
+**STILL TO DO FOR LEGAL AUDIT FIX**
+
+ M3 — Gallery EU public-domain filter (M-4, your choice: apply now)
+
+ New pure src/lib/artic.publicdomain.ts: admit only where is_public_domain and every attributed
+ artist has death_date <= currentYear - 71; where no death date, require artwork date_end < 1830.
+ Unit-test the boundaries and the multi-artist case. Fetch artist agent records via the existing
+ /agents path in src/lib/realms/server/artic.ts, cached in the module-level profileCache already
+ there so it adds no per-request latency.
+
+ M4 — Consent, and everything ads needs (the switch's "on" side)
+
+ - src/components/ConsentGate.tsx: first-party, server-rendered, no third-party request before a
+ choice. Accept and Reject side by side at equal visual weight, one click each, nothing pre-ticked,
+ no cookie wall. Renders only when ADS.enabled.
+ - Google consent mode v2 with ad_storage, ad_user_data, ad_personalization,
+ analytics_storage defaulting to denied; the AdSense tag is injected only after acceptance.
+ - Persistent "Cookie settings" in PublicFooter and the app chrome, reopening the choice.
+ Withdrawal must delete the cookies.
+ - Consent evidence stored per the audit: timestamp, choice, banner version.
+ - M-8 age gate: a not-pre-ticked "I am 16 or older" at sign-up; store age_16_plus: boolean, not
+ the date (data minimisation). Suppress personalised ads for under-18s.
+ - Copy on /privacy and /faq switches to the true description, derived from the same
+ adsConfig() read.
+
+ M5 — Hygiene
+
+ M-10 throw in the cacheHeaders helper if the request carried an Authorization header or a
+ Supabase cookie, so the guard is structural rather than a comment. BP-3 Accept-Encoding: gzip
+ on Wikimedia requests, and honour Retry-After instead of fixed backoff. BP-4 verify deletion
+ propagates to shares already delivered. BP-2 licence line on the text export.
+
 
 ## Out of scope for v1 (do not build unless asked)
 

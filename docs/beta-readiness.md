@@ -172,6 +172,12 @@ caching above).** Numbers verified 2026-07-19.
 - **The heavy asset — images — does NOT touch Vercel bandwidth.** Card images are hotlinked
   straight from Wikimedia / Art Institute IIIF. Vercel only serves the app bundle + small JSON
   API responses. So bandwidth is a non-issue at this scale.
+  - ⚠️ **One switch would change that.** `ARTIC_IMAGE_PROXY=1` serves Art Institute images
+    through `/api/img/artic/...` instead of linking to the museum. It defaults ON in local
+    development (the museum's Cloudflare rules refuse a localhost `Referer`, so the Gallery has
+    no pictures otherwise) and OFF in production, precisely to keep this paragraph true. Turn it
+    on in Vercel only if the museum starts refusing the live origin too; budget roughly 250 KB
+    per artwork viewed, 1 MB per zoom, less whatever the CDN absorbs on a 30 day cache.
 - Function invocations are the thing to watch: each card ≈ 2 invocations today. **Caching (Q3)
   cuts this too**, because CDN-cached responses don't invoke the function.
 - **Overage behaviour is safe:** exceed a limit and the feature locks until the month resets;

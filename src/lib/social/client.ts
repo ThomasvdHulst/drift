@@ -315,3 +315,55 @@ export async function socialBadge(): Promise<{
     return zero;
   }
 }
+
+// ---------------------------------------------------------------------------
+// The social half of "Download your data" (compliance audit Mi-3).
+//
+// The trails, reactions, interests and settings in the export come from
+// IndexedDB, because that is the local-first source of truth and the cloud is a
+// mirror of it. These three do NOT sync locally: profiles, friend_requests and
+// shares are live-fetched, so the only copy is in Postgres and the export has to
+// go and get it.
+//
+// Row-level security is what scopes this to the caller: `profiles` is readable
+// by any signed-in user but filtered to `id = me` here, and `friend_requests`
+// and `shares` are already limited by policy to rows the caller is a party to.
+// The same guarantee the delete path relies on, running with `select`.
+//
+// Fully guarded like everything else in this file: a failure returns nothing
+// rather than throwing, so a backend hiccup produces an export missing a section
+// instead of no export at all.
+// ---------------------------------------------------------------------------
+
+export interface SocialExport {
+  profile: Profile | null;
+  friendRequests: FriendRequest[];
+  /** Both directions. Sent shares are yours too, and the recipient's copy is
+   *  the same row, so leaving them out would understate what is held. */
+  shares: unknown[];
+}
+
+export async function exportSocialData(): Promise<SocialExport | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  try {
+    const id = await meId();
+    if (!id) return null;
+    const [profile, requests, shares] = await Promise.all([
+      sb.from("profiles").select("id,handle,display_name").eq("id", id).maybeSingle(),
+      sb
+        .from("friend_requests")
+        .select("id,requester_id,addressee_id,status,created_at,updated_at"),
+      sb
+        .from("shares")
+        .select("id,sender_id,recipient_id,kind,payload,note,created_at,read"),
+    ]);
+    return {
+      profile: (profile.data as Profile) ?? null,
+      friendRequests: (requests.data as FriendRequest[]) ?? [],
+      shares: (shares.data as unknown[]) ?? [],
+    };
+  } catch {
+    return null;
+  }
+}

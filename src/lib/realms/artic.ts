@@ -6,13 +6,48 @@ import type { Card, RelatedCandidate } from "../types";
 
 const IIIF = "https://www.artic.edu/iiif/2";
 
-/** Build an IIIF image URL for an artwork's image_id (default 843px wide). */
-export function articImageUrl(
+/**
+ * Whether artwork images are served through Drift's own origin rather than
+ * linked straight to the museum's image host.
+ *
+ * The museum's host is behind Cloudflare bot management, which rejects a
+ * browser-shaped request whose `Referer` is a localhost origin. That is every
+ * request a Gallery card makes in local development, so every card lost its
+ * picture; the live origin is allowed and is unaffected. Hence: ON in
+ * development, OFF in production, because proxying moves image bytes onto our
+ * own bandwidth and production does not need it.
+ *
+ * `ARTIC_IMAGE_PROXY` overrides in both directions. Set it to "1" in the hosted
+ * environment if the museum ever starts refusing the live origin too; the
+ * trade-off is that card images stop being free (docs/beta-readiness.md).
+ * Server-only: the URL is built when the card is built.
+ */
+export function articImageProxied(): boolean {
+  const flag = (process.env.ARTIC_IMAGE_PROXY ?? "").trim();
+  if (flag) return flag !== "0" && flag.toLowerCase() !== "false";
+  return process.env.NODE_ENV !== "production";
+}
+
+/** The museum's own IIIF URL. What the proxy route fetches, and what a card
+ *  carries directly when the proxy is off. */
+export function articUpstreamImageUrl(
   imageId?: string | null,
   width = 843,
 ): string | undefined {
   if (!imageId) return undefined;
   return `${IIIF}/${imageId}/full/${width},/0/default.jpg`;
+}
+
+/** Build an image URL for an artwork's image_id (default 843px wide) — the
+ *  museum's host, or our passthrough when `articImageProxied()`. */
+export function articImageUrl(
+  imageId?: string | null,
+  width = 843,
+): string | undefined {
+  if (!imageId) return undefined;
+  return articImageProxied()
+    ? `/api/img/artic/${imageId}/${width}`
+    : articUpstreamImageUrl(imageId, width);
 }
 
 /** The public artwork page. */

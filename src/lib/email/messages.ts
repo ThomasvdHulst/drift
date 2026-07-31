@@ -101,9 +101,14 @@ export function goodbyeEmail(): EmailMessage {
 
 export interface ContactDetails {
   name: string;
+  /** Empty for an anonymous Article 16 notice. */
   email: string;
   topicLabel: string;
   message: string;
+  /** Article 16(2)(b), report mode only: where the content is. */
+  location?: string;
+  /** True when this is a DSA Article 16 notice rather than an ordinary message. */
+  isReport?: boolean;
 }
 
 /** The receipt sent to the person who filled in the contact form. Echoes their
@@ -149,6 +154,88 @@ export function contactNotificationEmail(c: ContactDetails): EmailMessage {
       c.message,
       "",
       "Reply to this email to answer them directly.",
+    ].join("\n"),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// DSA Article 16 notice-and-action (compliance audit M-5). Two emails, and both
+// are obligations rather than courtesies:
+//
+//   Article 16(4) — confirm receipt of the notice "without undue delay", where
+//                   the notifier gave contact details. Hence `noticeReceiptEmail`.
+//   Article 16(5) — notify the notifier of the decision, "including information
+//                   on the possibilities for redress". That one is a human reply
+//                   later; the receipt below promises it, so the promise is on
+//                   the record from the start.
+//
+// A notice may be anonymous, in which case neither email has anywhere to go and
+// the route sends only the work item to the inbox.
+// ---------------------------------------------------------------------------
+
+/** Article 16(4): the automatic confirmation that a report arrived. */
+export function noticeReceiptEmail(c: ContactDetails): EmailMessage {
+  return {
+    subject: "We received your report",
+    html: renderEmail({
+      preheader: "Your report about illegal content on Drift has been received.",
+      heading: "Your report has been received",
+      body: [
+        c.name ? `Hello ${c.name},` : "Hello,",
+        "This confirms that your report reached Drift. A person will read it and decide what to do, and nothing about that decision is automated.",
+        "When it is decided you will get a message saying what was done and why, and what you can do if you disagree. That includes going to a court, or raising the matter with the Autoriteit Consument en Markt, which supervises the Digital Services Act in the Netherlands.",
+      ],
+      quote: {
+        label: "What you reported",
+        text: [c.location ? `Where: ${c.location}` : "", c.message]
+          .filter(Boolean)
+          .join("\n\n"),
+      },
+      note: "If you did not send this report, you can safely ignore this email.",
+    }),
+    text: [
+      "This confirms that your report reached Drift. A person will read it and decide what to do, and nothing about that decision is automated.",
+      "",
+      "When it is decided you will get a message saying what was done and why, and what you can do if you disagree.",
+      "",
+      c.location ? `Where: ${c.location}` : "",
+      "",
+      c.message,
+    ]
+      .filter((l) => l !== undefined)
+      .join("\n"),
+  };
+}
+
+/** The work item for the Drift inbox. Louder than an ordinary notification
+ *  because a notice starts a clock that a piece of feedback does not, and it
+ *  spells out what still has to happen so the obligation is not left in a spec. */
+export function noticeNotificationEmail(c: ContactDetails): EmailMessage {
+  const who = c.email ? (c.name ? `${c.name} <${c.email}>` : c.email) : "Anonymous";
+  const todo = c.email
+    ? "To do: confirm receipt (sent automatically), then decide and tell the notifier the outcome and their redress options (Article 16(5)). If anything is restricted, send the person responsible a statement of reasons (Article 17)."
+    : "To do: this notice is anonymous, so there is nobody to notify of the outcome. Decide it anyway, and if anything is restricted, send the person responsible a statement of reasons (Article 17).";
+  return {
+    subject: notificationSubject({ ...c, isReport: true }),
+    html: renderEmail({
+      preheader: `Illegal content report from ${who}`,
+      heading: "Illegal content report",
+      body: [
+        `From: ${who}`,
+        `Where: ${c.location ?? "not given"}`,
+        "The notifier confirmed that the information and allegations are accurate and complete to the best of their knowledge.",
+      ],
+      quote: { label: "Why they believe it is illegal", text: c.message },
+      note: todo,
+    }),
+    text: [
+      `From: ${who}`,
+      `Where: ${c.location ?? "not given"}`,
+      "Good faith statement: confirmed.",
+      "",
+      c.message,
+      "",
+      todo,
     ].join("\n"),
   };
 }

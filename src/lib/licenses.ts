@@ -59,3 +59,54 @@ export function licenseFor(source?: SourceId): ContentLicense | null {
   if (source === "artic") return CC0_1;
   return null;
 }
+
+/** The human name of each source, for the attribution block and the card notice. */
+export function sourceName(source?: SourceId): string {
+  if (!source || source === "wikipedia") return "English Wikipedia";
+  if (source === "artic") return "The Art Institute of Chicago";
+  if (source === "arxiv") return "arXiv";
+  return "Unknown source";
+}
+
+/**
+ * How Drift has altered the source text, stated plainly.
+ *
+ * CC BY-SA 4.0 §3(a)(1)(B) makes this a MANDATORY and SEPARATE limb of the
+ * attribution condition: you must "indicate if You modified the Licensed Material
+ * and retain an indication of any previous modifications." It is not satisfied by
+ * naming the creator, and it is not satisfied by naming the licence. Drift
+ * truncates every article to a few sentences and re-lays out the remainder, and
+ * said so nowhere (compliance audit M-2).
+ *
+ * Note what is deliberately NOT called a modification: resizing an image to a
+ * thumbnail. §2(a)(4) provides that technical modifications needed to exercise
+ * the licensed rights "never produce Adapted Material".
+ */
+export const MODIFICATION_CARD = "excerpted and reformatted by Drift";
+export const MODIFICATION_FULL = "reformatted by Drift; images removed";
+
+/** The self-describing licence block that travels with a persisted card (audit
+ *  M-11). Null for sources Drift makes no licence claim about, e.g. arXiv. */
+export function attributionFor(
+  source: SourceId | undefined,
+  sourceUrl: string,
+  modification: string = MODIFICATION_CARD,
+): {
+  source: string;
+  sourceUrl: string;
+  license: string;
+  licenseUrl: string;
+  modified: boolean;
+  modification: string;
+} | null {
+  const license = licenseFor(source);
+  if (!license) return null;
+  return {
+    source: sourceName(source),
+    sourceUrl,
+    license: license.label,
+    licenseUrl: license.url,
+    modified: true,
+    modification,
+  };
+}

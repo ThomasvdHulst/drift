@@ -6,6 +6,7 @@ import { layoutMeander } from "@/lib/trailmap";
 import { cardSource } from "@/lib/card";
 import { realmOfSource } from "@/lib/crossrealm";
 import { KindIcon, DoorwayIcon } from "./ThreadChips";
+import { CC_BY_SA_4, CC0_1 } from "@/lib/licenses";
 
 // The trail map: a gently meandering vertical spine (see CLAUDE.md §6 + the
 // drift-spec trail-map section). Geometry comes from the pure `layoutMeander`;
@@ -28,29 +29,34 @@ function NodeThumb({ step, isEndpoint }: { step: TrailStep; isEndpoint: boolean 
     : isEndpoint
       ? "ring-2 ring-accent/50"
       : "ring-1 ring-line";
+  // The monogram sits UNDERNEATH the thumbnail rather than instead of it, so it
+  // is already there when the image is not. Two cases need that: the image failing
+  // to load, and the PNG export, which strips every <img> from its clone (see
+  // lib/export-image.ts for why). Rendering only one branch would have left the
+  // exported map with a row of empty circles.
+  const showImage = card.imageUrl && !imgFailed;
   return (
     <div
-      className={`h-14 w-14 overflow-hidden rounded-full bg-accent/10 ${ring}`}
+      className={`relative h-14 w-14 overflow-hidden rounded-full bg-accent/10 ${ring}`}
       title={card.displayTitle}
     >
-      {card.imageUrl && !imgFailed ? (
+      <div className="absolute inset-0 flex items-center justify-center">
+        {/* Decorative monogram. The title is rendered as real text beside it, so
+            this carries no information; hidden from AT, which also makes it
+            exempt from 1.4.3. */}
+        <span className="font-serif text-2xl text-accent/50" aria-hidden="true">
+          {card.displayTitle.charAt(0)}
+        </span>
+      </div>
+      {showImage && (
         <img
           src={card.imageUrl}
           alt={card.displayTitle}
           crossOrigin="anonymous"
           onError={() => setImgFailed(true)}
-          className="h-full w-full object-cover"
+          className="relative h-full w-full object-cover"
           draggable={false}
         />
-      ) : (
-        <div className="flex h-full w-full items-center justify-center">
-          {/* Decorative monogram standing in for a missing image. The title is
-              rendered as real text beside it, so this carries no information;
-              hidden from AT, which also makes it exempt from 1.4.3. */}
-          <span className="font-serif text-2xl text-accent/50" aria-hidden="true">
-            {card.displayTitle.charAt(0)}
-          </span>
-        </div>
       )}
     </div>
   );
@@ -73,10 +79,14 @@ export function TrailMap({
     );
   }
 
+  // `mapRef` wraps the map AND the credit line, because that ref is what the PNG
+  // export rasterizes: the notice has to be inside the exported pixels, not beside
+  // them. It shows on screen too, which is correct — displaying a trail is itself
+  // a Share, and the notice belongs wherever the extracts are seen.
   return (
     <div className="mx-auto overflow-x-auto">
+      <div ref={mapRef} style={{ width: layout.width }}>
       <div
-        ref={mapRef}
         className="relative"
         style={{ width: layout.width, height: layout.height }}
       >
@@ -189,6 +199,68 @@ export function TrailMap({
           );
         })}
       </div>
+        <TrailMapCredit steps={steps} />
+      </div>
     </div>
+  );
+}
+
+/**
+ * The licence line burned into the map, and therefore into the exported PNG.
+ *
+ * The export is the one artefact built to leave Drift, so it has to be
+ * self-describing: source named, licence named and linked, and the fact that the
+ * text was modified (CC BY-SA 4.0 §3(a), and §3(a)(1)(B) for the modification).
+ * Images are excluded from the export entirely, which is why this can be one
+ * short line rather than a per-image credit block — see lib/export-image.ts.
+ *
+ * The realms actually present decide the wording, so a Gallery-only trail does not
+ * claim Wikipedia and vice versa.
+ */
+function TrailMapCredit({ steps }: { steps: TrailStep[] }) {
+  const sources = new Set(steps.map((s) => cardSource(s.card)));
+  const parts: React.ReactNode[] = [];
+  if (sources.has("wikipedia")) {
+    parts.push(
+      <span key="wp">
+        Titles from Wikipedia ·{" "}
+        <a
+          href={CC_BY_SA_4.url}
+          target="_blank"
+          rel="license noopener noreferrer"
+          className="underline decoration-ink/30 underline-offset-2"
+        >
+          {CC_BY_SA_4.label}
+        </a>
+      </span>,
+    );
+  }
+  if (sources.has("artic")) {
+    parts.push(
+      <span key="aic">
+        Artworks from The Art Institute of Chicago ·{" "}
+        <a
+          href={CC0_1.url}
+          target="_blank"
+          rel="license noopener noreferrer"
+          className="underline decoration-ink/30 underline-offset-2"
+        >
+          {CC0_1.label}
+        </a>
+      </span>,
+    );
+  }
+  if (parts.length === 0) return null;
+  return (
+    <p className="mt-3 px-2 text-center text-[11px] leading-relaxed text-ink-soft">
+      {parts.map((p, i) => (
+        <span key={i}>
+          {i > 0 && <span aria-hidden="true"> · </span>}
+          {p}
+        </span>
+      ))}
+      <span aria-hidden="true"> · </span>
+      <span>excerpted · mapped with Drift</span>
+    </p>
   );
 }

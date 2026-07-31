@@ -2,7 +2,12 @@
 // related / summary / extended implementations, behind plain functions so the
 // generic /api/realm/[realm]/* routes stay source-agnostic.
 
-import { wikiQuery, wikiParse, CARD_PROPS } from "@/lib/wiki-server";
+import {
+  wikiQuery,
+  wikiParse,
+  CARD_PROPS,
+  fetchImageCredits,
+} from "@/lib/wiki-server";
 import {
   htmlBlocks,
   htmlToText,
@@ -20,6 +25,7 @@ import {
   topicSearch,
   type ActionPage,
 } from "@/lib/wiki";
+import { fileKey } from "@/lib/imagecredit";
 import { topParagraphs } from "@/lib/extract";
 import { preprocessMath } from "@/lib/mathtext";
 import type { Card, ExtendedBody, RelatedCandidate } from "@/lib/types";
@@ -35,14 +41,24 @@ export async function wikiRelated(title: string): Promise<RelatedCandidate[]> {
     exintro: "1",
     explaintext: "1",
     exsentences: "2",
-    piprop: "thumbnail",
+    piprop: "thumbnail|name",
     pilicense: "free", // never a fair-use file; see CARD_PROPS in lib/wiki-server.ts
     pithumbsize: "800",
     ppprop: "disambiguation",
     format: "json",
     formatversion: "2",
   });
-  return relatedToCandidates(raw);
+  const candidates = relatedToCandidates(raw);
+  // A thread chip shows a thumbnail, and pulling it LANDS the candidate as a
+  // card, so its image needs the same credit the card path fetches. One batched
+  // call for all 20 candidates.
+  const credits = await fetchImageCredits(
+    candidates.map((c) => c.imageFile ?? "").filter(Boolean),
+  );
+  return candidates.map((c) => {
+    const credit = c.imageFile ? credits.get(fileKey(c.imageFile)) : undefined;
+    return credit ? { ...c, imageCredit: credit } : c;
+  });
 }
 
 /** A Card for an exact title (seed entry / canonical lookup). `full` drops the
@@ -56,7 +72,10 @@ export async function wikiSummary(
   const raw = await wikiQuery({ titles: title, redirects: "1", ...props });
   const page = firstPage(raw);
   if (!page || page.missing || !page.title) return null;
-  return actionPageToCard(page);
+  const credits = page.pageimage
+    ? await fetchImageCredits([page.pageimage])
+    : undefined;
+  return actionPageToCard(page, credits);
 }
 
 /**
@@ -175,5 +194,11 @@ export async function wikiDiscoverTopic(
   });
   const pages =
     (raw as { query?: { pages?: ActionPage[] } })?.query?.pages ?? [];
-  return selectCardBatch(pages);
+  // ONE extra Wikimedia call for the whole batch: each image's own creator and
+  // licence, which are not the article's (compliance audit B-4). An image whose
+  // credit cannot be established is not displayed, so this is not optional.
+  const credits = await fetchImageCredits(
+    pages.map((p) => p.pageimage ?? "").filter(Boolean),
+  );
+  return selectCardBatch(pages, { credits });
 }

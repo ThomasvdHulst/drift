@@ -53,8 +53,17 @@ const ROUTES = [
   { path: "/notes/why-drift-exists" },
   { path: "/colophon" },
   { path: "/privacy" },
+  // The Terms carry a lot of text in a shape no other page uses (the `**lead**`
+  // spans inside bullets), and /contact now has a second, conditional form mode.
+  { path: "/terms" },
+  // The imprint. Mostly a definition list, which no other page uses.
+  { path: "/legal" },
   { path: "/install" },
   { path: "/contact" },
+  // The DSA Article 16 branch of the contact form: extra fields, a checkbox and
+  // its label, and the anonymity note. None of it renders in the default mode,
+  // so without this row it would never be measured.
+  { path: "/contact", selectReport: true },
   { path: "/drift" },
   { path: "/drift?title=Mohs%20scale&seed=Mohs%20scale", expand: true },
   { path: "/drift?realm=gallery" },
@@ -178,12 +187,14 @@ const failures = [];
 
 let sawPapers = false;
 
-for (const { path: route, keepModal, expand } of ROUTES) {
+for (const { path: route, keepModal, expand, selectReport } of ROUTES) {
   const label = keepModal
     ? `${route} [welcome modal]`
     : expand
       ? `${route} [expanded]`
-      : route;
+      : selectReport
+        ? `${route} [report]`
+        : route;
   for (const theme of THEMES) {
     let res;
     try {
@@ -222,6 +233,17 @@ for (const { path: route, keepModal, expand } of ROUTES) {
         if (await details.count()) await details.first().click().catch(() => {});
         await page.waitForTimeout(500);
       }
+    }
+
+    // Switch the contact form into its DSA Article 16 mode, which reveals the
+    // location field, the good-faith checkbox and its label, and the anonymity
+    // note. None of that exists in the default mode.
+    if (selectReport) {
+      await page
+        .getByLabel(/what is this about/i)
+        .selectOption("report")
+        .catch(() => {});
+      await page.waitForTimeout(300);
     }
 
     await page.evaluate((t) => {

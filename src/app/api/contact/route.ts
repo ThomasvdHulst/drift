@@ -4,9 +4,12 @@ import { verifyTurnstile } from "@/lib/turnstile";
 import {
   contactReceiptEmail,
   contactNotificationEmail,
+  noticeReceiptEmail,
+  noticeNotificationEmail,
 } from "@/lib/email/messages";
 import { sendViaResend } from "@/lib/email/send";
 import { NO_STORE } from "@/lib/cache-headers";
+import { contactAddress } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
@@ -27,10 +30,12 @@ export const dynamic = "force-dynamic";
 // A submission caught by a bot trap gets the SAME success response a human gets,
 // so a script learns nothing about which check it tripped.
 
-/** Where the notification goes. Defaults to the noreply mailbox, which Cloudflare
- *  Email Routing forwards to the owner's real inbox. */
+/** Where the notification goes. Defaults to the same address `/contact`,
+ *  `/privacy` and `/legal` publish, which Cloudflare Email Routing forwards to
+ *  the owner's real inbox. `CONTACT_INBOX` overrides it if delivery should go
+ *  somewhere other than the published address. */
 function contactInbox(): string {
-  return process.env.CONTACT_INBOX || "noreply@usedrift.org";
+  return process.env.CONTACT_INBOX || contactAddress();
 }
 
 // Best-effort per-IP throttle. Module scope means one bucket per warm serverless
@@ -118,14 +123,20 @@ export async function POST(request: Request) {
   const details = result.value;
 
   try {
-    const notification = contactNotificationEmail(details);
+    // An Article 16 notice takes the same path, with its own two templates: the
+    // work item names the obligations it starts, and the receipt IS the
+    // Article 16(4) confirmation of receipt rather than a courtesy.
+    const notification = details.isReport
+      ? noticeNotificationEmail(details)
+      : contactNotificationEmail(details);
     const sent = await sendViaResend({
       to: contactInbox(),
       subject: notification.subject,
       html: notification.html,
       text: notification.text,
       // The whole point: Reply in the forwarded copy goes to the person who wrote.
-      replyTo: details.email,
+      // A report may be anonymous, in which case there is nobody to reply to.
+      ...(details.email ? { replyTo: details.email } : {}),
     });
 
     if (!sent.sent) {
@@ -142,15 +153,22 @@ export async function POST(request: Request) {
     }
 
     // Best effort. The message is already safely delivered to the inbox, so a
-    // failed receipt must not tell the sender their message was lost.
-    const receipt = contactReceiptEmail(details);
-    const receiptResult = await sendViaResend({
-      to: details.email,
-      subject: receipt.subject,
-      html: receipt.html,
-    });
-    if (!receiptResult.sent) {
-      console.warn("[api/contact] receipt failed:", receiptResult.error);
+    // failed receipt must not tell the sender their message was lost. An
+    // anonymous report has no address to send one to, which is a lawful notice
+    // under Article 16(2)(c) rather than an error.
+    if (details.email) {
+      const receipt = details.isReport
+        ? noticeReceiptEmail(details)
+        : contactReceiptEmail(details);
+      const receiptResult = await sendViaResend({
+        to: details.email,
+        subject: receipt.subject,
+        html: receipt.html,
+        text: receipt.text,
+      });
+      if (!receiptResult.sent) {
+        console.warn("[api/contact] receipt failed:", receiptResult.error);
+      }
     }
 
     return accepted();
