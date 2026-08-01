@@ -18,6 +18,7 @@ import { trailRealms } from "@/lib/crossrealm";
 import { TrailMap } from "@/components/TrailMap";
 import { useAuth } from "@/components/AuthProvider";
 import { ShareToFriend } from "@/components/ShareToFriend";
+import { ShareLink } from "@/components/ShareLink";
 import { socialEnabled } from "@/lib/social/enabled";
 import { trailToSharePayload } from "@/lib/social/share";
 
@@ -217,6 +218,23 @@ export default function TrailDetailPage() {
       >
         <TrailMap steps={trail.steps} mapRef={mapRef} />
       </div>
+
+      {/* Sharing outward sits UNDER the map, not in the row of buttons above it.
+          The map is the end of the session and the thing worth showing someone
+          (principle 3: the reward is at the exit), so the offer to show it
+          belongs after you have looked at it rather than before.
+
+          Signed-in and cloud-configured only: a link has to live somewhere, and
+          with no backend there is nowhere to put it. Unlike "Send to a friend"
+          above, this is NOT behind NEXT_PUBLIC_SOCIAL. That flag hides the
+          friend graph, which is the part that felt like social media. A link you
+          paste into a chat yourself is not a social graph and does not bring one
+          back. */}
+      {cloudConfigured && user && (
+        <div className="mt-4 flex flex-col items-start gap-2">
+          <ShareLink kind="trail" payload={trailToSharePayload(trail)} />
+        </div>
+      )}
     </main>
   );
 }

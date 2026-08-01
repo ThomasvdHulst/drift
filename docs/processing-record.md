@@ -6,8 +6,9 @@ Netherlands. Registered with the Dutch Chamber of Commerce under number 90992318
 **Contact:** `contact@usedrift.org`, and <https://www.usedrift.org/contact>.
 **Data protection officer:** none appointed. Drift meets no Article 37(1) condition: it is not a
 public authority, monitoring is not a core activity, and it processes no special categories.
-**Version:** 1, 31 July 2026. Keep this current when a processing activity, a processor or a
-retention period changes.
+**Version:** 2, 1 August 2026. Keep this current when a processing activity, a processor or a
+retention period changes. *Version 2 adds public share links (row 9) and records that they changed
+Drift's classification under the DSA; see §3.*
 
 ---
 
@@ -44,6 +45,7 @@ notice is the one people relied on and this file is the one that is wrong.
 | 6 | **Abuse prevention on the contact form.** | Anyone who submits the form | IP address, submission timing; where Turnstile is configured, IP plus browser signals | Art 6(1)(f). Interest: keeping a public form usable and not paying to deliver spam. Necessity: a public form with no checks becomes a relay within days; the honeypot and fill-time checks process no personal data, so the IP counter is the least that works. Balancing: the data is a counter in volatile memory, is never combined with anything, and never reaches a profile. | Cloudflare (Turnstile only, when configured) | Throttle entries live in the memory of an ephemeral serverless instance, are never written to disk, and are lost when the instance ends. Cloudflare's own retention for Turnstile applies to its copy. |
 | 7 | **Handling reports of illegal content** (DSA Article 16). | Notifiers, and the users a notice concerns | Notifier's name and email where given (a notice may be anonymous), the location reported, the explanation, the good-faith statement | Art 6(1)(c), compliance with the legal obligation in DSA Articles 16 to 18 | Resend (delivery of the acknowledgement and the work item), Cloudflare (email routing). Law enforcement or Europol where DSA Art 18 applies. | With the contact correspondence at row 5, unless a longer period is needed to evidence the decision. |
 | 8 | **Advertising.** | Visitors | Whatever Google's advertising services collect | Art 6(1)(a) consent, and nothing else | Google | **Not active.** No advertising runs and no advertising script loads. This row exists so that turning it on is a change to a record rather than the discovery of a gap. |
+| 9 | **Public share links.** Let a user publish one card or trail at an unguessable address so someone with no account can read it. | Registered users who create a link, and anyone who opens one | The snapshotted card or trail (titles, extracts, source URLs). No email address, handle or name unless the user put one in a trail name. Nothing at all is recorded about the reader: no log, no counter, no identifier. | Art 6(1)(b) contract | Supabase, Vercel. **And, by design, any person the link is forwarded to.** | Until the user revokes the link or deletes their account. Revoking is a timestamp, so the row survives for the user's own record and export while returning nothing to a reader. |
 
 ---
 
@@ -81,9 +83,11 @@ never a task**, which the earlier version of this file got wrong.
 
 ### ⚠️ Still open
 
-- **The hosting regions are unknown.** If the Supabase project sits in a US region, row 1 to 3 data
-  is transferred rather than merely accessible, and a project's region cannot be changed in place.
-  `docs/owner-actions.md` item 2.
+- **Write the hosting regions in here.** The operator checked them in the dashboards (Supabase
+  project region, Vercel function region) but the answers were never written down, and this is the
+  file they belong in. One line each. It matters because if the Supabase project sits outside the
+  EEA, rows 1 to 3 are a transfer rather than merely a US company having access, and a Supabase
+  project's region cannot be changed in place.
 - **DPF certification has not been checked per provider** at <https://www.dataprivacyframework.gov/list>.
   Until it is, treat the "Transfer basis" column above as the position that *will* apply, not the
   position that has been evidenced. Write the date checked in here.
@@ -99,9 +103,26 @@ A general description, which is what Article 30(1)(g) asks for.
 - **Access control is enforced by the database, not the application.** Every user table carries
   Row-Level Security with `user_id = auth.uid()`. A bug in the client cannot read another user's
   rows, because the policy is evaluated in Postgres. `npm run verify:supabase` checks it.
-- **Sharing is restricted in the same place.** The `shares` insert policy calls `are_friends()`, so
-  content cannot reach a non-friend even if the interface were wrong. `npm run verify:social`
-  checks it. This is also what keeps Drift outside the DSA definition of an online platform.
+- **Friend-to-friend sharing is restricted in the same place.** The `shares` insert policy calls
+  `are_friends()`, so content cannot reach a non-friend even if the interface were wrong.
+  `npm run verify:social` checks it.
+- **Public share links are protected by the token and nothing else, which is deliberate and is
+  implemented as a capability rather than as a filter.** `public_shares` has **no anonymous select
+  policy**; reads go through `get_public_share(token)`, a security-definer function taking the token
+  as an exact-match argument. The obvious alternative, an RLS policy admitting anon to unrevoked
+  rows, would have let any caller `select *` and read every link ever created, because RLS filters
+  rows without requiring a WHERE. `npm run verify:share` asserts that an anonymous listing returns
+  nothing, which is the single check that matters for this table.
+
+  ⚠️ **This is what changed Drift's DSA classification, on 1 August 2026.** Friend-only sharing sat
+  outside the definition of an "online platform" because `are_friends()` made it a "closed group
+  consisting of a finite number of pre-determined persons" (Recital 14). A forwardable link is not
+  that, and Recital 14 adds that requiring registration does not help where admission is automatic.
+  **Drift is therefore an online platform.** The obligation delta is near zero because **Article 19
+  excludes micro and small enterprises from Articles 20 to 28** (bar Article 24(3), a duty to give
+  the Digital Services Coordinator user numbers on request), and Articles 11 to 18 already applied.
+  The exemption depends on the operator's size rather than the product, and survives 12 months past
+  the thresholds. `/terms` states this position and must be kept in step with it.
 - **The service-role key is server-only**, used by exactly one route (`/api/account/delete`), which
   verifies the caller's own JWT before acting so a user can only delete themselves. It never carries
   a `NEXT_PUBLIC_` prefix.
@@ -116,9 +137,19 @@ A general description, which is what Article 30(1)(g) asks for.
 - **Deletion is a hard delete with cascades**, not a flag, so erasure under Article 17 removes rows
   rather than hiding them.
 
-**Known gap:** whether deletion propagates everywhere has not been fully verified. Three places to
-check are shares already delivered to a recipient, any CDN cache, and Resend's message logs (audit
-BP-4). Write the answer here when it is known.
+**Deletion propagation, checked 31 July 2026** (audit BP-4). The three places it might not reach:
+
+- **Shares already delivered to a friend: it reaches them.** Proved rather than assumed.
+  `src/lib/deletion.test.ts` reads the real migration SQL and asserts that every column referencing
+  `auth.users` carries `on delete cascade`, including *both* ends of `shares`, so a share goes when
+  either the sender or the recipient deletes their account. The test also fails if a future
+  migration adds a user reference without a cascade, so this stays true without anyone remembering.
+- **The CDN cache: nothing to reach.** No route carrying a shared-CDN `s-maxage` may return user
+  data. That is enforced structurally: `cacheHeaders()` takes the request and refuses to cache a
+  response to one carrying a session (`src/lib/cache-headers.ts`).
+- **Resend's message logs: not reached, and this is the residual.** A transactional email that has
+  already been sent leaves a record in the processor's own logs under its retention, which Drift
+  cannot delete. It holds an address and a message body, not trails or account data.
 
 ---
 

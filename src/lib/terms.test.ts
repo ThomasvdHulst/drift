@@ -119,14 +119,29 @@ describe("terms — the content DSA Article 14 and the audit require", () => {
     expect(all).toContain("statement of reasons");
   });
 
-  // Drift is a hosting service but NOT an online platform (the sharing
-  // restriction is enforced in the database), so Articles 20 and 21 do not
-  // apply. Promising an internal complaint system or an out-of-court dispute
-  // body would be describing something that does not exist, which is exactly
-  // the failure the audit found on /privacy at B-3.
+  // Drift IS an online platform since public share links shipped (Phase 27): a
+  // forwardable link is not the "closed group of pre-determined persons" that
+  // Recital 14 carves out, and friend-only sharing was. What still keeps
+  // Articles 20 and 21 off is DSA Article 19, the micro-enterprise exclusion.
+  //
+  // The distinction matters to this test rather than being pedantry: the
+  // exemption now depends on the OPERATOR'S SIZE rather than on the product's
+  // architecture, so the page must not justify it with the old reason. Promising
+  // an appeals body that does not exist, or explaining its absence with a fact
+  // that stopped being true, are the same failure the audit found at B-3.
   it("does not promise an appeals body it does not have", () => {
     expect(all).not.toMatch(/out-of-court dispute settlement body will/);
     expect(all).toContain("do not apply to it");
+  });
+
+  it("no longer explains the Article 20/21 exemption by the friends-only limit", () => {
+    // The old sentence read "...because sharing only ever reaches mutual
+    // friends". Public links made that false. If someone reinstates it, this
+    // fails.
+    expect(all).not.toMatch(/sharing only ever reaches mutual friends/);
+    expect(all).not.toMatch(/not an online platform/);
+    // And the reason that IS given has to be the real one.
+    expect(all).toMatch(/article 19/);
   });
 
   it("states the eligibility age, the governing law and the consumer carve-out", () => {

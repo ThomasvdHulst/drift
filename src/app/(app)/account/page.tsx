@@ -11,6 +11,7 @@ import {
   type SyncStatus,
 } from "@/lib/sync/replicator";
 import { getMyProfile, upsertProfile, exportSocialData } from "@/lib/social/client";
+import { listMyPublicShares } from "@/lib/publicshare/client";
 import { normalizeHandle, handleError } from "@/lib/social/handles";
 import { socialEnabled } from "@/lib/social/enabled";
 import {
@@ -369,7 +370,7 @@ function DownloadData({ user }: { user: { id: string; email?: string; created_at
     setError(null);
     setBusy(true);
     try {
-      const [trails, reactions, interests, settings, seen, sessions, social] =
+      const [trails, reactions, interests, settings, seen, sessions, social, shareLinks] =
         await Promise.all([
           listTrails(),
           getReactions(),
@@ -378,6 +379,9 @@ function DownloadData({ user }: { user: { id: string; email?: string; created_at
           loadSeen(),
           listSessions(),
           socialEnabled() ? exportSocialData() : Promise.resolve(null),
+          // NOT behind socialEnabled(): share links are not the friend layer and
+          // are available whether or not that flag is set.
+          listMyPublicShares(),
         ]);
 
       const file = buildDataExport({
@@ -399,6 +403,9 @@ function DownloadData({ user }: { user: { id: string; email?: string; created_at
               shares: social.shares,
             }
           : {}),
+        // Absent rather than empty when the backend is unreachable, so a reader
+        // can tell "you made none" from "we could not look".
+        ...(shareLinks.length ? { shareLinks } : {}),
       });
 
       // A Blob rather than a data: URL. A long trail list can run to megabytes,

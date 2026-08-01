@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { siteUrl, PRIVATE_ROUTES } from "@/lib/site";
+import { siteUrl, PRIVATE_ROUTES, PUBLIC_SHARE_PREFIX } from "@/lib/site";
 
 // Served at /robots.txt (Next's file convention).
 //
@@ -15,7 +15,12 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
-      disallow: [...PRIVATE_ROUTES],
+      // `/s/` is public but must never be indexed: a share token is a
+      // capability, the content is someone's own trail, and a crawlable page of
+      // Wikipedia extracts is republication (see PUBLIC_SHARE_PREFIX). The page
+      // also sends `noindex`, because robots.txt asks a crawler not to FETCH a
+      // URL and does not stop one that learns of it elsewhere from listing it.
+      disallow: [...PRIVATE_ROUTES, PUBLIC_SHARE_PREFIX],
     },
     sitemap: `${base}/sitemap.xml`,
     host: base,

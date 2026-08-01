@@ -21,6 +21,23 @@ import encyclopediaSeedData from "../../data/seeds.json";
 // change anywhere; the realm still resolves via getRealm so a saved Papers trail
 // still opens. The logged-out landing page never enumerates realms, so it is
 // untouched regardless.
+//
+// ⚠️ BEFORE SETTING THIS TO 1 IN PRODUCTION there is unfinished compliance work,
+// recorded here because this flag is the one thing a future session must pass
+// through (compliance audit M-12, and Mi-7 for the disclaimer):
+//
+//   1. arXiv's API Terms of Use forbid representing the project as "endorsed or
+//      supported by arXiv.org". That is an express prohibition, not the inference
+//      it is for Wikimedia and the museum, so the disclaimer in PublicFooter and
+//      on /sources has to name arXiv too.
+//   2. Say the licence. Titles, authors and abstracts ARE covered: the ToU places
+//      descriptive metadata under CC0 1.0, which is more generous than the code's
+//      current silence assumes. "Title, authors and abstract from arXiv, CC0 1.0."
+//      is accurate and free. What stays forbidden is serving the e-prints
+//      themselves, which Drift does not do.
+//
+// The rate limit is already handled: server/arxiv.ts has its OWN 3000 ms gate,
+// separate from the 300 ms Wikimedia one, which is what the ToU requires.
 const PAPERS_ENABLED = process.env.NEXT_PUBLIC_REALM_PAPERS === "1";
 
 export interface RealmClient extends RealmMeta {

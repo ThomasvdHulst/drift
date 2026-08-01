@@ -90,20 +90,41 @@ export const PUBLIC_CONTENT_ROUTES = [
  */
 export const PUBLIC_UTILITY_ROUTES = ["/auth/confirm"] as const;
 
+/**
+ * Public share links (Phase 27): `/s/<token>`.
+ *
+ * Prefix-matched rather than listed, because there is one URL per share and they
+ * are created at runtime. Public by necessity: the whole point is that a person
+ * with no Drift account can open what someone sent them.
+ *
+ * ⚠️ NOT indexable, and this is not a preference. Three reasons, any one of
+ * which is sufficient: the content is someone's personal trail; the token is a
+ * capability, so putting it in a search index hands it out; and a crawlable page
+ * of Wikipedia extracts is republication, which is both the thing AdSense
+ * rejected the site for once already and a far wider copyright surface than a
+ * login-gated app. So `/s/` is deliberately absent from INDEXABLE_ROUTES,
+ * `robots.ts` disallows it, and the page itself sends `noindex`.
+ */
+export const PUBLIC_SHARE_PREFIX = "/s/";
+
 /** What search engines are pointed at: the landing page plus the reading pages.
  *  Individual notes are appended by `sitemap.ts` from the NOTES registry. */
 export const INDEXABLE_ROUTES = ["/", ...PUBLIC_CONTENT_ROUTES] as const;
 
 /** Whether a path renders without an account. The auth gate's allowlist.
- *  `/notes/<slug>` is matched by prefix (there is one route per published note);
- *  deliberately `"/notes/"` with the slash, so a route that merely starts with
- *  those letters is still gated. */
+ *  `/notes/<slug>` and `/s/<token>` are matched by prefix (one route per
+ *  published note, one per share); deliberately with the trailing slash, so a
+ *  route that merely starts with those letters is still gated. */
 export function isPublicRoute(pathname: string): boolean {
   const exact: readonly string[] = [
     ...PUBLIC_CONTENT_ROUTES,
     ...PUBLIC_UTILITY_ROUTES,
   ];
-  return exact.includes(pathname) || pathname.startsWith("/notes/");
+  return (
+    exact.includes(pathname) ||
+    pathname.startsWith("/notes/") ||
+    pathname.startsWith(PUBLIC_SHARE_PREFIX)
+  );
 }
 
 /** Everything behind the gate: a crawler gets the sign-in screen, and the real

@@ -50,10 +50,11 @@ export default function ContactPage() {
             channel for one.
 
             The imprint required by Article 3:15d BW is a different obligation
-            and is not here: it needs the operator's legal name and
-            establishment address, which is a decision they have not made yet
-            (docs/owner-actions.md, item 4). A placeholder imprint would be
-            worse than none. */}
+            and lives on its own page, `/legal`, linked from the footer of every
+            public page. It is not repeated here: 3:15d wants the operator's
+            identity "easily, directly and permanently accessible", which one
+            stable page linked everywhere satisfies better than the same block
+            copied onto several. */}
         <section className="mt-10 border-t border-line pt-6">
           <h2 className="font-serif text-xl text-ink">
             Official points of contact

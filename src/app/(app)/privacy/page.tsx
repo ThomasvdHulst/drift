@@ -186,6 +186,20 @@ export default function PrivacyPage() {
           basis="Article 6(1)(b)."
           kept="A share stays until either side deletes it, or either account is deleted."
         />
+        {/* Public share links (Phase 27). Its own row rather than folded into
+            the one above, because it is the only thing in Drift that is
+            deliberately readable by people with no account, and burying that in
+            a sentence about friends would be the kind of half-true summary the
+            compliance audit was full of. */}
+        <Keep
+          title="Anything you turn into a share link"
+          data="The card or trail you chose, copied at the moment you made the link, so later changes to your own trail do not alter it. It does not include your email address, your handle or your name."
+          why="So you can send something to a person who does not have Drift. Anyone holding the link can read it and can pass it on, so treat it like a photo sent to a group chat. Only created if you press Share a link."
+          basis="Article 6(1)(b)."
+          kept={
+            'Until you choose "Stop sharing", which kills the address for everyone at once, or until you delete your account, which stops every link you made.'
+          }
+        />
         <Keep
           title="The emails Drift sends you"
           data="Your email address, used to send you a confirmation link, a password reset if you ask for one, a welcome note, and a goodbye when you delete your account."

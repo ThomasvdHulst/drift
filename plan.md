@@ -5,158 +5,80 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 **tested with success**. Keep the "Current status" line accurate. Full product detail is in
 `drift-spec.md`; working rules are in `CLAUDE.md`.
 
-> ## Current status — 2026-07-31
+> ## Current status: 2026-08-01
 >
-> **Drift is live** at <https://www.usedrift.org> (Vercel + Supabase) as an installable PWA,
-> in a small friends-and-colleagues beta. Two realms ship: **Encyclopedia** (Wikipedia) and
-> **Gallery** (Art Institute of Chicago, CC0).
+> **Drift is live** at <https://www.usedrift.org> (Vercel + Supabase) as an installable PWA, in a
+> small friends-and-family beta. Two realms ship: **Encyclopedia** (Wikipedia) and **Gallery** (Art
+> Institute of Chicago, CC0).
 >
-> **Latest (2026-07-31): an independent legal and copyright audit is being implemented.**
-> `docs/drift-compliance-audit.md` is the report; `docs/owner-actions.md` is everything that needs a
-> human rather than code. **M0** closed the one live breach (the AdSense loader was running, and
-> setting a cookie, on every public page with no consent mechanism, while earning nothing).
-> **M1** gave every image its own creator and licence, and made attribution travel with saved and
-> shared cards. **M2** (this session) is the documents: `/terms` meeting DSA Article 14, an Article
-> 16 notice-and-action route, the Article 11/12 contact points, `/privacy` rewritten to the Article
-> 13 checklist, a data export button, the contact-form IP disclosure, and the Article 30 processing
-> record, plus **`/legal`**, the Article 3:15d BW imprint. **M3** filters the Gallery for the EU term
-> (life plus 70) rather than the museum's US determination. **M4** is the consent gate (nothing from
-> Google loads before a choice, Accept and Reject at measured-equal weight) and the 16+ age gate.
-> **M5** is hygiene: a structural shared-cache guard, gzip, `Retry-After` honoured, deletion
-> propagation proved against the migrations, and a licence line on the text export.
-> **The audit is now fully implemented in code**; what is left needs a dashboard or a decision and is
-> in `docs/owner-actions.md`. See the entries at the bottom.
+> **Gates:** 869 unit tests green, `npm run build` and `npm run lint` clean, `npm run audit:contrast`
+> PASS (4,928 text nodes, 28 views x 2 themes). Backend: `npm run verify:supabase`,
+> `verify:social`, `verify:share`. Update these numbers when they change.
 >
-> **Also (2026-07-31): a landing-page illustration was NonCommercial.** The Jupiter image was a
-> JunoCam frame processed by citizen scientists and credited `© CC NC SA` on JPL's own page. NASA
-> hosting an image does not make it public domain. Replaced with a Cassini portrait; the two Hubble
-> images are now credited on `/colophon`.
+> ### The compliance audit is fully implemented and closed out
 >
-> **Also (2026-07-31): Gallery cards had lost their pictures in local development.** Not a
-> regression: the museum's image host now sits behind Cloudflare bot management that 403s a
-> browser-shaped request with a localhost `Referer`. The live origin is allowed, so production was
-> never affected. Fixed with a same-origin passthrough, on outside production and off inside it.
+> `docs/drift-compliance-audit.md` is the report (31 July 2026). `docs/owner-actions.md` is what is
+> left for a human, rewritten 1 August into a short prioritised list. Six milestones, all verified,
+> with full entries at the bottom of this file:
 >
-> **Latest (2026-07-29): Drift has a public reading section.** `/how-it-works`, `/principles`,
-> `/sources`, `/faq`, `/colophon` and a `/notes` journal, taking the crawlable surface from 5 URLs
-> and ~2,040 words to 15 and ~8,000. Prompted by an AdSense "Low value content" rejection, which
-> researched out as a 10-day-old domain plus a site with nothing on it to read. We deliberately did
-> NOT open the feed to signed-out visitors: that would have made Drift a republication of Wikipedia,
-> which is the exact thing Google screens for. Owner checklist in `docs/adsense-resubmission.md`.
-> See the entry at the bottom.
+> | | |
+> |---|---|
+> | **M0** | The one live breach. The AdSense loader ran on every public page with no consent mechanism, setting a cookie, while earning nothing. One switch now governs everything Google. |
+> | **M1** | Attribution that travels: per-image creator and licence, two fail-closed rules, the modification indication, an `attribution` block on every persisted card, images dropped from the PNG export. |
+> | **M2** | The documents: `/terms` (DSA Art 14) plus `/terms.md`, the Art 16 notice route, the Art 11/12 contact points, `/privacy` rewritten to the Art 13 checklist on a **contract** basis, data export, and `docs/processing-record.md` (Art 30). Closing pass added **`/legal`**, the Art 3:15d BW imprint. |
+> | **M3** | The Gallery is filtered for the **EU** term (life plus 70), not the museum's US determination. |
+> | **M4** | The consent gate (nothing from Google before a choice, Accept and Reject at measured-equal weight) and the never-pre-ticked 16+ declaration. |
+> | **M5** | Hygiene: a structural shared-cache guard, gzip to Wikimedia, `Retry-After` honoured, deletion cascades proved against the real migrations. |
 >
-> **Also (2026-07-29): on the installed app, a new drift inherited the last one.** Pick Physics
-> after Mathematics and you drifted Mathematics; tap Encyclopedia after a Gallery session and you got
-> the Gallery. The URL itself was wrong: Next's client Router Cache keys entries by path segment, so
-> every `/drift?…` session shares one, and a back gesture (how you navigate on a phone) left a stale
-> one that answered the next push. PWA-only because it needs a page that lives for days. `/drift` is
-> now a dynamic segment. A second cause with the same symptom is fixed too: the async settings restore
-> could overrule a realm the reader had already tapped. See the entry at the bottom.
+> **Ads stay OFF, and the recommendation is that they stay off.** The gate is built and works, but
+> Vercel Hobby is non-commercial only, so a rendered advert costs ~$240/yr against a few euros of
+> revenue at this scale, on an AdSense account that is still refused. Reasoning in
+> `docs/owner-actions.md` §2. Everything Google needs `NEXT_PUBLIC_ADS_ENABLED=1`, which is the one
+> thing that must not be set before that file's §5 checklist is worked through.
 >
-> **Also (2026-07-29): starting a drift from the homepage hung on "Finding a starting point…"
-> in `npm run dev`.** A dev-only wedge (React StrictMode remounts the effect, the session guard made
-> the second run a no-op, and the cleanup had already cancelled the first), so the deployed site was
-> never affected and neither was the caching work that happened to land alongside it. Fixed, and the
-> guard is now safe against any repeat entry. See the entry at the bottom.
+> ### Where things stand
 >
-> **Phase 26 (2026-07-28) — cards can carry TABLES.** "Read more" now builds the body from
-> the article's real HTML, so a paragraph saying "as the table below shows" is followed by that
-> table, and the page's infobox fills the card's Details disclosure. Compliance was verified against
-> Wikipedia's own rules first (see M-W0): the one real gap, a licence notice that named CC BY-SA
-> without linking it, is fixed and the notice now sits on the card itself.
+> **Shipped:** Phases 1, 2, 4, 5, 6, 8, 9, 10, 13, 14, 15, 18, 19, 20, 22, 23, 24, 25, 26. The core
+> drift loop, directional threads, trails and the trail-map reward, the Atlas, the interest model,
+> accounts and cloud sync, friends and sharing, cross-realm doorways, focused drift (field, orbit, in
+> the news), branded email, the guided tour, the contact form, WCAG 2.2 AA colour contrast, and
+> article tables.
 >
-> **Also (2026-07-28): "drift within a field" was broken on Architecture and Visual Arts.** A
-> topic's incoming-links ranking holds long contiguous runs of "… listings in …" hub pages, which our
-> junk filter drops, so a whole window could come back empty: the seed reported "couldn't load", and
-> an empty refill quietly served off-field cards. The search now excludes those titles upstream, the
-> seed retries, and a focused drift never leaves its field silently. See the entry at the bottom.
+> **Behind a flag:** Phase 17 **Papers** (arXiv), `NEXT_PUBLIC_REALM_PAPERS=1`. ⚠️ Do not enable in
+> production before the two compliance items noted at the flag in `src/lib/realms/index.ts` (audit
+> M-12). Phase 21 **ads**, `NEXT_PUBLIC_ADS_ENABLED` OFF, see above.
 >
-> **Also (2026-07-28): the tour teaches crossing realms as a TAP on the top bar's doorway**
-> instead of forcing a sideways swipe, which on a laptop trackpad is the browser's own back gesture.
-> The swipe still works and the copy names it; only the tour changed. Plus two small fixes: the feed
-> header now fits any phone at any text scale (it used to overflow and get clipped), and starting the
-> tour from the Gallery switches to the Encyclopedia first, so its home steps always have their
-> targets. See the entries at the bottom.
->
-> **Phase 25 — the whole app now meets WCAG 2.2 Level AA on colour contrast.**
-> The palette was designed by eye and had never been measured; an audit found 258 failing text
-> nodes. The worst was dark mode's start tiles, where a pale tint mixed over dark paper made a
-> mid-tone that left the card's own label at **3.42:1** and its blurb at **2.22:1**. Dark tile
-> faces are now DERIVED by re-lighting the authored hue in OKLCH instead of mixing, which clears
-> the text bar (9.17 / 5.94) while actually IMPROVING how distinguishable neighbouring cards are.
-> The light accent ramp went one step deeper, fixing 37 primary buttons at the token layer; a
-> second border token `--line-strong` gives controls a real 3:1 edge while the decorative
-> hairline stays soft; and focus is now one shared 2px ring instead of ten ad-hoc border swaps.
-> Two gates keep it there: `npm run test` reads the real hexes out of globals.css, and
-> `npm run audit:contrast` measures composited pixels in a real browser. **The rules a future
-> session must not break are written up in CLAUDE.md §10.**
->
-> **Latest (2026-07-25): Phase 24 — the Gallery is now as steerable as the Encyclopedia.** Two new ways
-> to begin, mirroring the Encyclopedia's shape. **Drift an artist:** search a name and wander their work,
-> with the true count shown before you commit ("Katsushika Hokusai · 447 works here") and an honest empty
-> answer for anyone still in copyright. Because the Art Institute is a works-on-paper collection, a thin
-> oeuvre (Van Gogh has **18** works) **widens out loud** into their movement, then their period and medium,
-> the banner saying "wandering wider · Post-Impressionism" and each card relabelling where it really came
-> from. **Drift a form and a period:** confine a session to one of ten art forms, optionally to one period
-> (*Paintings, 1850 to 1899*), offering only periods the collection actually holds. Both ride the existing
-> opaque `bucket` seam (`form:<form>:<era>`, `artist:<id>:<ring>`), so the discover route and the refill
-> loop were left untouched. The Gallery's old "Or start somewhere" tiles were retired as redundant; the
-> buckets behind them still power "Surprise me in Gallery".
->
-> **Also (2026-07-25): the card reads much better on a phone.** The pinned "Pull a thread" bar was eating
-> 172px in the Gallery and 232px in the Encyclopedia out of a ~700px card, leaving about one line of text
-> visible before you had to scroll. On phones the threads now sit at the END of the reading flow, and a
-> small "3 threads below" pill floats above the fold until you reach them. Visible prose at first paint
-> went from ~27px to ~210px. Desktop keeps its pinned bar unchanged.
->
-> **Shipped:** Phases 1, 2, 4, 5, 6, 8, 9, 10, 13, 14, 15, 18, 19, 20, 22, 23, 24 — the core drift loop,
-> directional threads, trails + the trail-map reward, the Atlas, the interest model, accounts
-> and cloud sync, friends and sharing, cross-realm doorways, focused drift (field + orbit + in the news),
-> branded email, the guided tour, and the contact form.
->
-> **Behind a flag:** Phase 17 **Papers** (arXiv) — set `NEXT_PUBLIC_REALM_PAPERS=1`. Phase 21
-> **ads** — built, kill switch `NEXT_PUBLIC_ADS_ENABLED` OFF; awaiting AdSense approval.
+> **Hidden by owner decision (2026-07-27):** friends and sharing, behind `NEXT_PUBLIC_SOCIAL=1`.
+> Nothing was deleted; set that var to bring the whole layer back.
 >
 > **Deferred by choice:** Phase 3 (local Ollama AI), 7 (constellations), 11 (calm social feed),
-> 12 (native app), 16 (memory & reflection), M12 (Library/Today realms), M-Ad3 (ad-free tier).
+> 12 (native app), 16 (memory and reflection), M12 (Library/Today realms), M-Ad3 (ad-free tier).
 >
-> **Baseline:** 641 unit tests green, `npm run build` + `npm run lint` clean, and
-> `npm run audit:contrast` PASS (1464 text nodes, 16 views x 2 themes).
+> ### 🔴 Open owner items outside the audit
 >
-> **Friends + sharing are HIDDEN** (2026-07-27, owner decision) behind `NEXT_PUBLIC_SOCIAL=1`.
-> Nothing was deleted; set that env var to bring the whole layer back. See the entry near the bottom.
+> - **Email templates may still need re-pasting.** A bug where confirmation and password-reset links
+>   only worked in the browser you signed up in was fixed in code, but the fix lives in the templates
+>   in `supabase/email-templates/` and they must be pasted into Supabase (Auth, Emails, Templates).
+>   Unverified either way from here. See the 2026-07-27 bug-fix entry below.
+> - **Turnstile is optional and not configured.** The contact form's other anti-spam layers work
+>   without it. Setting both keys makes it fail-closed, and it would add Cloudflare as a processor.
 >
-> **🔴 Action needed (2026-07-27):** a bug where confirmation and password-reset links only worked in
-> the browser you signed up in is fixed in code, but the fix lives in the **email templates** and they
-> must be re-pasted into Supabase (Auth → Emails → Templates) from `supabase/email-templates/`. See
-> the bug-fix entry at the bottom of this file.
+> ### ▶ Next
 >
-> **Fix (2026-07-23):** re-entering an "in the news" section you'd read deep into no longer shows a false
-> "Couldn't load a card" error. It now pages past the already-seen cards, and when a whole section is read it
-> opens on a story you've seen with a calm "you're all caught up · check back later" notice + a "· caught up"
-> banner marker, and keeps drifting into related reading instead of dead-ending. (Phase 23 log entry has detail.)
+> Open. **Phase 27 (sharing a card or trail outward) is complete and verified.** Ads were ruled out,
+> so growth is now "a reader shows someone a thing": `/s/<token>` is a public page anyone can open
+> from a chat, with three cards to try before an account is needed. ⚠️ Public links reclassify Drift
+> as a DSA **online platform**; Article 19 (micro enterprise) keeps the obligation delta near zero,
+> `/terms` now says so accurately, and **that exemption depends on staying one person**.
 >
-> **AdSense prep (2026-07-23):** added a public **/about** page, a **shared footer nav** across every public
-> page (so Contact is reachable everywhere), an About link in the landing header, and **basic SEO** (canonical
-> + OpenGraph per page, /about in the sitemap). Site is submitted for AdSense review; flip
-> `NEXT_PUBLIC_ADS_ENABLED` on once approved. (Grab-bag log entry has detail.)
+> Candidates: Phase 16 (Memory and Reflection) is the last of the three brainstorm directions. A
+> **second art source** (Cleveland Museum of Art: CC0, no API key, 41,476 open-access works) is the
+> obvious follow-up if artist drifts feel thin, and would want the same EU-term filter M3 built for
+> the Art Institute.
 >
-> **Latest (2026-07-22):** two changes to how an Encyclopedia drift starts. **M-FD3** dropped the home
-> page from four ways to begin to three: "Or drift within a field" is now a grid of 28 field cards
-> (glyph, name, blurb, tint) listed alphabetically, open by default on desktop and folded on mobile,
-> and "Or start somewhere" belongs to Gallery/Papers alone. **Phase 23** then added the third directed
-> drift, **"Or drift what's in the news"**: ten subject cards that drift the Wikipedia articles behind
-> this month's stories, sourced from Wikipedia's own `Portal:Current events` (so no news is ever
-> displayed and no new licensing exposure is taken on).
->
-> **▶ Next:** open. Phase 16 (Memory & Reflection) is the last of the three brainstorm directions and the
-> most natural continuation; ads work resumes only if AdSense approves. A **second art source** (Cleveland
-> Museum of Art: CC0, no API key, 41,476 open-access works, 3,956 public-domain paintings) is the obvious
-> follow-up if artist drifts feel too shallow in practice.
-> Phase 22 needs two owner dashboard steps (a Cloudflare route for `contact@`, and a Turnstile
-> widget) before it is fully armed in production.
->
-> _Full per-phase history is in the log below. Update BOTH when progress changes._
+> _Full per-phase history is in the log below, oldest first. Keep this block SHORT: it is status, not
+> history. When something ships, add a log entry at the bottom and update the summary here rather
+> than stacking another "Latest" paragraph._
 
 ---
 
@@ -3695,6 +3617,211 @@ decision and belongs to the owner.
 **Verified overall.** 855 unit tests (up from 798), build and lint clean, `npm run audit:contrast`
 PASS over 3,356 nodes across 27 views in both themes, and 3,551 with the consent banner on screen.
 
+---
+
+## Compliance audit: review and clean-up ✅ *(2026-08-01)*
+
+Six milestones landed in two sessions and the owner reported being lost in the volume of it. This
+session re-checked the work against the audit rather than against its own write-up, then cut back
+what the volume had left behind. **No finding was found to be wrongly implemented or missed.**
+
+**The review.** All six milestones were spot-checked against the audit's actual text, not the plan
+entries describing them: the one-switch ads gate, the consent gate's single invariant, the
+fail-closed image rule and where it is applied, the EU public-domain filter at all seven
+card-producing seams, the cache guard's required-request signature, the licence module, the imprint,
+the public-route registry, the PNG export, the arXiv gate. Gates re-run clean from scratch: **855
+tests, build, lint**. The implementation is in good shape and the pure-logic-in-`src/lib` discipline
+held throughout, which is why it was checkable at all.
+
+**What the volume left behind, now fixed.**
+
+- [x] **A stale comment on `/contact` said the imprint "is a decision they have not made yet".**
+      `/legal` has existed since the M2 closing pass. A future session reading that would have
+      rebuilt something that is already live. Now it says where the imprint is and why it is not
+      duplicated onto `/contact`.
+- [x] **The arXiv pre-flight work existed only inside the audit document.** M-12 requires the
+      no-endorsement disclaimer to name arXiv (an express ToU prohibition, not the inference it is
+      for Wikimedia and the museum) and notes the licence claim can be made more generous, since the
+      ToU puts titles, authors and abstracts under CC0. Nothing at the flag said so. The note now
+      lives at `PAPERS_ENABLED` in `src/lib/realms/index.ts`, which is the one place a session
+      enabling the realm must pass through. The rate limit was already handled.
+- [x] **`docs/handover-m2.md` deleted.** A handover prompt for a milestone finished three
+      milestones ago, describing `/legal` as blocked and M3 to M5 as future work. Recoverable from
+      commit `e6dc681`.
+- [x] **`docs/processing-record.md` corrected on two points.** It still said the hosting regions were
+      unknown after the owner had looked them up (now: a request to write the answers in, since they
+      were never recorded), and still carried deletion propagation as a "known gap" when M5 proved
+      the cascades against the real migration SQL. All three of BP-4's places to check are now
+      answered, including the honest residual: Resend's own message logs are outside our reach.
+- [x] **This file's "Current status" block was itself the slop.** It had grown to ~150 lines of
+      stacked "Latest" paragraphs going back to 2026-07-22, all of which are in the log below in
+      full, and its baseline numbers were three sessions stale (641 tests, 16 views). Replaced with a
+      status block, plus a standing instruction not to stack another paragraph onto it.
+- [x] **`docs/owner-actions.md` rewritten from 447 lines to a prioritised list.** The old file mixed
+      four completed items, a legal tutorial on what a DPA is, a trade mark primer, and the four
+      things actually outstanding, with no ordering by what matters. The rewrite leads with where the
+      owner stands, then: four tasks totalling about half an hour, the advertising decision, the
+      judgement calls each with a recommendation, and a parked ads checklist. The audit's reasoning
+      stays in the audit, where it can be read on purpose rather than by accident.
+
+**The substantive finding of the review is about advertising, and it is arithmetic rather than law.**
+Vercel Hobby is licensed for non-commercial use only, so the first rendered advert requires Vercel
+Pro at roughly $240 a year, against a few euros of AdSense revenue at fifty readers, on an account
+that stands refused. Nearly every remaining obligation in the audit (a certified CMP, Google's data
+processing terms, a VAT number, under-18 ad suppression) exists only because of ads. Recommending
+against them removes most of the remaining burden and costs the project nothing it currently has.
+
+**Not changed, deliberately.** The public footer now carries four small-print paragraphs (the content
+licence, the illustration credits, the independence disclaimer, the copyright line). That is legal
+creep on a page designed to be quiet, but every element is either required or cheap insurance the
+audit specifically asked for, and thinning it is a copy decision for the owner rather than a
+clean-up. Flagged rather than done.
+
+**Verified.** 855 tests, build and lint clean, after the changes as before them. The two code edits
+are a comment and a comment; no behaviour was touched.
+
+---
+
+## Phase 27: share a card or trail outward ✅ *(2026-08-01)*
+
+Ads were ruled out on cost grounds, so the growth idea is now that a reader can send a card or a
+finished trail to someone outside Drift, usually on WhatsApp. Full design in the approved plan; the
+research that shaped it is summarised here because two of its findings constrain everything after.
+
+**What the research settled.**
+
+- **Android opens links in the installed app already.** Chrome captures in-scope links into an
+  installed PWA by default. `launch_handler` only refines which window.
+- **iOS cannot, and this is a hard platform limit.** No universal-links equivalent exists for a
+  home-screen web app; links open in Safari or the sender's in-app browser, always. Worse for us,
+  **an iOS PWA's storage is a separate container from Safari's**, so a reader signed in inside their
+  installed Drift arrives at a shared link signed OUT. Not fixable. The design absorbs it by making
+  the signed-out read good rather than by pretending otherwise.
+- **A signed-out trial is nearly free.** Every content API route already requires no auth (the login
+  gate is a client-side page gate), so the trial reuses `CardView` and needs no backend at all,
+  which also means per-image credits and the fail-closed image rule come with it.
+
+### ⚠️ This reclassifies Drift under the DSA, and `/terms` currently says otherwise
+
+Friend-only sharing sat outside the definition of an "online platform" because `are_friends()` made
+"a closed group of a finite number of pre-determined persons" (Recital 14) a database fact. **A
+forwardable link is not that**, and Recital 14 adds that requiring registration does not help where
+admission is automatic. So public links make Drift an online platform.
+
+The obligation delta is small: **Article 19 excludes micro and small enterprises from Articles 20 to
+28** (bar 24(3), which is answering the ACM if it asks for user numbers), and Articles 11 to 18
+already applied and are already built. **Nothing new has to be built.** But `src/lib/terms.ts` states
+the old classification in as many words, and a published document describing a state the app is not
+in is exactly the audit's B-3 failure. That correction is M4 and must ship before the feature is
+reachable in production.
+
+### M1: the link exists ✅
+
+- [x] **`supabase/migrations/0004_public_shares.sql`.** Token as primary key (16 random bytes,
+      base64url), owner cascade, revoke as a timestamp rather than a delete so the owner keeps the
+      record while a reader sees the same nothing as an invented token.
+- [x] **No anonymous SELECT policy, deliberately.** The obvious design, `for select to anon using
+      (revoked_at is null)`, is quietly catastrophic: RLS filters rows but does not require a WHERE,
+      so any anonymous caller could `select *` and read every share ever created. Reads go through
+      **`get_public_share(token)`**, a security-definer function taking the token as an exact-match
+      argument, so there is no listing and no enumeration. The token is the capability.
+- [x] **`lib/publicshare/link.ts`** (pure, 13 tests): tokens, URLs, titles, and `parsePublicShare`,
+      which turns any malformed row into the same calm "not available" as a revoked one.
+- [x] **`lib/publicshare/server.ts`.** A separate anonymous client, because `getSupabase()` returns
+      null during SSR by design and the og: tags must be in server HTML: WhatsApp's preview crawler
+      runs no JavaScript.
+- [x] **`lib/publicshare/client.ts`** (create, revoke, list) and **`components/ShareLink.tsx`**, with
+      the OS share sheet and a copy fallback. The token is minted client-side so the share sheet can
+      open in the same gesture, since `navigator.share` needs transient activation.
+- [x] **Entry point at the trail map**, under it rather than in the button row: the map is the exit
+      and the reward (principle 3), so the offer to show it comes after you have looked. Not behind
+      `NEXT_PUBLIC_SOCIAL`: that flag hides the friend *graph*, and a link you paste into a chat
+      yourself is not one.
+- [x] **`npm run verify:share` passes, 11 checks against the live database.** The sharpest is that an
+      anonymous `select *` on `public_shares` returns nothing; if that ever fails, every link in the
+      system is exposed at once. Also proved: a revoked token and an invented one are the same
+      nothing, a stranger can neither read nor revoke someone else's link, and deleting a user takes
+      their links with them.
+- [x] **The script provisions BOTH its test users and deletes them**, rather than using
+      `SUPABASE_EMAIL`. That account's password has been stale since July, so a sign-in failure there
+      reads as a bug in the feature; and more seriously, this script deletes shares and deletes a user
+      to prove the cascade, which must never be pointed at the owner's real account.
+
+### M2: the public page ✅
+
+- [x] **`/s/[token]`, a SERVER component.** It has to be: WhatsApp's preview crawler runs no
+      JavaScript, so the og: tags must be in the server HTML, and a reader arriving from a chat
+      should get the thing rather than a spinner that becomes the thing.
+- [x] **`noindex` on both branches, and `/s/` disallowed in `robots.txt`.** A token is a capability,
+      so a search engine listing one has handed it out. Also keeps Drift from becoming a crawlable
+      republication of Wikipedia, which is what AdSense rejected the site for once already.
+- [x] **One dead-link state for every kind of dead**: revoked, mistyped, from a deleted account, or
+      never real. A reader cannot act on the difference and a prober learns nothing from it.
+- [x] **The link preview** (`opengraph-image.tsx`), 1200x630 and 45KB, well inside WhatsApp's ~300KB
+      cliff. ⚠️ **Titles and trail shape only, never the source images**: arranging third-party
+      pictures into a composite is what makes an artefact Adapted Material under CC BY-SA 4.0, the
+      same reasoning that took images out of the PNG export (audit B-5). Carries the burned-in
+      `Titles from Wikipedia · CC BY-SA 4.0` line, because this file is built to travel.
+- [x] **Signed in: "Save a copy" and "Drift on from here"**, the latter seeding `/drift` from the
+      trail's last stop, so you pick up where the sender left off.
+
+### M3: three cards ✅
+
+- [x] **`CardView` reused rather than a lighter public card.** That is the whole design: per-image
+      credits, the fail-closed image rule, the source link and the modification indication all come
+      with it. A second card component would have been a second place to forget them, which is
+      exactly what the audit found in the friend inbox (Q-7).
+- [x] **The limit is stated before the first pull, never after the third.** A limit you know about is
+      a boundary; one that appears once you are invested is the pattern this app is a reaction to.
+- [x] **Zero backend work**, because every content API route already requires no auth. The cap also
+      bounds anonymous draw on the shared Wikimedia budget (`docs/beta-readiness.md` Q3).
+- [x] **Trial cards carry `arrivedVia`**, so a card still says why it appeared (principle 1). It would
+      otherwise have been the one place in Drift where something arrived unexplained.
+
+### M4: the app, and the documents ✅
+
+- [x] **`launch_handler: navigate-existing`.** Chrome already captures in-scope links into an
+      installed PWA, so Android worked; this stops three shared links leaving three Drift windows.
+      Does nothing on iOS, and the copy never claims otherwise: the install line reads "Drift installs
+      to your home screen", not "open this in the app", which would be a button that does nothing for
+      half its readers.
+- [x] **`/terms` corrected, with a test that pins it.** The old sentence explained the Article 20/21
+      exemption by "sharing only ever reaches mutual friends", which public links made false. It now
+      cites Article 19, and a test fails if either the old sentence or the phrase "not an online
+      platform" reappears. **The exemption now rests on the operator being one person rather than on
+      the architecture**, which is a weaker guarantee and worth knowing is the load-bearing one.
+- [x] **A `/terms` section on share links**, saying plainly that a link is a key rather than an
+      invitation, that anyone holding it can pass it on, and that "Stop sharing" kills it for
+      everyone. Effective date moved to 1 August 2026.
+- [x] **`/privacy` row**, its own rather than folded into the friends row, because this is the only
+      thing in Drift deliberately readable without an account.
+- [x] **`docs/processing-record.md` v2**: activity row 9, the §3 correction, and the capability-vs-RLS
+      note. A dated banner on the audit document records that M-5 and C-10's classification is spent.
+- [x] **Share links in the data export**, including withdrawn ones, and not behind
+      `NEXT_PUBLIC_SOCIAL`.
+- [x] **`audit:contrast` measures the share page** via `AUDIT_SHARE_TOKEN=<token>`, and prints a note
+      when no token is supplied so it cannot go quietly unmeasured.
+
+**Verified.** 869 unit tests, build and lint clean, `npm run verify:share` 11/11 against the live
+database. In a real browser against a gated production build: the trail and card pages render signed
+out with all three stops and their notices; three pulls work against the live Wikipedia API and the
+budget survives a reload; the invitation and CTA appear at the limit and the chips go; a dead token
+lands on the calm state; signed in, the panel replaces the trial, "Save a copy" lands in My Trails and
+"Drift on from here" points at the last stop. `npm run audit:contrast` PASS over **4,928 text nodes
+across 28 views in both themes**, share page included.
+
+⚠️ **One verification lesson worth keeping.** A first contrast run "PASSED" at 408 nodes and a
+screenshot showed the trial missing. Neither was a code fault: `next start` was serving a `.next`
+that had been rebuilt underneath it, so chunk hashes no longer matched, hydration failed silently,
+and every client component vanished while server-rendered text stayed. **A passing contrast run with
+a suspiciously low node count means a stale server, not a clean page.** Kill the server before
+rebuilding.
+
+**Not done, deliberately:** view counts, open notifications, link expiry, and unhiding the friend
+layer. The first two are engagement loops and are named as out of scope in `ShareLink.tsx` so the
+next session does not add them as an obvious improvement.
+
+---
 
 ## Out of scope for v1 (do not build unless asked)
 

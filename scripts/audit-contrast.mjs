@@ -75,6 +75,19 @@ const ROUTES = [
   { path: "/friends" },
   { path: "/inbox" },
   { path: "/auth/confirm" },
+  // A public share page (Phase 27). It needs a real token, because the page is a
+  // database row rather than a static route, so it is opt-in:
+  //
+  //   AUDIT_SHARE_TOKEN=<token> npm run audit:contrast
+  //
+  // Worth the extra step. Signed out it is the ONLY page in Drift a stranger
+  // reaches with real content on it, it renders a card and a trail map outside
+  // the feed's own layout, and the trial section is copy that exists nowhere
+  // else. A run prints a warning when the token is absent, so this cannot go
+  // quietly unmeasured.
+  ...(process.env.AUDIT_SHARE_TOKEN
+    ? [{ path: `/s/${process.env.AUDIT_SHARE_TOKEN}` }]
+    : []),
 ];
 
 /** Runs inside the page. Returns one record per visible text-bearing element. */
@@ -277,6 +290,12 @@ if (!sawPapers) {
   console.log(
     "NOTE: the Papers realm did not render. Re-run the dev server with\n" +
       "      NEXT_PUBLIC_REALM_PAPERS=1 to include its covers in the audit.",
+  );
+}
+if (!process.env.AUDIT_SHARE_TOKEN) {
+  console.log(
+    "NOTE: no public share page was measured. Make a share link in the app, then\n" +
+      "      AUDIT_SHARE_TOKEN=<token> npm run audit:contrast",
   );
 }
 if (!failures.length) {

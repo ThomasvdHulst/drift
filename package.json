@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "verify:supabase": "node --env-file=.env scripts/verify-supabase.mjs",
     "verify:social": "node --env-file=.env scripts/verify-social.mjs",
+    "verify:share": "node --env-file=.env scripts/verify-publicshare.mjs",
     "audit:contrast": "node scripts/audit-contrast.mjs"
   },
   "dependencies": {

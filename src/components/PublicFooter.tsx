@@ -48,7 +48,16 @@ export function PublicFooter() {
     <footer className="border-t border-line">
       {/* Bottom padding clears the fixed account + theme controls in the corner. */}
       <div className="mx-auto flex w-full max-w-3xl flex-col items-center gap-4 px-6 pb-20 pt-10 text-center">
-        <Monogram className="h-6" />
+        {/* The mark and the line that goes with it. This used to sit at the very
+            bottom next to the copyright, where it was the fourth line of small
+            print and read as legalese. It is brand, so it belongs with the
+            brand. */}
+        <div className="flex flex-col items-center gap-1.5">
+          <Monogram className="h-6" />
+          <p className="text-xs text-ink-soft">
+            A calm corner of the internet, for the curious.
+          </p>
+        </div>
         <nav
           aria-label="Site"
           className="flex flex-col items-center gap-y-3"
@@ -83,46 +92,50 @@ export function PublicFooter() {
             <CookieSettingsLink className="text-ink-soft underline-offset-2 transition hover:text-accent-strong hover:underline" />
           </div>
         </nav>
-        {/* The standing licence notice. Both licences are LINKED, not merely
-            named: reusing Wikipedia text requires a notice that reaches the
-            licence text itself (WMF Terms of Use §7). See lib/licenses.ts. */}
+        {/* The small print, in TWO blocks rather than four. Every element the
+            compliance audit requires is still here; what changed is that they
+            are no longer four stacked paragraphs of legalese on a page whose
+            whole job is to feel quiet.
+
+            1. The licence notice. Both licences are LINKED, not merely named:
+               reusing Wikipedia text requires a notice that reaches the licence
+               text itself (WMF Terms of Use §7). See lib/licenses.ts.
+            2. The illustrations. Unlike card images these are HOSTED COPIES on
+               our own origin, which makes them reproduction and distribution by
+               us and the attribution position stricter (audit M-1). They appear
+               as small trail-map thumbnails and demo cards, where a credit
+               beside each one is not a workable medium, so the per-image credits
+               live on /colophon and this links to them. CC BY 4.0 §3(a)(2)
+               expressly allows attribution "by providing a URI or hyperlink to a
+               resource that includes the required information", which is what
+               this is. The enumeration that used to sit here was never the
+               compliance mechanism, only a summary of it, so folding it into the
+               link loses nothing. Per-file record: public/landing/CREDITS.md.
+            3. The independence line. CC BY-SA 4.0 §2(a)(6) and the Wikimedia
+               trademark policy both allow naming a source to say where content
+               came from, but not implying an association with it. Drift's copy
+               leans on words like "vetted" and "curated", which edges toward
+               implying an editorial relationship, so this is cheap insurance
+               (audit Mi-7). Kept as its own sentence, and it still names the
+               Foundation rather than "Wikipedia", because the Foundation is who
+               holds the marks. */}
         <p className="max-w-md text-xs leading-relaxed text-ink-soft">
           Content from Wikipedia, under <LicenseLink license={CC_BY_SA_4} />, and
-          public domain artworks from the Art Institute of Chicago, under{" "}
+          public domain artworks from The Art Institute of Chicago, under{" "}
           <LicenseLink license={CC0_1} />. Drift only reshapes it. It never
-          invents facts.
-        </p>
-        {/* The landing page's illustrations are HOSTED COPIES on our own origin,
-            not hotlinked like card images, which makes them reproduction and
-            distribution by us and the attribution position stricter (audit M-1).
-            They appear as small trail-map thumbnails and demo cards, where a
-            credit beside each one is not a workable medium, so the per-image
-            credits live on /colophon and this line links to them. CC BY 4.0
-            §3(a)(2) allows attribution "by providing a URI or hyperlink to a
-            resource that includes the required information", which is exactly
-            that. See public/landing/CREDITS.md for the per-file record. */}
-        <p className="max-w-md text-xs leading-relaxed text-ink-soft">
-          Illustrations on this site: The Art Institute of Chicago (CC0), Ernst
-          Haeckel (public domain), and NASA.{" "}
+          invents facts. Illustrations on this site are{" "}
           <Link
             href="/colophon#illustrations"
             className="underline decoration-ink/30 underline-offset-2 transition hover:text-accent-strong"
           >
-            Full credits
+            credited in full on the colophon
           </Link>
           .
         </p>
-        {/* CC BY-SA 4.0 §2(a)(6) and the Wikimedia trademark policy both allow
-            naming a source to say where content came from, but not implying an
-            association with it. Drift's copy leans on words like "vetted" and
-            "curated", which edges toward implying an editorial relationship, so
-            the disclaimer is cheap insurance (compliance audit Mi-7). */}
         <p className="max-w-md text-xs leading-relaxed text-ink-soft">
-          Drift is an independent project, not affiliated with, endorsed by or
-          sponsored by the Wikimedia Foundation or The Art Institute of Chicago.
-        </p>
-        <p className="text-xs text-ink-soft">
-          © {year} Drift. A calm corner of the internet, for the curious.
+          An independent project, not affiliated with, endorsed by or sponsored
+          by the Wikimedia Foundation or The Art Institute of Chicago. ©{" "}
+          {year} Drift.
         </p>
       </div>
     </footer>

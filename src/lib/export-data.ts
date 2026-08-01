@@ -36,6 +36,11 @@ export interface DataExportParts {
   profile?: unknown;
   friends?: unknown;
   shares?: unknown;
+  /** Public share links (Phase 27), including ones already withdrawn. Revoking
+   *  is a timestamp rather than a delete precisely so that "I shared this once
+   *  and stopped" is answerable, and an export that hid withdrawn links would
+   *  be a less complete answer than the database can give. */
+  shareLinks?: unknown;
 }
 
 export interface DataExport extends DataExportParts {

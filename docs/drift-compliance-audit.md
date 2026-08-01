@@ -1,5 +1,26 @@
 # Independent compliance audit — Drift (`usedrift.org`)
 
+> ### ⚠️ Later development: one conclusion in this report no longer holds (1 August 2026)
+>
+> This document is a **historical record** and is not edited in place. But a reader arriving at M-5
+> or C-10 needs to know that the product changed underneath one of its findings.
+>
+> **The DSA classification has changed.** M-5 and C-10 conclude that Drift is *not* an online
+> platform, because sharing reached only mutual friends and `are_friends()` enforced that in the
+> database. That reasoning was correct and is now spent: **Phase 27 added public share links**
+> (`/s/<token>`), and a link anyone can open and forward is not the "closed group consisting of a
+> finite number of pre-determined persons" that Recital 14 carves out. Recital 14 also says
+> requiring registration does not save it where admission is automatic, which Drift's is. **Drift is
+> an online platform.**
+>
+> The practical effect is small, which is why the feature was allowed to ship: **Article 19 excludes
+> micro and small enterprises from Articles 20 to 28**, bar Article 24(3). C-10's observation that
+> the database-enforced restriction "removes Articles 20 to 28 from your obligations entirely" is
+> now achieved by Article 19 instead, i.e. by the operator remaining one person rather than by the
+> architecture. That is a weaker guarantee and it is worth knowing which one is load-bearing.
+>
+> Current position: `docs/processing-record.md` §3, and `src/lib/terms.ts`.
+
 **Prepared for:** the operator
 **Date of report:** 31 July 2026
 **Basis:** the operator's written description of the system, plus independent verification against the live production site and primary legal, licence and platform-policy sources. Every external source cited was retrieved on **31 July 2026** unless stated otherwise.
