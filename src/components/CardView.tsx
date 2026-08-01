@@ -101,15 +101,21 @@ function ReactionButtons({
   );
 }
 
-// A quiet "send this card to a friend" action (Phase 10). Same calm register as
-// the reaction buttons — a small paper-plane, never a loud call to share.
+// A quiet "share this card" action. Same calm register as the reaction buttons:
+// a small paper-plane, never a loud call to share, and nothing anywhere counts
+// or reports what happens to it (§2).
+//
+// It used to say "Send to a friend", from Phase 10 when that was all it did.
+// It now opens ShareSheet, which offers a public link first and the friend graph
+// only if that layer is switched on, so the label had to stop naming the rarer
+// of the two.
 function ShareButton({ onShare }: { onShare: () => void }) {
   return (
     <button
       type="button"
       onClick={onShare}
-      aria-label="Send to a friend"
-      title="Send to a friend"
+      aria-label="Share this card"
+      title="Share this card"
       className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full focus-ring border border-line-strong text-ink-soft transition hover:border-accent/40 hover:text-accent-strong"
     >
       <svg
@@ -474,19 +480,25 @@ function ThreadsSection({
   threads: Thread[];
   threadsLoading: boolean;
   onThread: (thread: Thread) => void;
-  variant: "pinned" | "inline";
+  /** `pinned` is the desktop bar below the feed card's scroll region, `inline`
+   *  its phone counterpart at the end of the read, and `flow` the one copy a
+   *  page-flow card renders at every width (see CardView's `flow` prop). */
+  variant: "pinned" | "inline" | "flow";
   innerRef?: React.Ref<HTMLDivElement>;
 }) {
-  const pinned = variant === "pinned";
+  const CLASSES = {
+    pinned:
+      "hidden shrink-0 flex-col gap-3 border-t border-line px-6 py-4 sm:px-8 md:flex md:px-10 lg:px-12",
+    inline: "flex flex-col gap-3 border-t border-line pt-4 md:hidden",
+    // Same as inline, minus the `md:hidden`: in flow mode there is no pinned
+    // copy to defer to, so this one shows at every width.
+    flow: "flex flex-col gap-3 border-t border-line pt-4",
+  } as const;
   return (
     <div
       ref={innerRef}
       data-tour="card-threads"
-      className={
-        pinned
-          ? "hidden shrink-0 flex-col gap-3 border-t border-line px-6 py-4 sm:px-8 md:flex md:px-10 lg:px-12"
-          : "flex flex-col gap-3 border-t border-line pt-4 md:hidden"
-      }
+      className={CLASSES[variant]}
     >
       <p className="text-xs font-medium uppercase tracking-widest text-ink-soft">
         Pull a thread
@@ -526,6 +538,7 @@ export function CardView({
   onShare,
   onOrbit,
   orbiting = false,
+  flow = false,
 }: {
   card: Card;
   realm: RealmId;
@@ -541,6 +554,29 @@ export function CardView({
   /** True while the session is orbiting THIS card's page, so the control can
    *  show it (see OrbitButton). */
   orbiting?: boolean;
+  /**
+   * Render as part of a scrolling PAGE rather than as a fixed-height card that
+   * scrolls inside itself.
+   *
+   * The default shape belongs to the feed, where the card owns the whole
+   * viewport and the page behind it does not scroll: one scroll region, marked
+   * `[data-drift-scroll]`, whose edges the drift gesture reads to tell "scrolling
+   * to read" from "overscrolling to drift onward".
+   *
+   * Dropped into an ordinary page (the public share page, /s/<token>), that
+   * shape is actively wrong. You get two nested scrollers, and on a phone they
+   * fight: a drag over the prose either moves the page and carries the card out
+   * of view, or moves the card and feels stuck. Reported as "I cannot scroll on
+   * that post", which was accurate.
+   *
+   * In flow mode the card grows to its content and the PAGE scrolls, which is
+   * what a reader who arrived from a chat message expects. Everything that only
+   * makes sense inside the feed goes quiet with it: the scroll region, the
+   * "threads below" hint (they are simply further down the page now), the
+   * overscroll-to-advance cue (there is nothing to advance to), and the pinned
+   * desktop thread bar (nothing to pin against).
+   */
+  flow?: boolean;
 }) {
   // "Read more" reveals the first several BODY paragraphs (fetched lazily, once).
   // Local state resets per card because the parent re-keys CardView by pageTitle.
@@ -590,8 +626,10 @@ export function CardView({
     io.observe(el);
     return () => io.disconnect();
   }, [card.pageTitle]);
+  // No hint in flow mode: the chips are in the page's own scroll, so they are
+  // reachable the same way everything else on the page is.
   const showThreadHint =
-    !threadsInView && !threadsLoading && threads.length > 0;
+    !flow && !threadsInView && !threadsLoading && threads.length > 0;
 
   function scrollToThreads() {
     inlineThreadsRef.current?.scrollIntoView({
@@ -654,11 +692,24 @@ export function CardView({
   }, []);
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl bg-paper-raised shadow-[0_10px_40px_-12px_rgba(43,39,35,0.25)] ring-1 ring-line md:flex-row">
+    <div
+      className={`flex w-full flex-col overflow-hidden rounded-2xl bg-paper-raised shadow-[0_10px_40px_-12px_rgba(43,39,35,0.25)] ring-1 ring-line md:flex-row ${
+        flow ? "" : "h-full"
+      }`}
+    >
       {/* Desktop: a fixed image panel on the left. Hidden on phones, where the
           image instead lives inside the scroll flow below (so it scrolls away
-          and the text gets the full height). */}
-      <div className="relative hidden shrink-0 md:block md:h-full md:w-1/2 lg:w-[55%]">
+          and the text gets the full height).
+
+          `md:h-full` only works against a parent with a definite height, which
+          in flow mode there is not. `md:self-stretch` gets the same result from
+          the flex row itself, and the panel ends up as tall as the text beside
+          it. */}
+      <div
+        className={`relative hidden shrink-0 md:block md:w-1/2 lg:w-[55%] ${
+          flow ? "md:self-stretch md:min-h-[26rem]" : "md:h-full"
+        }`}
+      >
         <ImagePanel card={card} onZoom={onZoom} />
       </div>
 
@@ -685,12 +736,27 @@ export function CardView({
             the middle of the prose. drift/page.tsx also handles `touchcancel`,
             as a fallback for a genuinely diagonal drag. */}
         <div
-          data-drift-scroll
-          className="flex min-h-0 min-w-0 flex-1 touch-pan-y flex-col gap-3 overflow-y-auto overscroll-y-contain px-6 pb-4 pt-6 sm:px-8 sm:pt-8 md:px-10 md:pt-10 lg:px-12 lg:pt-12"
+          // Only the feed's card owns a scroll region. In flow mode the marker
+          // is absent too, deliberately: `lib/gesture` and the tour both look it
+          // up to find "the thing that scrolls", and pointing them at a div that
+          // does not scroll would be worse than finding nothing.
+          {...(flow ? {} : { "data-drift-scroll": true })}
+          className={`flex min-w-0 flex-col gap-3 px-6 pb-4 pt-6 sm:px-8 sm:pt-8 md:px-10 md:pt-10 lg:px-12 lg:pt-12 ${
+            flow
+              ? ""
+              : "min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain"
+          }`}
         >
           {/* Phone-only hero, full-bleed to the card's rounded top; it scrolls
-              up out of the way as you read. */}
-          <div className="relative -mx-6 -mt-6 h-[34dvh] shrink-0 overflow-hidden sm:-mx-8 sm:-mt-8 md:hidden">
+              up out of the way as you read. A third of the viewport is right in
+              the feed, where the card IS the screen. On a page it would be a
+              third of the screen spent before the title, every card, so flow
+              mode uses a fixed, smaller band. */}
+          <div
+            className={`relative -mx-6 -mt-6 shrink-0 overflow-hidden sm:-mx-8 sm:-mt-8 md:hidden ${
+              flow ? "h-52" : "h-[34dvh]"
+            }`}
+          >
             <ImagePanel card={card} onZoom={onZoom} />
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-paper-raised/70 to-transparent" />
           </div>
@@ -882,21 +948,30 @@ export function CardView({
           {/* Phone only: the threads sit here, at the end of the read, so the
               text above them gets the card's full height. Desktop renders the
               pinned copy below instead. */}
+          {/* Phone only: the threads sit here, at the end of the read, so the
+              text above them gets the card's full height. Desktop renders the
+              pinned copy below instead. In flow mode this is the ONLY copy, at
+              every width, since there is nothing to pin a bar against. */}
           <ThreadsSection
             threads={threads}
             threadsLoading={threadsLoading}
             onThread={onThread}
-            variant="inline"
+            variant={flow ? "flow" : "inline"}
             innerRef={inlineThreadsRef}
           />
 
           {/* A quiet, static wayfinding cue for the overscroll-to-advance
               gesture — not a tease (no autoplay/countdown); the bottom-nav
               Advance button stays the explicit control (§2.2). It comes after
-              the threads so the order reads: read it, go deeper, or drift on. */}
-          <p className="pt-1 text-center text-xs text-ink-soft">
-            ⌄ keep scrolling to drift onward
-          </p>
+              the threads so the order reads: read it, go deeper, or drift on.
+
+              Absent in flow mode: there is no feed to drift onward INTO, so it
+              would be an instruction that does nothing. */}
+          {!flow && (
+            <p className="pt-1 text-center text-xs text-ink-soft">
+              ⌄ keep scrolling to drift onward
+            </p>
+          )}
 
           {/* The floating "there are threads below" cue. Last in the flow and
               sticky, so it hovers just above the fold while the chips are out of
@@ -941,13 +1016,17 @@ export function CardView({
         </div>
 
         {/* Desktop: threads pinned below the scroll region — always reachable,
-            and there is height enough that they cost the reading nothing. */}
-        <ThreadsSection
-          threads={threads}
-          threadsLoading={threadsLoading}
-          onThread={onThread}
-          variant="pinned"
-        />
+            and there is height enough that they cost the reading nothing.
+            Flow mode has no scroll region to pin against, and its single copy
+            above already renders at every width. */}
+        {!flow && (
+          <ThreadsSection
+            threads={threads}
+            threadsLoading={threadsLoading}
+            onThread={onThread}
+            variant="pinned"
+          />
+        )}
       </div>
 
       {zoomOpen && card.zoomUrl && (

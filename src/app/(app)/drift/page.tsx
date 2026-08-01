@@ -71,8 +71,7 @@ import { FocusBanner } from "@/components/FocusBanner";
 import { TrailMap } from "@/components/TrailMap";
 import { useAuth } from "@/components/AuthProvider";
 import { useTour } from "@/components/tour/TourProvider";
-import { ShareToFriend } from "@/components/ShareToFriend";
-import { socialEnabled } from "@/lib/social/enabled";
+import { ShareSheet } from "@/components/ShareSheet";
 import { cardToSharePayload } from "@/lib/social/share";
 import { AdCard } from "@/components/AdCard";
 import { adsConfig, shouldShowAd } from "@/lib/ads";
@@ -1909,8 +1908,13 @@ function DriftFeed() {
                       ? (sig) => handleReact(current.card, sig)
                       : undefined
                   }
+                  // Sharing a card no longer depends on NEXT_PUBLIC_SOCIAL.
+                  // That flag hides the FRIEND GRAPH, and gating the whole
+                  // control behind it meant that with the flag off (which is how
+                  // Drift runs) there was no way to share a card at all: the only
+                  // route out of the app was to finish a trail first.
                   onShare={
-                    cloudConfigured && user && socialEnabled()
+                    cloudConfigured && user
                       ? () => setShareCard(current.card)
                       : undefined
                   }
@@ -1943,7 +1947,7 @@ function DriftFeed() {
         )}
 
         {shareCard && (
-          <ShareToFriend
+          <ShareSheet
             kind="card"
             payload={cardToSharePayload(shareCard)}
             label={shareCard.displayTitle}

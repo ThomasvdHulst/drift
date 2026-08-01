@@ -12,7 +12,7 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > Institute of Chicago, CC0).
 >
 > **Gates:** 869 unit tests green, `npm run build` and `npm run lint` clean, `npm run audit:contrast`
-> PASS (4,928 text nodes, 28 views x 2 themes). Backend: `npm run verify:supabase`,
+> PASS (4,930 text nodes, 28 views x 2 themes). Backend: `npm run verify:supabase`,
 > `verify:social`, `verify:share`. Update these numbers when they change.
 >
 > ### The compliance audit is fully implemented and closed out
@@ -3820,6 +3820,53 @@ rebuilding.
 **Not done, deliberately:** view counts, open notifications, link expiry, and unhiding the friend
 layer. The first two are engagement loops and are named as out of scope in `ShareLink.tsx` so the
 next session does not add them as an obvious improvement.
+
+### M5: the three things owner testing found ✅ *(same day)*
+
+The first pass shipped a feature that was verified at desktop widths and signed out, and all three
+faults lived exactly outside that. Worth recording, because the pattern is more useful than the bugs.
+
+- [x] **There was no way to share a card at all.** `CardView` has had an `onShare` hook since Phase
+      10, and the feed passed it, but gated on `socialEnabled()` — the flag that hides the FRIEND
+      GRAPH, which is off. So the control never rendered, and the only route out of the app was to
+      finish a trail first. The gate is now `cloudConfigured && user`: hiding the friend graph should
+      never have hidden public sharing, which is not a social graph.
+- [x] **One sheet for one verb.** There were two unrelated affordances: a paper-plane button labelled
+      "Send to a friend" on a card, and a separate "Share a link" panel under a trail map plus its own
+      "Send to a friend" button. New `components/ShareSheet.tsx` is opened by both surfaces and offers
+      the same two things in the same order: a public link always, sending to a friend only when
+      `NEXT_PUBLIC_SOCIAL` is on. The card button now reads "Share this card".
+- [x] **The card could not be scrolled on a phone (`flow` mode on CardView).** The real fault was
+      shape, not CSS. `CardView` is built for the feed, where the card owns the viewport, the page
+      behind it does not scroll, and one marked region `[data-drift-scroll]` is what the drift gesture
+      measures. Dropped into a 70vh box on a scrolling page that becomes **two nested scrollers**, and
+      on touch they fight: a drag either moves the page and carries the card away or moves the card
+      and feels stuck. `flow` makes the card grow to its content so the PAGE scrolls, and takes the
+      feed-only parts with it: the scroll region and its marker, the "threads below" hint, the
+      overscroll-to-advance cue, and the pinned desktop thread bar (`ThreadsSection` gained a third
+      `flow` variant that shows at every width).
+- [x] **The two auth states are now coherent, and each says which it is.** What read as a phone
+      versus laptop difference was signed-out versus signed-in, and the states genuinely diverged: a
+      signed-in reader got no threads at all, which is the one thing Drift is for. Threads are now
+      fetched once, by a shared `useThreads` hook, and shown in both states. Pulling one means
+      something different on purpose: **signed out it continues inline and costs one of three cards;
+      signed in it hands off to the real feed** at `/drift?seed=…`, because an account holder should
+      not be reading a cut-down Drift inside a share page when the real one is one navigation away and
+      will keep their trail. Both panels now open with a plain label, "You are signed in" or "You are
+      not signed in", so the difference is legible instead of looking like a bug.
+
+**Verified on a real iPhone 13 viewport, both auth states**, which is what the first pass did not do:
+signed out, a shared trail shows its state label, 3 stops and 3 chips, a pull produces a card with
+**no nested scroller** and the page scrolling 1305 to 2205px, and that card carries its own 3 threads;
+a shared card carries its threads directly; signed in, the panel shows both actions plus chips that
+hand off to `/drift?realm=encyclopedia&seed=Aspheric%20lens`; and in the feed the share button is
+present, the sheet opens, a link is minted and "Stop sharing" is offered. 869 tests, build and lint
+clean, `verify:share` 11/11, contrast PASS over **4,930 nodes across 28 views** in both themes.
+
+**The lesson, for the next feature that reuses a feed component.** `CardView`, `TrailMap` and the
+gesture layer are written for a screen the feed owns. Reusing them elsewhere is right, and the
+attribution machinery is the reason to, but check what they assume about their container before
+trusting a desktop screenshot. And verify at 390px in both auth states, not one of the four.
 
 ---
 

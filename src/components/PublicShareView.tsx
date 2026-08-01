@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { CardView } from "@/components/CardView";
@@ -50,17 +51,77 @@ import type { ArrivedVia, Card, Thread } from "@/lib/types";
 
 export function PublicShareView({ share }: { share: PublicShare }) {
   const { user, loading } = useAuth();
+  const router = useRouter();
 
   const isTrail = share.kind === "trail";
   const snapshot = isTrail ? (share.payload as TrailSnapshot) : null;
   const sharedCard = isTrail ? null : (share.payload as Card);
 
-  // The card a trial drifts onward FROM: the last stop of a trail (where the
+  // The card the reader drifts onward FROM: the last stop of a trail (where the
   // sender left off), or the shared card itself.
   const originCard =
     sharedCard ?? snapshot?.steps[snapshot.steps.length - 1]?.card ?? null;
   const realm: RealmId =
     snapshot?.realm ?? realmOfSource(originCard?.source) ?? "encyclopedia";
+
+  // How many of the trial's cards are left. `null` while it is being read from
+  // storage. Signed-in readers have no budget at all, so it is simply unused.
+  const [used, setUsed] = useState<number | null>(null);
+  useEffect(() => {
+    let n = 0;
+    try {
+      n = Number(sessionStorage.getItem(TRIAL_KEY)) || 0;
+    } catch {
+      /* storage blocked: they get a fresh three, which is the kind direction */
+    }
+    queueMicrotask(() => setUsed(Math.min(n, TRIAL_CARD_LIMIT)));
+  }, []);
+
+  // The card currently being read, plus how it was reached. Null until the
+  // reader pulls a thread; before that the shared item itself is the subject.
+  const [step, setStep] = useState<{ card: Card; via: ArrivedVia } | null>(null);
+  const [seen] = useState(() => new Set<string>());
+  const current = step?.card ?? originCard;
+
+  const signedOut = !loading && !user;
+  const spent = signedOut && used !== null && used >= TRIAL_CARD_LIMIT;
+  const { threads, threadsLoading } = useThreads(current, realm, seen, !spent);
+
+  /**
+   * Pulling a thread means something different depending on who you are, and
+   * that is the point rather than an inconsistency.
+   *
+   * Signed OUT, it continues here, and costs one of three cards. Signed IN,
+   * it hands off to the real feed: an account holder should not be reading a
+   * cut-down copy of Drift inside a share page when the actual thing is one
+   * navigation away and will keep the trail they are about to make.
+   */
+  function pull(thread: Thread) {
+    const next = candidateToCard(thread.candidate);
+    if (user) {
+      router.push(
+        `/drift?realm=${realm}&seed=${encodeURIComponent(next.pageTitle)}`,
+      );
+      return;
+    }
+    seen.add(cardId(next));
+    const n = Math.min((used ?? 0) + 1, TRIAL_CARD_LIMIT);
+    setUsed(n);
+    try {
+      sessionStorage.setItem(TRIAL_KEY, String(n));
+    } catch {
+      /* not a security boundary; a courtesy counter */
+    }
+    setStep({
+      card: next,
+      via: {
+        type: "thread",
+        label: thread.label,
+        fromTitle: current?.displayTitle ?? "",
+        kind: thread.kind,
+      },
+    });
+  }
 
   return (
     <div data-realm={realm} className="mt-6">
@@ -68,22 +129,114 @@ export function PublicShareView({ share }: { share: PublicShare }) {
         {shareTitleOf(share)}
       </h1>
 
+      {/* The shared thing, as sent. A trail keeps its map and its stops even
+          after the reader drifts on, because it is what they were given. */}
       {isTrail && snapshot ? (
         <TrailReadView snapshot={snapshot} />
       ) : (
-        sharedCard && <CardReadView card={sharedCard} realm={realm} />
+        sharedCard &&
+        !step && (
+          <CardReadView
+            card={sharedCard}
+            realm={realm}
+            threads={spent ? [] : threads}
+            threadsLoading={spent ? false : threadsLoading}
+            onThread={pull}
+          />
+        )
       )}
 
-      {/* `loading` is the session resolving. Rendering neither branch until it
-          settles avoids showing a signed-in reader an invitation to sign up. */}
+      {/* Where it goes next. One section, always present, whose contents depend
+          on who is reading. `loading` is the session resolving: rendering
+          neither branch until it settles avoids flashing an invitation to sign
+          up at somebody who is already signed in. */}
       {!loading &&
         (user ? (
-          <SignedInActions share={share} realm={realm} originCard={originCard} />
+          <SignedIn
+            share={share}
+            realm={realm}
+            originCard={originCard}
+            threads={threads}
+            threadsLoading={threadsLoading}
+            onThread={pull}
+            showThreads={isTrail}
+          />
         ) : (
-          <Trial origin={originCard} realm={realm} />
+          <Trial
+            used={used}
+            step={step}
+            realm={realm}
+            threads={threads}
+            threadsLoading={threadsLoading}
+            onThread={pull}
+            showOriginThreads={isTrail}
+          />
         ))}
     </div>
   );
+}
+
+/**
+ * Threads for whatever card is currently being read.
+ *
+ * Inline rather than in a `useCallback` so the AbortController can own it:
+ * pulling a thread swaps the card, and a slow response for the previous one must
+ * not land on the new one. Same shape the feed uses.
+ *
+ * Every setState is deferred out of the effect BODY (React 19 forbids a
+ * synchronous one there), which is why the loading flag goes through
+ * `queueMicrotask` rather than being set on the first line.
+ */
+function useThreads(
+  card: Card | null,
+  realm: RealmId,
+  seen: Set<string>,
+  enabled: boolean,
+) {
+  const [threads, setThreads] = useState<Thread[]>([]);
+  const [threadsLoading, setThreadsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!card || !enabled) return;
+    const controller = new AbortController();
+    let live = true;
+    queueMicrotask(() => {
+      if (live) setThreadsLoading(true);
+    });
+
+    (async () => {
+      let chosen: Thread[] = [];
+      try {
+        const res = await fetch(relatedUrl(realm, card.pageTitle), {
+          signal: controller.signal,
+        });
+        const cands = await res.json();
+        if (Array.isArray(cands)) {
+          const meta = getRealm(realm);
+          chosen =
+            meta.threadMode === "facet"
+              ? selectFacetThreads(cands, { count: 3, seen })
+              : classifyThreads(card, cands, { count: 3, seen });
+          if (!chosen.length) {
+            chosen = selectDiverseThreads(cands, { count: 3, seen });
+          }
+        }
+      } catch {
+        // The whole app's contract: a failed fetch costs you threads, never the
+        // page you are on (CLAUDE.md §4).
+      }
+      if (!live) return;
+      setThreads(chosen);
+      setThreadsLoading(false);
+    })();
+
+    return () => {
+      live = false;
+      controller.abort();
+    };
+  }, [card, realm, seen, enabled]);
+
+  return { threads, threadsLoading };
 }
 
 // ---------------------------------------------------------------------------
@@ -134,19 +287,32 @@ function TrailReadView({ snapshot }: { snapshot: TrailSnapshot }) {
   );
 }
 
-function CardReadView({ card, realm }: { card: Card; realm: RealmId }) {
+function CardReadView({
+  card,
+  realm,
+  threads,
+  threadsLoading,
+  onThread,
+}: {
+  card: Card;
+  realm: RealmId;
+  threads: Thread[];
+  threadsLoading: boolean;
+  onThread: (t: Thread) => void;
+}) {
   return (
-    // CardView fills its parent, so it needs a parent with a real height. Tall
-    // enough to read on a phone without becoming a full-screen takeover of a
-    // page the reader arrived at from a chat message.
-    <div className="mt-6 h-[70vh] min-h-[460px] w-full">
+    // `flow`: the card grows to its content and the PAGE scrolls. It used to sit
+    // in a fixed 70vh box, which put a scroll region inside a scrolling page and
+    // made the card unscrollable on a phone in practice.
+    <div className="mt-6 w-full">
       <CardView
         card={card}
         realm={realm}
         arrivedVia={{ type: "seed", seedName: card.displayTitle }}
-        threads={[]}
-        threadsLoading={false}
-        onThread={() => {}}
+        threads={threads}
+        threadsLoading={threadsLoading}
+        onThread={onThread}
+        flow
       />
     </div>
   );
@@ -180,18 +346,30 @@ function SourceCredit({ card }: { card: Card }) {
   );
 }
 
+
 // ---------------------------------------------------------------------------
-// Signed in
+// Where it goes next: signed in
 // ---------------------------------------------------------------------------
 
-function SignedInActions({
+function SignedIn({
   share,
   realm,
   originCard,
+  threads,
+  threadsLoading,
+  onThread,
+  showThreads,
 }: {
   share: PublicShare;
   realm: RealmId;
   originCard: Card | null;
+  threads: Thread[];
+  threadsLoading: boolean;
+  onThread: (t: Thread) => void;
+  /** A shared CARD renders its own threads on the card itself, so repeating
+   *  them here would be the same three chips twice. A shared TRAIL has nowhere
+   *  else to put them, so they live here, attached to its last stop. */
+  showThreads: boolean;
 }) {
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -237,11 +415,15 @@ function SignedInActions({
 
   return (
     <section className="mt-8 rounded-2xl border border-line bg-paper-raised p-5">
-      <h2 className="font-serif text-xl text-ink">It is yours to follow</h2>
-      <p className="mt-1 text-sm leading-relaxed text-ink-soft">
-        Save a copy to your own trails, or pick the thread up where it was left
-        and see where you take it.
+      <p className="text-xs font-medium uppercase tracking-widest text-ink-soft">
+        You are signed in
       </p>
+      <h2 className="mt-1 font-serif text-xl text-ink">It is yours to follow</h2>
+      <p className="mt-1 text-sm leading-relaxed text-ink-soft">
+        Save a copy to your own trails, or pick the thread up where it was left.
+        Wherever you go from here, Drift keeps the trail you make.
+      </p>
+
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <button
           type="button"
@@ -260,6 +442,7 @@ function SignedInActions({
           </Link>
         )}
       </div>
+
       {saved && (
         <p className="mt-3 text-sm text-ink-soft">
           <Link
@@ -270,113 +453,52 @@ function SignedInActions({
           </Link>
         </p>
       )}
+
+      {/* Threads from the trail's last stop. Pulling one takes the reader into
+          the real feed rather than continuing here: an account holder should not
+          be reading a cut-down copy of Drift inside a share page when the actual
+          thing is one navigation away and will keep their trail. */}
+      {showThreads && (threadsLoading || threads.length > 0) && (
+        <div className="mt-5 border-t border-line pt-4">
+          <p className="text-xs font-medium uppercase tracking-widest text-ink-soft">
+            Or pull a thread from the last stop
+          </p>
+          <div className="mt-2">
+            <ThreadOffer
+              threads={threads}
+              loading={threadsLoading}
+              onPull={onThread}
+            />
+          </div>
+        </div>
+      )}
     </section>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Signed out: three cards
+// Where it goes next: signed out, three cards
 // ---------------------------------------------------------------------------
 
-function Trial({ origin, realm }: { origin: Card | null; realm: RealmId }) {
-  const [used, setUsed] = useState<number | null>(null); // null = not read yet
-  // The card AND how it was reached. `arrivedVia` is not decoration: principle 1
-  // is that a reader always sees why the next card appeared, and the card
-  // renders that line from here. A trial card with no provenance would be the
-  // one place in Drift where something arrived unexplained.
-  const [step, setStep] = useState<{ card: Card; via: ArrivedVia } | null>(null);
-  const card = step?.card ?? null;
-  const [threads, setThreads] = useState<Thread[]>([]);
-  const [threadsLoading, setThreadsLoading] = useState(false);
-  const [seen] = useState(() => new Set<string>());
-
-  // Restore the count first, so a reader who already used their three does not
-  // see "3 cards to try" and then have it snatched away on the first tap.
-  useEffect(() => {
-    let n = 0;
-    try {
-      n = Number(sessionStorage.getItem(TRIAL_KEY)) || 0;
-    } catch {
-      /* storage blocked: they get a fresh three, which is the kind direction */
-    }
-    queueMicrotask(() => setUsed(Math.min(n, TRIAL_CARD_LIMIT)));
-  }, []);
-
-  // Threads for whatever is currently on screen: the shared item at first, then
-  // each trial card.
-  //
-  // The fetch is inline rather than in a useCallback so the AbortController can
-  // own it: pulling a thread swaps the card, and a slow response for the
-  // previous one must not land on the new one. Same shape the feed uses.
-  //
-  // Every setState is deferred out of the effect BODY (React 19 forbids a
-  // synchronous one there), which is why the loading flag goes through
-  // queueMicrotask rather than being set on the first line.
-  useEffect(() => {
-    const from = card ?? origin;
-    if (!from || used === null || used >= TRIAL_CARD_LIMIT) return;
-
-    const controller = new AbortController();
-    let live = true;
-    queueMicrotask(() => {
-      if (live) setThreadsLoading(true);
-    });
-
-    (async () => {
-      let chosen: Thread[] = [];
-      try {
-        const res = await fetch(relatedUrl(realm, from.pageTitle), {
-          signal: controller.signal,
-        });
-        const cands = await res.json();
-        if (Array.isArray(cands)) {
-          const meta = getRealm(realm);
-          chosen =
-            meta.threadMode === "facet"
-              ? selectFacetThreads(cands, { count: 3, seen })
-              : classifyThreads(from, cands, { count: 3, seen });
-          if (!chosen.length) {
-            chosen = selectDiverseThreads(cands, { count: 3, seen });
-          }
-        }
-      } catch {
-        // The whole app's contract: a failed fetch costs you threads, never the
-        // page you are on (CLAUDE.md §4).
-      }
-      if (!live) return;
-      setThreads(chosen);
-      setThreadsLoading(false);
-    })();
-
-    return () => {
-      live = false;
-      controller.abort();
-    };
-  }, [card, origin, used, realm, seen]);
-
-  function pull(thread: Thread) {
-    const from = card ?? origin;
-    const next = candidateToCard(thread.candidate);
-    seen.add(cardId(next));
-    const n = Math.min((used ?? 0) + 1, TRIAL_CARD_LIMIT);
-    setUsed(n);
-    try {
-      sessionStorage.setItem(TRIAL_KEY, String(n));
-    } catch {
-      /* not a security boundary; a courtesy counter */
-    }
-    setStep({
-      card: next,
-      via: {
-        type: "thread",
-        label: thread.label,
-        fromTitle: from?.displayTitle ?? "",
-        kind: thread.kind,
-      },
-    });
-    setThreads([]);
-  }
-
+function Trial({
+  used,
+  step,
+  realm,
+  threads,
+  threadsLoading,
+  onThread,
+  showOriginThreads,
+}: {
+  used: number | null;
+  step: { card: Card; via: ArrivedVia } | null;
+  realm: RealmId;
+  threads: Thread[];
+  threadsLoading: boolean;
+  onThread: (t: Thread) => void;
+  /** As in SignedIn: a shared card carries its own chips, a shared trail does
+   *  not, so only a trail needs the standalone offer before the first pull. */
+  showOriginThreads: boolean;
+}) {
   if (used === null) return null;
 
   const left = TRIAL_CARD_LIMIT - used;
@@ -385,7 +507,10 @@ function Trial({ origin, realm }: { origin: Card | null; realm: RealmId }) {
   return (
     <section className="mt-8">
       <div className="rounded-2xl border border-line bg-paper-raised p-5">
-        <h2 className="font-serif text-xl text-ink">
+        <p className="text-xs font-medium uppercase tracking-widest text-ink-soft">
+          {spent ? "Reading without an account" : "You are not signed in"}
+        </p>
+        <h2 className="mt-1 font-serif text-xl text-ink">
           {spent ? "That is the taste of it" : "Want to keep going?"}
         </h2>
         <p className="mt-1 text-sm leading-relaxed text-ink-soft">
@@ -439,31 +564,36 @@ function Trial({ origin, realm }: { origin: Card | null; realm: RealmId }) {
             </p>
           </>
         )}
+
+        {/* Before the first pull on a shared TRAIL the threads hang off its last
+            stop, so they need a home here. A shared card renders its own. */}
+        {!spent && !step && showOriginThreads && (
+          <div className="mt-4 border-t border-line pt-4">
+            <ThreadOffer
+              threads={threads}
+              loading={threadsLoading}
+              onPull={onThread}
+            />
+          </div>
+        )}
       </div>
 
       {/* The trial card, rendered by the SAME component the feed uses, so its
-          credits and licence notices are the real ones. */}
+          credits and licence notices are the real ones. `flow` so it grows to
+          its content and the page scrolls, rather than trapping a scroll region
+          inside a scrolling page. */}
       {step && (
-        <div className="mt-6 h-[70vh] min-h-[460px] w-full">
+        <div className="mt-6 w-full">
           <CardView
             card={step.card}
             realm={realm}
             arrivedVia={step.via}
             threads={spent ? [] : threads}
             threadsLoading={spent ? false : threadsLoading}
-            onThread={pull}
+            onThread={onThread}
+            flow
           />
         </div>
-      )}
-
-      {/* Before the first pull the threads hang off the shared item above, so
-          they need their own row here rather than living inside a card. */}
-      {!card && !spent && (
-        <ThreadOffer
-          threads={threads}
-          loading={threadsLoading}
-          onPull={pull}
-        />
       )}
     </section>
   );
@@ -479,15 +609,11 @@ function ThreadOffer({
   onPull: (t: Thread) => void;
 }) {
   if (loading) {
-    return (
-      <p className="mt-4 text-center text-sm text-ink-soft">
-        Finding some threads…
-      </p>
-    );
+    return <p className="text-sm text-ink-soft">Finding some threads…</p>;
   }
   if (!threads.length) return null;
   return (
-    <div className="mt-4">
+    <>
       <p className="text-xs font-medium uppercase tracking-widest text-ink-soft">
         Pull a thread
       </p>
@@ -503,6 +629,6 @@ function ThreadOffer({
           </button>
         ))}
       </div>
-    </div>
+    </>
   );
 }
