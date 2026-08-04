@@ -7,6 +7,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { CardView } from "@/components/CardView";
 import { TrailMap } from "@/components/TrailMap";
 import { LicenseLink } from "@/components/LicenseLink";
+import { readingOrder } from "@/lib/branch";
 import { cardId } from "@/lib/card";
 import { realmOfSource } from "@/lib/crossrealm";
 import { selectDiverseThreads, selectFacetThreads } from "@/lib/diversity";
@@ -257,14 +258,24 @@ function TrailReadView({ snapshot }: { snapshot: TrailSnapshot }) {
         <TrailMap steps={steps} />
       </div>
 
+      {/* Reading order, not storage order: a trail that forked (Phase 29) has
+          its branches after the line they left, each saying where it left from,
+          rather than numbering a branch as though it continued the trunk. */}
       <ol className="mt-6 space-y-3">
-        {steps.map((step, i) => (
+        {readingOrder(steps).map((place, n) => {
+          const step = steps[place.index];
+          const from =
+            place.parent === null ? null : steps[place.parent].card.displayTitle;
+          return (
           <li
-            key={`${cardId(step.card)}-${i}`}
+            key={`${cardId(step.card)}-${place.index}`}
             className="rounded-2xl border border-line bg-paper-raised p-4"
           >
             <p className="text-xs font-medium uppercase tracking-widest text-ink-soft">
-              Stop {i + 1}
+              Stop {n + 1}
+              {place.isBranchRoot && from && (
+                <span className="normal-case tracking-normal"> · back at {from}</span>
+              )}
             </p>
             <h2 className="mt-1 font-serif text-xl leading-snug text-ink">
               {step.card.displayTitle}
@@ -281,7 +292,8 @@ function TrailReadView({ snapshot }: { snapshot: TrailSnapshot }) {
             )}
             <SourceCredit card={step.card} />
           </li>
-        ))}
+          );
+        })}
       </ol>
     </>
   );

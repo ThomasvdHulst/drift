@@ -69,7 +69,14 @@ export function TrailMap({
   steps: TrailStep[];
   mapRef?: React.Ref<HTMLDivElement>;
 }) {
-  const layout = layoutMeander(steps, { width: WIDTH });
+  // The title columns are geometry once a trail forks (they have to stop before
+  // the next lane), so the padding and gap go INTO the layout rather than being
+  // applied on top of it here.
+  const layout = layoutMeander(steps, {
+    width: WIDTH,
+    padX: PAD_X,
+    titleGap: GAP,
+  });
 
   if (steps.length === 0) {
     return (
@@ -97,13 +104,13 @@ export function TrailMap({
           className="absolute inset-0"
           aria-hidden="true"
         >
-          {layout.segments.map((seg, i) => {
+          {layout.segments.map((seg) => {
             // Each edge is tinted by the realm of the node it leads INTO (so a
             // trail that weaves realms shows sage + terracotta stretches). A
             // realm-crossing hop is drawn as a fine dashed "bridge".
-            const destRealm = realmOfSource(cardSource(steps[i + 1].card));
+            const destRealm = realmOfSource(cardSource(steps[seg.to].card));
             return (
-              <g key={i} data-realm={destRealm}>
+              <g key={seg.to} data-realm={destRealm}>
                 <path
                   d={seg.d}
                   fill="none"
@@ -145,27 +152,28 @@ export function TrailMap({
         </svg>
 
         {/* Edge badges: a thread label, or a doorway mark on a realm crossing. */}
-        {layout.segments.map((seg, i) => {
+        {layout.segments.map((seg) => {
           const isThread = seg.kind === "thread" && !!seg.label;
           if (!seg.crossRealm && !isThread) return null;
-          const a = layout.nodes[i];
-          const b = layout.nodes[i + 1];
-          const midX = (a.cx + b.cx) / 2;
-          const midY = (a.cy + b.cy) / 2;
-          const destRealm = realmOfSource(cardSource(steps[i + 1].card));
+          const destRealm = realmOfSource(cardSource(steps[seg.to].card));
           return (
             <span
-              key={`lbl-${i}`}
+              key={`lbl-${seg.to}`}
               data-realm={destRealm}
-              className="absolute inline-flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 whitespace-nowrap rounded-full bg-accent/12 px-2 py-0.5 text-[11px] font-medium text-accent-strong ring-1 ring-accent/25"
-              style={{ left: midX, top: midY }}
+              className="absolute inline-flex max-w-[15rem] -translate-x-1/2 -translate-y-1/2 items-center gap-1 truncate rounded-full bg-accent/12 px-2 py-0.5 text-[11px] font-medium text-accent-strong ring-1 ring-accent/25"
+              style={{ left: seg.labelX, top: seg.labelY }}
             >
               {seg.crossRealm ? (
                 <DoorwayIcon size={11} />
               ) : (
                 seg.threadKind && <KindIcon kind={seg.threadKind} size={11} />
               )}
-              {seg.label}
+              {/* A fork says WHEN you took it, because that is the only thing
+                  separating a door you came back for from a chip you pulled at
+                  the time — and the map would otherwise imply the latter. The
+                  badge sits just left of the node it leads to, so it reads
+                  straight into that node's title and needs no name of its own. */}
+              {seg.viaDoor ? "came back for" : seg.label}
             </span>
           );
         })}
@@ -174,23 +182,16 @@ export function TrailMap({
         {layout.nodes.map((n, i) => {
           const step = steps[i];
           const isEndpoint = i === 0 || i === steps.length - 1;
-          const isLeft = n.side === "left";
 
-          // Title column hugs the node on its outer side.
-          const titleStyle: React.CSSProperties = isLeft
-            ? {
-                top: n.cy,
-                right: layout.width - (n.cx - layout.nodeSize / 2 - GAP),
-                width: n.cx - layout.nodeSize / 2 - GAP - PAD_X,
-                textAlign: "right",
-              }
-            : {
-                top: n.cy,
-                left: n.cx + layout.nodeSize / 2 + GAP,
-                width:
-                  layout.width - PAD_X - (n.cx + layout.nodeSize / 2 + GAP),
-                textAlign: "left",
-              };
+          // Title column hugs the node on its outer side — which is the side the
+          // layout picked, not the side the node sits on: once the trail forks,
+          // "outer" has to mean "away from the next lane".
+          const titleStyle: React.CSSProperties = {
+            top: n.cy,
+            left: n.titleX,
+            width: n.titleW,
+            textAlign: n.titleSide === "left" ? "right" : "left",
+          };
 
           return (
             <div key={`${step.card.pageTitle}-${i}`} data-realm={realmOfSource(cardSource(step.card))}>

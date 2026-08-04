@@ -1,4 +1,4 @@
-import type { Door, Thread, TrailStep } from "./types";
+import type { ArrivedVia, Card, Door, Thread, TrailStep } from "./types";
 import { realmOfSource } from "./crossrealm";
 
 export type { Door };
@@ -55,30 +55,66 @@ export interface OpenDoor {
   door: Door;
   /** The stop it was offered at, so the list can say where you were standing. */
   from: string;
+  /** WHERE it was offered — the step a branch through this door forks from
+   *  (Phase 29), and half of the reference a saved trail's link carries. */
+  stepIndex: number;
+  /** Which of that stop's doors this is: the other half of the reference, so a
+   *  link can name the door without re-encoding it into a URL. */
+  doorIndex: number;
 }
 
 /**
  * Every door still open on a trail: most recent first (the freshest curiosity),
  * deduplicated, and never one you ended up visiting anyway.
+ *
+ * "Visiting" covers a branch: walking a door (Phase 29) puts its page in the
+ * trail, so the same filter that hid a door you happened to reach by drifting
+ * now also retires one you deliberately came back for. Nothing extra to keep in
+ * sync.
  */
 export function doorsOf(
   steps: TrailStep[],
   opts: { max?: number } = {},
 ): OpenDoor[] {
   const max = opts.max ?? 5;
-  const visited = new Set(steps.map((s) => s.card.pageTitle));
-  const seen = new Set<string>();
   const out: OpenDoor[] = [];
-  for (let i = steps.length - 1; i >= 0 && out.length < max; i--) {
-    const step = steps[i];
-    for (const door of step.doorsLeft ?? []) {
-      if (visited.has(door.pageTitle) || seen.has(door.pageTitle)) continue;
-      seen.add(door.pageTitle);
-      out.push({ door, from: step.card.displayTitle });
-      if (out.length >= max) break;
-    }
+  for (const od of openDoors(steps)) {
+    out.push(od);
+    if (out.length >= max) break;
   }
   return out;
+}
+
+/** How many still-open doors each stop has, indexed like `steps` — what the map
+ *  draws its spurs from, using the same filter as the list beneath it so the two
+ *  can never disagree. */
+export function openDoorCounts(steps: TrailStep[]): number[] {
+  const counts = steps.map(() => 0);
+  for (const od of openDoors(steps)) counts[od.stepIndex] += 1;
+  return counts;
+}
+
+/** The one traversal both of the above share: newest stop first, a door dropped
+ *  once the trail visits its page, and a door offered at two stops credited to
+ *  the later one. */
+function* openDoors(steps: TrailStep[]): Generator<OpenDoor> {
+  const visited = new Set(steps.map((s) => s.card.pageTitle));
+  const seen = new Set<string>();
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const step = steps[i];
+    const doors = step.doorsLeft ?? [];
+    for (let j = 0; j < doors.length; j++) {
+      const door = doors[j];
+      if (visited.has(door.pageTitle) || seen.has(door.pageTitle)) continue;
+      seen.add(door.pageTitle);
+      yield {
+        door,
+        from: step.card.displayTitle,
+        stepIndex: i,
+        doorIndex: j,
+      };
+    }
+  }
 }
 
 /** How long a stop has to hold you before its untaken threads count as doors
@@ -98,8 +134,10 @@ export function engagedWith(opts: {
   );
 }
 
-/** Where a door reopens. The seed path is realm-generic, so a Gallery doorway
- *  left unopened reopens as a Gallery drift rather than being lost. */
+/** Where a door reopens as a FRESH drift. The seed path is realm-generic, so a
+ *  Gallery doorway left unopened reopens as a Gallery drift rather than being
+ *  lost. Used only where there is no trail to rejoin (a shared trail someone
+ *  else walked); in your own trail a door branches instead — see below. */
 export function doorHref(door: Door): string {
   const realm = realmOfSource(door.source);
   const params = new URLSearchParams({
@@ -108,4 +146,55 @@ export function doorHref(door: Door): string {
     seed: door.displayTitle,
   });
   return `/drift?${params.toString()}`;
+}
+
+// ---------------------------------------------------------------------------
+// Walking a door (Phase 29) — it continues the trail rather than replacing it.
+//
+// A door used to reopen as a brand new session, which threw away the trail it
+// came from: the connection between the stop that offered the door and where
+// the door led existed nowhere afterwards. It now forks from that stop, and the
+// two places that can start such a fork (the exit screen, in session; a saved
+// trail, via the URL) build the same step through the same two functions.
+// ---------------------------------------------------------------------------
+
+/** Reopen a SAVED trail on a branch through one of its doors. Carries a
+ *  reference (which stop, which door) rather than the door itself, so the trail
+ *  in storage stays the only description of it. */
+export function doorBranchHref(trailId: string, od: OpenDoor): string {
+  const params = new URLSearchParams({
+    continue: trailId,
+    door: `${od.stepIndex}.${od.doorIndex}`,
+  });
+  return `/drift?${params.toString()}`;
+}
+
+/** Read `?door=<stop>.<door>` back, or null if it is missing or junk (it is a
+ *  URL, so it is untrusted; a bad one must simply resume the trail). */
+export function parseDoorParam(
+  value: string | null,
+): { stepIndex: number; doorIndex: number } | null {
+  const m = /^(\d{1,6})\.(\d{1,3})$/.exec((value ?? "").trim());
+  if (!m) return null;
+  return { stepIndex: Number(m[1]), doorIndex: Number(m[2]) };
+}
+
+/** How a walked door arrives: a thread you pulled, just later. `viaDoor` is the
+ *  only thing that distinguishes it, and it exists so the map and the story can
+ *  say you came back for this rather than implying you took it at the time. */
+export function doorArrival(
+  door: Door,
+  from: Pick<Card, "pageTitle" | "source">,
+): Extract<ArrivedVia, { type: "thread" }> {
+  const fromRealm = realmOfSource(from.source);
+  const toRealm = realmOfSource(door.source);
+  return {
+    type: "thread",
+    label: door.displayTitle,
+    fromTitle: from.pageTitle,
+    viaDoor: true,
+    ...(door.kind ? { kind: door.kind } : {}),
+    ...(door.bridge ? { bridge: door.bridge } : {}),
+    ...(toRealm !== fromRealm ? { crossedFrom: fromRealm } : {}),
+  };
 }

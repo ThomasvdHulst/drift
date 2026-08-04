@@ -231,10 +231,13 @@ export default function TrailDetailPage() {
       )}
 
       {/* A saved trail keeps its open doors: the point of recording them is that
-          they are still there next week, not only in the minute you stopped. */}
+          they are still there next week, not only in the minute you stopped.
+          Opening one here reopens THIS trail on a branch from the stop that
+          offered it (Phase 29), rather than starting a drift with no connection
+          to the reading that produced it. */}
       {doorsOf(trail.steps).length > 0 && (
         <div className="mt-4 rounded-2xl bg-paper-raised p-5 shadow-sm ring-1 ring-line">
-          <DoorsLeft steps={trail.steps} />
+          <DoorsLeft steps={trail.steps} trailId={trail.id} />
         </div>
       )}
 

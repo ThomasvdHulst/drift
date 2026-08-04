@@ -12,7 +12,14 @@ import type {
   Thread,
   TrailStep,
 } from "@/lib/types";
-import { doorsFrom, engagedWith } from "@/lib/doors";
+import {
+  doorArrival,
+  doorsFrom,
+  engagedWith,
+  parseDoorParam,
+  type OpenDoor,
+} from "@/lib/doors";
+import { childrenOf, hasBranches, parentOf, pathTo } from "@/lib/branch";
 import { candidateToCard } from "@/lib/wiki";
 import { cardId } from "@/lib/card";
 import { selectDiverseThreads, selectFacetThreads } from "@/lib/diversity";
@@ -221,8 +228,15 @@ function DriftFeed() {
   // knowledge card; `driftsSinceAdRef` counts drift-scrolls toward the next one.
   const [showAd, setShowAd] = useState(false);
   const driftsSinceAdRef = useRef(0);
+  // The trail is a TREE (Phase 29), held flat with parent pointers — see
+  // lib/branch.ts. `pos` is still the step on screen; `tip` is the far end of
+  // the branch being read, and the two together give the line you are on
+  // (`path`). Everything that used to be `pos ± 1` now walks that line, because
+  // once a trail forks, "the step before this one" is a question about the tree
+  // and not about the array.
   const [history, setHistory] = useState<TrailStep[]>([]);
   const [pos, setPos] = useState(0);
+  const [tip, setTip] = useState(0);
   const [threadCache, setThreadCache] = useState<Record<string, Thread[]>>({});
   const [dir, setDir] = useState<Dir>("drift");
   const [followingLabel, setFollowingLabel] = useState<string | null>(null);
@@ -346,6 +360,24 @@ function DriftFeed() {
   const sessionTrailRef = useRef<SessionTrail | null>(null);
 
   const current = history[pos];
+  // The branch currently being read, root → tip, and where on it the reader is.
+  // The rail, the back/forward moves and the "am I revisiting?" test all work in
+  // these terms; `history` order is only ever the storage order.
+  const path = pathTo(history, tip);
+  const pathPos = Math.max(0, path.indexOf(pos));
+  // Where on that line a fork happened: a step whose parent has other children,
+  // and which is not the first of them. Given as positions along `path`, since
+  // that is what the rail indexes by. The rail marks them so a branch is never
+  // drawn as if it were simply the next stop along.
+  const branchAt = (() => {
+    const kids = childrenOf(history);
+    const marks = new Set<number>();
+    path.forEach((i, k) => {
+      const p = parentOf(history, i);
+      if (p !== null && kids[p].length > 1 && kids[p][0] !== i) marks.add(k);
+    });
+    return marks;
+  })();
   // Realm follows the displayed card's source (so back-nav across a crossing shows
   // the right chrome/threads), falling back to the seed realm before the first
   // card. Mirrored into realmRef in render so async handlers/effects read the live
@@ -483,6 +515,7 @@ function DriftFeed() {
       if (restarting) {
         setHistory([]);
         setPos(0);
+        setTip(0);
         setEnded(false);
         setError(null);
         setInitialLoading(true);
@@ -559,7 +592,10 @@ function DriftFeed() {
         }
         if (load.cancelled) return;
 
-        // Continue a saved trail: rehydrate its steps and resume at the last one.
+        // Continue a saved trail: rehydrate its steps and resume at the last one
+        // — or, with `?door=<stop>.<door>`, resume it on a BRANCH through one of
+        // the doors it left open (Phase 29), so a door on a saved trail rejoins
+        // that trail instead of starting an unrelated drift.
         if (continueId) {
           const trail = await getTrail(continueId);
           if (load.cancelled) return;
@@ -567,15 +603,23 @@ function DriftFeed() {
             const trealm = getRealm(trail.realm).id;
             realmRef.current = trealm;
             setInitialRealm(trealm);
-            trail.steps.forEach((s) => seenRef.current.add(cardId(s.card)));
             sessionTrailRef.current = {
               id: trail.id,
               name: trail.name,
               liked: trail.liked,
               createdAt: trail.createdAt,
             };
-            setHistory(trail.steps);
-            setPos(trail.steps.length - 1);
+            const steps = await withDoorBranch(trail.steps, params.get("door"));
+            if (load.cancelled) return;
+            steps.forEach((s) => seenRef.current.add(cardId(s.card)));
+            // Only the branch step is new, and only it needs remembering; the
+            // trail's own stops were persisted when it was saved.
+            if (steps.length > trail.steps.length) {
+              persistSeen([cardId(steps[steps.length - 1].card)]);
+            }
+            setHistory(steps);
+            setPos(steps.length - 1);
+            setTip(steps.length - 1);
             return;
           }
         }
@@ -752,6 +796,7 @@ function DriftFeed() {
           { card, arrivedVia: via, timestamp: Date.now(), expanded: false },
         ]);
         setPos(0);
+        setTip(0);
       } catch {
         if (!load.cancelled)
           setError(
@@ -880,7 +925,22 @@ function DriftFeed() {
   }
 
   // ----- navigation -----
-  function pushStep(card: Card, via: ArrivedVia, direction: Dir) {
+  /**
+   * Add a stop. `opts.parent` says which step it continues from; without it,
+   * the one on screen.
+   *
+   * This used to slice the array to `pos + 1`, so pulling a thread from a
+   * revisited card silently DELETED everything after it. Now it forks: the trail
+   * is a tree and nothing you read is thrown away to make room for what you read
+   * next. That also makes `history` append-only, which is what keeps the parent
+   * indices valid forever (lib/branch.ts).
+   */
+  function pushStep(
+    card: Card,
+    via: ArrivedVia,
+    direction: Dir,
+    opts: { parent?: number } = {},
+  ) {
     seenRef.current.add(cardId(card));
     persistSeen([cardId(card)]); // fire-and-forget; serialized in storage
     // Tell the tour which real move just happened (drift onward / thread pull /
@@ -892,28 +952,34 @@ function DriftFeed() {
     // pulls and realm crosses never trigger an ad.
     if (direction === "drift") driftsSinceAdRef.current += 1;
     setDir(direction);
-    const step: TrailStep = {
-      card,
-      arrivedVia: via,
-      timestamp: Date.now(),
-      expanded: false,
-    };
-    // The doors this stop leaves behind (Phase 28): the threads it offered and
-    // you did not take. Recorded as you LEAVE, because only now is it known
+    const parent = opts.parent ?? pos;
+    const at = history.length; // the index this step is about to take
+    // The doors the stop you are LEAVING keeps behind (Phase 28): the threads it
+    // offered and you did not take. Recorded now, because only now is it known
     // which one you took — and only for a stop you actually engaged with, so a
-    // card you scrolled straight past leaves nothing (lib/doors.ts).
-    const doors = doorsLeavingHere(card);
-    // Slicing to pos+1 means taking a thread from a revisited card branches a
-    // new direction from there (and is a no-op at the live end).
+    // card you scrolled straight past leaves nothing (lib/doors.ts). An explicit
+    // parent means you are rejoining an earlier stop rather than leaving the one
+    // on screen, so nothing is being declined and nothing is recorded.
+    const doors = opts.parent === undefined ? doorsLeavingHere(card) : [];
     setHistory((h) => {
-      const kept = h.slice(0, pos + 1);
-      const leaving = kept[pos];
+      const next = h.slice();
+      const leaving = next[parent];
       if (leaving && doors.length > 0) {
-        kept[pos] = { ...leaving, doorsLeft: doors };
+        next[parent] = { ...leaving, doorsLeft: doors };
       }
-      return [...kept, step];
+      next.push({
+        card,
+        arrivedVia: via,
+        timestamp: Date.now(),
+        expanded: false,
+        // Stored only when it is not the implicit "the step before this one",
+        // so an ordinary trail serialises exactly as it always did.
+        ...(parent === at - 1 ? {} : { parent }),
+      });
+      return next;
     });
-    setPos(pos + 1);
+    setPos(at);
+    setTip(at);
   }
 
   /** The untaken threads of the card being left, if it earned any. Reads the
@@ -943,6 +1009,77 @@ function DriftFeed() {
     return doorsFrom(offered, taken.pageTitle);
   }
 
+  // ----- walking a door (Phase 29) -----
+  //
+  // A door you left open used to reopen as a brand new session, which threw the
+  // trail away: you lost the reading you were in the middle of, and the fact
+  // that this page came from THAT stop was recorded nowhere. Opening one now
+  // forks the trail at the stop that offered it. Two ways in — here, from the
+  // live exit screen, and `withDoorBranch` below for a saved trail — and both
+  // build the step through `doorArrival`, so they cannot drift apart.
+
+  /** The card a door leads to, or null if it would not load. Optional by
+   *  nature: a door that will not open must leave the trail exactly as it was. */
+  async function fetchDoorCard(door: Door): Promise<Card | null> {
+    try {
+      const res = await fetch(
+        summaryUrl(realmOfSource(door.source), door.pageTitle),
+        { signal: AbortSignal.timeout(8000) },
+      );
+      const card = (await res.json()) as Card;
+      return res.ok && card?.pageTitle ? card : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Open a door from the exit screen: close the map and carry straight on, on a
+   *  branch off the stop that offered it. No navigation, so the session, its
+   *  saved trail and its buffers all survive. */
+  async function openDoor(od: OpenDoor) {
+    if (busyRef.current || holdNav) return;
+    const from = history[od.stepIndex];
+    if (!from) return;
+    await withBusy(async () => {
+      const card = await fetchDoorCard(od.door);
+      if (!card) {
+        showHint("That door wouldn't open just now. Try again in a moment.");
+        return;
+      }
+      setEnded(false);
+      pushStep(card, doorArrival(od.door, from.card), "thread", {
+        parent: od.stepIndex,
+      });
+    });
+  }
+
+  /** The same branch, applied to a trail being rehydrated from storage rather
+   *  than to the live one (`?continue=<id>&door=<stop>.<door>`). Returns the
+   *  steps unchanged when the reference is missing, junk or unloadable — a
+   *  broken link resumes the trail rather than failing to open it. */
+  async function withDoorBranch(
+    steps: TrailStep[],
+    param: string | null,
+  ): Promise<TrailStep[]> {
+    const ref = parseDoorParam(param);
+    if (!ref) return steps;
+    const from = steps[ref.stepIndex];
+    const door = from?.doorsLeft?.[ref.doorIndex];
+    if (!from || !door) return steps;
+    const card = await fetchDoorCard(door);
+    if (!card) return steps;
+    return [
+      ...steps,
+      {
+        card,
+        arrivedVia: doorArrival(door, from.card),
+        timestamp: Date.now(),
+        expanded: false,
+        ...(ref.stepIndex === steps.length - 1 ? {} : { parent: ref.stepIndex }),
+      },
+    ];
+  }
+
   async function advance() {
     if (ended || busyRef.current || holdNav) return;
 
@@ -954,11 +1091,16 @@ function DriftFeed() {
       return;
     }
 
-    // Revisiting: move forward through existing history without a new step.
-    if (pos < history.length - 1) {
-      setDir("drift");
-      setPos((p) => p + 1);
-      return;
+    // Revisiting: move forward along the branch you're reading, without a new
+    // step. Along the PATH, not the array — once a trail forks, the step stored
+    // after this one may belong to a different line entirely.
+    if (pos !== tip) {
+      const next = path[pathPos + 1];
+      if (next !== undefined) {
+        setDir("drift");
+        setPos(next);
+        return;
+      }
     }
 
     // Every N drift-scrolls, show one calm ad as its own stop (Phase 21) before the
@@ -1747,17 +1889,24 @@ function DriftFeed() {
       setShowAd(false);
       return;
     }
-    if (pos > 0) {
+    // Back is "the stop this one continues from", which after a fork is not
+    // `pos - 1`: a branch rejoins an earlier stop, and walking back off it has
+    // to return you there rather than to whatever was stored just before it.
+    const back = parentOf(history, pos);
+    if (back !== null) {
       setDir("back");
-      setPos((p) => p - 1);
+      setPos(back);
     }
   }
 
+  /** Jump to a stop on the rail. The index is a position along the CURRENT
+   *  branch, which is the only line the rail draws. */
   function jumpTo(index: number) {
-    if (ended || busyRef.current || index === pos || holdNav) return;
-    if (index < 0 || index >= history.length) return;
-    setDir(index < pos ? "back" : "drift");
-    setPos(index);
+    if (ended || busyRef.current || holdNav) return;
+    const target = path[index];
+    if (target === undefined || target === pos) return;
+    setDir(index < pathPos ? "back" : "drift");
+    setPos(target);
   }
 
   function onThread(thread: Thread) {
@@ -1952,8 +2101,11 @@ function DriftFeed() {
       onTouchCancel={onTouchCancel}
     >
       <FeedTopBar
-        steps={history}
-        pos={pos}
+        // The rail draws the branch you are ON, not the storage order; `stops`
+        // stays the whole trail, because that is what you have read.
+        steps={path.map((i) => history[i])}
+        pos={pathPos}
+        branchAt={branchAt}
         stops={history.length}
         realm={{ label: realmMeta.label, glyph: realmMeta.glyph }}
         otherRealm={
@@ -2127,8 +2279,8 @@ function DriftFeed() {
 
       {current && !error && (
         <FeedBottomNav
-          canGoBack={pos > 0}
-          viewingBack={pos < history.length - 1}
+          canGoBack={parentOf(history, pos) !== null}
+          viewingBack={pos !== tip}
           busy={advancing}
           onBack={goBack}
           onAdvance={advance}
@@ -2144,6 +2296,7 @@ function DriftFeed() {
             onSaved={(t) => {
               sessionTrailRef.current = t;
             }}
+            onOpenDoor={openDoor}
             onClose={() => setEnded(false)}
           />
         )}
@@ -2160,12 +2313,16 @@ function EndOverlay({
   realm,
   existing,
   onSaved,
+  onOpenDoor,
   onClose,
 }: {
   history: TrailStep[];
   realm: RealmId;
   existing: SessionTrail | null;
   onSaved: (t: SessionTrail) => void;
+  /** Walk one of the doors this trail left open: the session carries on, on a
+   *  branch off the stop that offered it (Phase 29). */
+  onOpenDoor: (door: OpenDoor) => void;
   onClose: () => void;
 }) {
   const { signal: tourSignal } = useTour();
@@ -2266,7 +2423,14 @@ function EndOverlay({
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: 20, opacity: 0 }}
-        className="flex max-h-[88vh] w-full max-w-xl flex-col rounded-2xl bg-paper-raised shadow-xl ring-1 ring-line"
+        // A trail that forked needs a second lane's worth of canvas, and the
+        // exit screen is where the fork was just made: hiding it behind a
+        // sideways scroll would put the one new thing off the edge of the
+        // reward. Narrow screens still scroll — two lanes and their titles do
+        // not fit on a phone at any spacing — but they no longer have to.
+        className={`flex max-h-[88vh] w-full flex-col rounded-2xl bg-paper-raised shadow-xl ring-1 ring-line ${
+          hasBranches(history) ? "max-w-4xl" : "max-w-xl"
+        }`}
       >
         <div className="shrink-0 border-b border-line px-6 pb-4 pt-6 text-center">
           <p className="text-xs font-medium uppercase tracking-widest text-ink-soft">
@@ -2294,7 +2458,7 @@ function EndOverlay({
             </div>
           )}
           <div className="mt-6 space-y-6 border-t border-line pt-5 empty:mt-0 empty:border-0 empty:pt-0">
-            <DoorsLeft steps={history} />
+            <DoorsLeft steps={history} onOpen={onOpenDoor} />
             <UnopenedPage steps={history} />
           </div>
         </div>

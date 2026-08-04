@@ -1,6 +1,7 @@
 "use client";
 
 import type { TrailStep } from "@/lib/types";
+import { readingOrder } from "@/lib/branch";
 
 // ---------------------------------------------------------------------------
 // "How you got here" (Phase 28) — the trail read as prose rather than drawn as
@@ -16,6 +17,12 @@ import type { TrailStep } from "@/lib/types";
 // It appears only when the trail can actually tell a story (at least one hop
 // carries a quote). Without that it would be a list of titles the map already
 // draws better.
+//
+// Phase 29: a trail can fork, so the column is no longer one straight read. It
+// follows the tree (main line first, then each branch), and a branch announces
+// where it left from. Running the stored order straight down instead would put
+// a branch's first stop under the trunk's last one and quietly imply a hop that
+// never happened, which is exactly what §2.1 rules out.
 // ---------------------------------------------------------------------------
 
 export function hasStory(steps: TrailStep[]): boolean {
@@ -24,16 +31,37 @@ export function hasStory(steps: TrailStep[]): boolean {
 
 export function TrailStory({ steps }: { steps: TrailStep[] }) {
   if (!hasStory(steps)) return null;
+  const places = readingOrder(steps);
   return (
     <section aria-label="How you got here">
       <h3 className="text-xs font-medium uppercase tracking-widest text-ink-soft">
         How you got here
       </h3>
       <ol className="mt-3 space-y-1">
-        {steps.map((step, i) => {
+        {places.map((place) => {
+          const step = steps[place.index];
           const via = step.arrivedVia;
+          const parent = place.parent === null ? null : steps[place.parent];
           return (
-            <li key={`${step.card.pageTitle}-${i}`}>
+            <li
+              key={`${step.card.pageTitle}-${place.index}`}
+              // A branch is indented under the line it left, with the whole
+              // stretch marked, so it reads as an aside rather than as more of
+              // the same journey.
+              className={
+                place.lane > 0
+                  ? "ml-3 border-l border-dashed border-accent/40 pl-3"
+                  : undefined
+              }
+            >
+              {place.isBranchRoot && parent && (
+                <p className="pt-2 text-xs text-ink-soft">
+                  Back at {parent.card.displayTitle}, you
+                  {via.type === "thread" && via.viaDoor
+                    ? " opened a door you had left"
+                    : " went another way"}
+                </p>
+              )}
               {/* The hop that brought you TO this stop, above its title, so the
                   column reads title → reason → title straight down. */}
               {via.type === "thread" && via.bridge ? (
@@ -42,7 +70,7 @@ export function TrailStory({ steps }: { steps: TrailStep[] }) {
                   {via.bridge}
                   <span aria-hidden="true">”</span>
                 </p>
-              ) : i > 0 ? (
+              ) : place.parent !== null && !place.isBranchRoot ? (
                 <p className="py-1 pl-3 text-xs text-ink-soft">
                   {via.type === "thread" ? `you pulled ${via.label}` : "you drifted on"}
                 </p>

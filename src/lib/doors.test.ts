@@ -1,5 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { doorsFrom, doorsOf, doorHref, engagedWith, DOOR_DWELL_MS } from "./doors";
+import {
+  doorArrival,
+  doorBranchHref,
+  doorHref,
+  doorsFrom,
+  doorsOf,
+  engagedWith,
+  openDoorCounts,
+  parseDoorParam,
+  DOOR_DWELL_MS,
+} from "./doors";
 import type { Door, Thread, TrailStep } from "./types";
 
 const thread = (title: string, extra: Partial<Thread> = {}): Thread => ({
@@ -97,6 +107,45 @@ describe("doorsOf", () => {
     expect(doorsOf([step("A"), step("B")])).toEqual([]);
     expect(doorsOf([])).toEqual([]);
   });
+
+  it("says where each door was offered, so a branch knows where to fork", () => {
+    const steps = [
+      step("Octopus", [door("Squid"), door("Nautilus")]),
+      step("Cuttlefish"),
+    ];
+    expect(doorsOf(steps)).toMatchObject([
+      { stepIndex: 0, doorIndex: 0 },
+      { stepIndex: 0, doorIndex: 1 },
+    ]);
+  });
+});
+
+describe("openDoorCounts", () => {
+  const door = (title: string): Door => ({ pageTitle: title, displayTitle: title });
+
+  it("counts per stop, indexed like the trail", () => {
+    const steps = [
+      step("Octopus", [door("Squid"), door("Nautilus")]),
+      step("Cuttlefish"),
+      step("Cephalopod", [door("Yarn")]),
+    ];
+    expect(openDoorCounts(steps)).toEqual([2, 0, 1]);
+  });
+
+  it("stops counting a door once the trail walks through it", () => {
+    const steps = [step("Octopus", [door("Squid"), door("Nautilus")]), step("Squid")];
+    expect(openDoorCounts(steps)).toEqual([1, 0]);
+  });
+
+  it("credits a repeated door to the later stop only", () => {
+    const steps = [step("A", [door("Squid")]), step("B", [door("Squid")])];
+    expect(openDoorCounts(steps)).toEqual([0, 1]);
+  });
+
+  it("is all zeroes for a trail with no doors", () => {
+    expect(openDoorCounts([step("A"), step("B")])).toEqual([0, 0]);
+    expect(openDoorCounts([])).toEqual([]);
+  });
 });
 
 describe("engagedWith", () => {
@@ -126,5 +175,73 @@ describe("doorHref", () => {
     expect(
       doorHref({ pageTitle: "129884", displayTitle: "The Bedroom", source: "artic" }),
     ).toContain("realm=gallery");
+  });
+});
+
+// Walking a door continues the trail (Phase 29) rather than replacing it.
+describe("doorBranchHref / parseDoorParam", () => {
+  it("carries a reference to the stop and the door, not the door itself", () => {
+    const href = doorBranchHref("t-1", {
+      door: { pageTitle: "Event horizon", displayTitle: "Event horizon" },
+      from: "Black hole",
+      stepIndex: 3,
+      doorIndex: 1,
+    });
+    expect(href).toBe("/drift?continue=t-1&door=3.1");
+  });
+
+  it("round-trips", () => {
+    expect(parseDoorParam("3.1")).toEqual({ stepIndex: 3, doorIndex: 1 });
+    expect(parseDoorParam(" 12.0 ")).toEqual({ stepIndex: 12, doorIndex: 0 });
+  });
+
+  it("refuses junk, so a hand-edited URL just resumes the trail", () => {
+    for (const bad of [null, "", "3", "3.", ".1", "a.b", "-1.0", "3.1.2", "1e3.0"]) {
+      expect(parseDoorParam(bad)).toBeNull();
+    }
+  });
+});
+
+describe("doorArrival", () => {
+  const from = { pageTitle: "Black hole", source: undefined };
+
+  it("reads as the thread it is, marked as one you came back for", () => {
+    const via = doorArrival(
+      {
+        pageTitle: "Event horizon",
+        displayTitle: "Event horizon",
+        kind: "deeper",
+        bridge: "The boundary of no escape is called the event horizon.",
+      },
+      from,
+    );
+    expect(via).toEqual({
+      type: "thread",
+      label: "Event horizon",
+      fromTitle: "Black hole",
+      viaDoor: true,
+      kind: "deeper",
+      bridge: "The boundary of no escape is called the event horizon.",
+    });
+  });
+
+  it("records the realm it left when the door crosses one", () => {
+    const via = doorArrival(
+      { pageTitle: "129884", displayTitle: "The Bedroom", source: "artic" },
+      from,
+    );
+    expect(via.crossedFrom).toBe("encyclopedia");
+  });
+
+  it("does not claim a crossing within one realm", () => {
+    expect(
+      doorArrival({ pageTitle: "Squid", displayTitle: "Squid" }, from).crossedFrom,
+    ).toBeUndefined();
+    expect(
+      doorArrival(
+        { pageTitle: "1", displayTitle: "One", source: "artic" },
+        { pageTitle: "2", source: "artic" },
+      ).crossedFrom,
+    ).toBeUndefined();
   });
 });

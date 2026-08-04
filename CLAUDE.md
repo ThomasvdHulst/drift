@@ -192,20 +192,18 @@ points outside the project root) and run `npx next dev -p <other-port>` there.
    complete each checklist item, **tick its box in `plan.md`** (`- [ ]` → `- [x]`) and keep
    the "Current status" line at the top of `plan.md` up to date. This file is how future
    sessions know where we are — treat it as the source of truth for progress.
-3. **Each milestone is independently testable — stop and let the user play after each.**
-   Don't silently barrel through multiple milestones; deliver working, tested increments.
-4. **Graceful degradation is mandatory** — anything touching Ollama must fall back cleanly
+3. **Graceful degradation is mandatory** — anything touching Ollama must fall back cleanly
    (see §4). Never let an optional dependency being down break the core loop.
-5. **Match the existing code style and structure.** Read neighboring files before adding
+4. **Match the existing code style and structure.** Read neighboring files before adding
    new ones. Keep pure logic (filtering, diversity selection, drift weighting, naming) in
    `src/lib/*` as small, unit-testable functions — that's where bugs hide.
-6. **Stay in scope.** Build v1 (spec §3). Do not add accounts, databases, non-Wikipedia
+5. **Stay in scope.** Build v1 (spec §3). Do not add accounts, databases, non-Wikipedia
    sources, or the §12 "parking lot" ideas unless explicitly asked.
-7. **Ask before destructive or irreversible actions.** Don't `git init`/commit/push unless
+6. **Ask before destructive or irreversible actions.** Don't `git init`/commit/push unless
    the user asks. Don't delete or overwrite files you didn't create without flagging it.
-8. **Prefer plan mode for non-trivial work.** For a new phase or a meaningfully complex
+7. **Prefer plan mode for non-trivial work.** For a new phase or a meaningfully complex
    step, enter plan mode and get sign-off before writing code.
-9. **Keep secrets/config in `.env.local`** (git-ignored). Provide a committed
+8. **Keep secrets/config in `.env.local`** (git-ignored). Provide a committed
    `.env.local.example`. Feature flags: `AI_THREADS`, `AI_REWRITE`, `OLLAMA_MODEL`.
 
 ## 9. Success criteria for the experiment (the actual point)

@@ -123,4 +123,142 @@ describe("layoutMeander stubs", () => {
     expect(layoutMeander(steps).stubs).toEqual([]);
     expect(layoutMeander([]).stubs).toEqual([]);
   });
+
+  it("drops the spur for a door the trail later walked through", () => {
+    // The same trail, but stop 1 IS Squid — one of the doors stop 0 left. That
+    // door became a branch, so it must not also keep the mark that says you
+    // never went.
+    const walked: TrailStep[] = [
+      withDoors[0],
+      { ...withDoors[1], card: { ...withDoors[1].card, pageTitle: "Squid" } },
+      withDoors[2],
+    ];
+    const stubs = layoutMeander(walked).stubs;
+    expect(stubs.map((s) => s.index)).toEqual([0, 2]);
+    expect(stubs[0].count).toBe(1); // Nautilus only
+  });
+});
+
+// Branches (Phase 29): a fork runs in a parallel lane beside the trunk. The
+// hard requirement is that a trail which never forks lays out EXACTLY as it did
+// before — the tests above are the ones guarding that.
+describe("layoutMeander branches", () => {
+  /** 0-1-2 with a branch (3-4) forking off step 1. */
+  function branched(): TrailStep[] {
+    const trunk = [
+      step({ type: "seed", seedName: "Space" }),
+      step({ type: "drift" }),
+      step({ type: "drift" }),
+    ];
+    const door: TrailStep = {
+      ...step({
+        type: "thread",
+        label: "Hawking radiation",
+        fromTitle: "T",
+        viaDoor: true,
+      }),
+      parent: 1,
+    };
+    return [...trunk, door, step({ type: "drift" })];
+  }
+
+  it("keeps a trail that never forks in one lane", () => {
+    const layout = layoutMeander(steps);
+    expect(layout.lanes).toBe(1);
+    expect(layout.nodes.every((n) => n.lane === 0)).toBe(true);
+    // …and the title column still alternates with the spine.
+    expect(layout.nodes.map((n) => n.titleSide)).toEqual([
+      "left",
+      "right",
+      "left",
+    ]);
+  });
+
+  it("puts the branch in its own lane, one row below the fork", () => {
+    const layout = layoutMeander(branched(), { width: 520 });
+    expect(layout.lanes).toBe(2);
+    expect(layout.nodes[3].lane).toBe(1);
+    expect(layout.nodes[4].lane).toBe(1);
+    // Branch root sits one row under its parent (step 1), beside step 2.
+    expect(layout.nodes[3].row).toBe(2);
+    expect(layout.nodes[3].cy).toBe(layout.nodes[2].cy);
+    expect(layout.nodes[3].cx).toBeGreaterThan(layout.nodes[2].cx);
+  });
+
+  it("widens the canvas and pins each lane's titles outward", () => {
+    const plain = layoutMeander(steps, { width: 520 });
+    const layout = layoutMeander(branched(), { width: 520 });
+    expect(layout.width).toBeGreaterThan(plain.width);
+    // Main line reads left, every branch reads right.
+    expect(layout.nodes.slice(0, 3).every((n) => n.titleSide === "left")).toBe(true);
+    expect(layout.nodes.slice(3).every((n) => n.titleSide === "right")).toBe(true);
+    // No title column runs off the canvas or into the next lane.
+    for (const n of layout.nodes) {
+      expect(n.titleW).toBeGreaterThan(0);
+      expect(n.titleX + n.titleW).toBeLessThanOrEqual(layout.width);
+      if (n.lane === 0) {
+        expect(n.titleX + n.titleW).toBeLessThanOrEqual(n.cx);
+      }
+    }
+  });
+
+  it("connects each step to the one it CONTINUES from, not to i-1", () => {
+    const layout = layoutMeander(branched());
+    const byTo = new Map(layout.segments.map((s) => [s.to, s]));
+    expect(layout.segments).toHaveLength(4);
+    expect(byTo.get(2)!.from).toBe(1);
+    expect(byTo.get(3)!.from).toBe(1); // the fork, NOT step 2
+    expect(byTo.get(4)!.from).toBe(3);
+  });
+
+  it("flags the fork and the door it was walked through", () => {
+    const byTo = new Map(layoutMeander(branched()).segments.map((s) => [s.to, s]));
+    expect(byTo.get(3)!.fork).toBe(true);
+    expect(byTo.get(3)!.viaDoor).toBe(true);
+    expect(byTo.get(3)!.label).toBe("Hawking radiation");
+    // An ordinary hop is neither.
+    expect(byTo.get(2)!.fork).toBeUndefined();
+    expect(byTo.get(2)!.viaDoor).toBeUndefined();
+  });
+
+  it("spurs a door away from the title, not into it", () => {
+    // Stop 1 sits on the RIGHT of the trunk but is now titled on the LEFT (the
+    // branch lane took the right). A spur drawn "inward" would run through that
+    // title, which is what the old rule did.
+    const steps = branched();
+    steps[1] = {
+      ...steps[1],
+      doorsLeft: [{ pageTitle: "Squid", displayTitle: "Squid" }],
+    };
+    const layout = layoutMeander(steps, { width: 520 });
+    const stub = layout.stubs.find((s) => s.index === 1)!;
+    expect(layout.nodes[1].side).toBe("right");
+    expect(layout.nodes[1].titleSide).toBe("left");
+    expect(stub.x).toBeGreaterThan(layout.nodes[1].cx);
+  });
+
+  it("keeps the whole canvas within reach of the exit screen", () => {
+    // Nothing goes between the main line and the first branch (one reads its
+    // titles left, the other right), so that gap is air rather than a column.
+    const layout = layoutMeander(branched(), { width: 520 });
+    expect(layout.width).toBeLessThan(760);
+    // …and a third lane, which DOES need a column between it and the second,
+    // costs more than the second did.
+    const steps = branched();
+    const three = [...steps, { ...steps[3], parent: 1 }];
+    expect(layoutMeander(three, { width: 520 }).width - layout.width).toBeGreaterThan(
+      layout.width - layoutMeander(steps.slice(0, 3), { width: 520 }).width,
+    );
+  });
+
+  it("grows tall enough for a branch that outruns the trunk", () => {
+    const short = layoutMeander(branched());
+    const long = layoutMeander([
+      ...branched(),
+      step({ type: "drift" }),
+      step({ type: "drift" }),
+    ]);
+    expect(long.height).toBeGreaterThan(short.height);
+    for (const n of long.nodes) expect(n.cy).toBeLessThan(long.height);
+  });
 });

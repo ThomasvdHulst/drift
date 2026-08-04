@@ -133,3 +133,42 @@ describe("Atlas cross-realm nodes (Phase 15)", () => {
     expect(nodes.find((n) => n.id === "artic:123")?.imageUrl).toBe("art.jpg");
   });
 });
+
+// Phase 29: a trail can fork. Read as a flat list, the Atlas would draw an edge
+// from the end of the trunk to the start of the branch — two pages nothing the
+// reader did ever connected.
+describe("buildConstellation with branches", () => {
+  const branched = trail("t3", "encyclopedia", [
+    step("Space", { type: "seed", seedName: "Space" }),
+    step("Black hole", { type: "thread", label: "Black hole", fromTitle: "Space" }),
+    step("Neutron star", { type: "drift" }),
+    {
+      ...step("Event horizon", {
+        type: "thread",
+        label: "Event horizon",
+        fromTitle: "Black hole",
+        viaDoor: true,
+      }),
+      parent: 1,
+    },
+  ]);
+
+  it("joins a branch to the stop it forked from", () => {
+    const { edges } = buildConstellation([branched]);
+    expect(
+      edges.find(
+        (e) => e.fromId === "wikipedia:Black hole" && e.toId === "wikipedia:Event horizon",
+      )?.kind,
+    ).toBe("thread");
+  });
+
+  it("invents no edge between the trunk's end and the branch's start", () => {
+    const { edges } = buildConstellation([branched]);
+    expect(
+      edges.some(
+        (e) => e.fromId === "wikipedia:Neutron star" && e.toId === "wikipedia:Event horizon",
+      ),
+    ).toBe(false);
+    expect(edges).toHaveLength(3); // seed→BH, BH→NS, BH→EH
+  });
+});

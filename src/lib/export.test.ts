@@ -104,3 +104,52 @@ describe("trailToText with bridges", () => {
     expect(trailToText(trail)).not.toContain("“");
   });
 });
+
+// Phase 29: a trail can fork. Written straight down the stored order, a branch
+// would be numbered as if it continued the trunk, which claims a hop nobody
+// made.
+describe("trailToText with branches", () => {
+  const branched: Trail = {
+    ...trail,
+    steps: [
+      step("Black hole", { type: "seed", seedName: "Physics" }),
+      step("Event horizon", {
+        type: "thread",
+        label: "Event horizon",
+        fromTitle: "Black hole",
+      }),
+      step("Time dilation", { type: "drift" }),
+      {
+        ...step("Hawking radiation", {
+          type: "thread",
+          label: "Hawking radiation",
+          fromTitle: "Event horizon",
+          viaDoor: true,
+        }),
+        parent: 1,
+      },
+      step("Entropy", { type: "drift" }),
+    ],
+  };
+  const text = trailToText(branched);
+
+  it("counts every stop, on whichever line it sits", () => {
+    expect(text.split("\n")[0]).toBe("🧵 Octopus → Naval warfare · 5 stops");
+  });
+
+  it("writes the main line first, then the branch, and says where it left", () => {
+    const lines = text.split("\n").filter((l) => /^(\d+\.|↳)/.test(l));
+    expect(lines).toEqual([
+      "1. Black hole",
+      "2. Event horizon (Event horizon)",
+      "3. Time dilation (drift)",
+      "↳ back at Event horizon:",
+      "1. Hawking radiation (Hawking radiation)",
+      "2. Entropy (drift)",
+    ]);
+  });
+
+  it("leaves an unbranched trail exactly as it was", () => {
+    expect(trailToText(trail)).not.toContain("↳");
+  });
+});

@@ -182,6 +182,10 @@ export function bannerFocus(
  * The params that decide WHICH session /drift is showing: the realm, the focus
  * and everything a focus is spelled with, plus the session mode and a continued
  * trail. Anything not in here can change without disturbing a drift in progress.
+ *
+ * `door` is here for a reason worth stating: without it `?continue=X&door=3.0`
+ * and `?continue=X` are the same key, so reopening a saved trail through a door
+ * would resume the trail and silently never take the branch.
  */
 export const SESSION_PARAMS = [
   "realm",
@@ -197,6 +201,7 @@ export const SESSION_PARAMS = [
   "under",
   "mode",
   "continue",
+  "door",
 ] as const;
 
 /** Every param that spells a focus. Cleared before a new one is written, so a

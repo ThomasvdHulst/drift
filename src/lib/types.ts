@@ -140,6 +140,11 @@ export type ArrivedVia =
        *  (Phase 28). Only the sentence is persisted, not the anchor: a saved
        *  trail is read, not re-highlighted, and every byte here is synced. */
       bridge?: string;
+      /** This hop is a door you came BACK for (Phase 29) — a thread an earlier
+       *  stop offered, declined at the time, and opened later from the exit
+       *  screen or from the saved trail. It is still a thread you pulled; the
+       *  flag only lets the map and the story say when you pulled it. */
+      viaDoor?: boolean;
     }
   // A drift may carry the topic it landed in (interesting-random, M8) and why
   // that topic was chosen (M9): "interest" = weighted by what you like,
@@ -205,6 +210,19 @@ export type TrailStep = {
    *  only for stops you actually engaged with. See lib/doors.ts. Optional, so
    *  every trail saved before it still resolves. */
   doorsLeft?: Door[];
+  /**
+   * The step this one continues from (Phase 29) — what makes a trail a TREE.
+   *
+   * Absent means the previous step (`i - 1`), which is exactly what every trail
+   * saved before branches existed already means, so there is no migration and no
+   * back-compat branch anywhere. It is set only on a branch ROOT: the rest of a
+   * branch is implicit, like the trunk.
+   *
+   * Never read this field directly — go through `parentOf` in lib/branch.ts,
+   * which clamps a corrupt or hostile value (a share payload is untrusted input)
+   * to the linear default rather than letting it produce a cycle.
+   */
+  parent?: number;
   arrivedVia: ArrivedVia;
   timestamp: number;
   dwellMs?: number;

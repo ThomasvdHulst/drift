@@ -1,4 +1,5 @@
 import type { Trail } from "./types";
+import { readingOrder } from "./branch";
 
 // ---------------------------------------------------------------------------
 // Trail export. `trailToText` is pure + unit-tested (spec §8.3: a nicely
@@ -6,15 +7,32 @@ import type { Trail } from "./types";
 // is a thin browser-only wrapper over html-to-image and isn't unit-tested.
 // ---------------------------------------------------------------------------
 
-/** A shareable plain-text version of a trail: header line + numbered links, each
- *  with the sentence that led there when the hop carried one (Phase 28). Those
- *  quotes are what make the pasted trail read as something rather than scan as a
- *  bookmark list, and they are also why the licence notice below is now doing
- *  real work. */
+/**
+ * A shareable plain-text version of a trail: header line + numbered links, each
+ * with the sentence that led there when the hop carried one (Phase 28). Those
+ * quotes are what make the pasted trail read as something rather than scan as a
+ * bookmark list, and they are also why the licence notice below is now doing
+ * real work.
+ *
+ * A trail that forked (Phase 29) is written in reading order — the main line,
+ * then each branch, each announced by the stop it left. Numbering restarts
+ * inside a branch, so "3." always means the third stop of the line you are
+ * reading and nothing has to pretend the fork did not happen.
+ */
 export function trailToText(trail: Trail): string {
   const n = trail.steps.length;
   const header = `🧵 ${trail.name} · ${n} ${n === 1 ? "stop" : "stops"}`;
-  const lines = trail.steps.map((s, i) => {
+  const lines: string[] = [];
+  let counter = 0;
+  for (const place of readingOrder(trail.steps)) {
+    const s = trail.steps[place.index];
+    if (place.isBranchRoot) {
+      const from =
+        place.parent === null ? "" : trail.steps[place.parent].card.displayTitle;
+      lines.push("", `↳ back at ${from}:`);
+      counter = 0;
+    }
+    counter += 1;
     const via =
       s.arrivedVia.type === "thread"
         ? ` (${s.arrivedVia.label})`
@@ -25,8 +43,10 @@ export function trailToText(trail: Trail): string {
       s.arrivedVia.type === "thread" && s.arrivedVia.bridge
         ? `\n   “${s.arrivedVia.bridge}”`
         : "";
-    return `${i + 1}. ${s.card.displayTitle}${via}${bridge}\n   ${s.card.sourceUrl}`;
-  });
+    lines.push(
+      `${counter}. ${s.card.displayTitle}${via}${bridge}\n   ${s.card.sourceUrl}`,
+    );
+  }
   return [header, "", ...lines, "", TEXT_EXPORT_NOTICE, "Mapped with Drift"].join(
     "\n",
   );

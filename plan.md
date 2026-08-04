@@ -11,8 +11,8 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > small friends-and-family beta. Two realms ship: **Encyclopedia** (Wikipedia) and **Gallery** (Art
 > Institute of Chicago, CC0).
 >
-> **Gates:** 954 unit tests green, `npm run build` and `npm run lint` clean, `npm run audit:contrast`
-> PASS (3,509 text nodes, 28 views x 2 themes; pass `BASE=http://localhost:3000` or it measures
+> **Gates:** 995 unit tests green, `npm run build` and `npm run lint` clean, `npm run audit:contrast`
+> PASS (3,579 text nodes, 29 views x 2 themes; pass `BASE=http://localhost:3000` or it measures
 > nothing and still says PASS). Backend: `npm run verify:supabase`, `verify:social`, `verify:share`.
 > Update these numbers when they change.
 >
@@ -39,11 +39,11 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 >
 > ### Where things stand
 >
-> **Shipped:** Phases 1, 2, 4, 5, 6, 8, 9, 10, 13, 14, 15, 18, 19, 20, 22, 23, 24, 25, 26, 28. The core
-> drift loop, directional threads, trails and the trail-map reward, the Atlas, the interest model,
-> accounts and cloud sync, friends and sharing, cross-realm doorways, focused drift (field, orbit, in
-> the news), branded email, the guided tour, the contact form, WCAG 2.2 AA colour contrast, and
-> article tables.
+> **Shipped:** Phases 1, 2, 4, 5, 6, 8, 9, 10, 13, 14, 15, 18, 19, 20, 22, 23, 24, 25, 26, 28, 29. The
+> core drift loop, directional threads, trails and the trail-map reward, the Atlas, the interest
+> model, accounts and cloud sync, friends and sharing, cross-realm doorways, focused drift (field,
+> orbit, in the news), branded email, the guided tour, the contact form, WCAG 2.2 AA colour contrast,
+> article tables, and branching trails.
 >
 > **Behind a flag:** Phase 17 **Papers** (arXiv), `NEXT_PUBLIC_REALM_PAPERS=1`. ⚠️ Do not enable in
 > production before the two compliance items noted at the flag in `src/lib/realms/index.ts` (audit
@@ -66,11 +66,12 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 >
 > ### ▶ Next
 >
-> Open. **Phase 28 (own the edges) is complete and verified**, and it is the answer to "what is
-> actually ours": Drift borrows its nodes, so it now owns the connections between them. A thread
-> carries the sentence the article links it in, and the exit knows what you did not take. See the
-> entry at the bottom, including the two coverage bugs that measuring found and reading would not
-> have.
+> Open. **Phase 29 (branches) is complete and verified.** Phases 28 and 29 together are the answer
+> to "what is actually ours": Drift borrows its nodes, so it owns the connections between them. A
+> thread carries the sentence the article links it in, the exit knows what you did not take, and a
+> door you come back for now **forks the trail** instead of throwing it away. Trails are trees;
+> `src/lib/branch.ts` is the only module that knows it, and `parentOf` is both the reader and the
+> sanitiser.
 >
 > Candidates, in rough order of how much they build on that: **raise bridge coverage** (42% of chips
 > today; the lever is redirect-resolving lead links, which costs one more batched call), **the
@@ -78,6 +79,10 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > and Reflection), and a **second art source** (Cleveland Museum of Art: CC0, no API key, 41,476
 > open-access works) if artist drifts feel thin, which would want the same EU-term filter M3 built
 > for the Art Institute.
+>
+> Branch follow-ups worth considering, none urgent: the branch lane is drawn but **not navigable
+> from the map** (clicking a node still only jumps within the rail's line), and a trail with many
+> forks grows wide because lanes are never packed (deliberate — see the Phase 29 entry).
 >
 > **Phase 27 (sharing outward) also stands complete.** ⚠️ Public links reclassify Drift as a DSA
 > **online platform**; Article 19 (micro enterprise) keeps the obligation delta near zero, `/terms`
@@ -4008,6 +4013,112 @@ all (it is unreachable without interaction, like the `expand` and `report` rows 
 **Deliberately not built: publishing trails as walks.** A trail is not fully hand-picked — of twenty
 stops perhaps twelve were wanted and eight were drifts past something dull — so presenting one as
 authorship would be dishonest. Revisit only if the reader gains a way to say which stops they meant.
+
+---
+
+## Phase 29: branches — a door you open continues the trail ✅ *(2026-08-04)*
+
+**Why.** Phase 28's "doors you left open" worked and was the best thing on the exit screen, but
+opening one built `/drift?realm&title&seed` — a **new session**. `sessionKey` changed, the feed's
+load effect wiped `history`, `pos`, the buffers and `sessionTrailRef`, and the trail you had just
+walked was abandoned. Worse than losing the session: the fact that this page came from *that stop*
+was recorded nowhere, and the connection between two cards is the one thing Drift actually owns
+(Phase 28's own argument).
+
+A door should **fork the trail at the stop that offered it**, so the exit screen draws what really
+happened: the original line, and a second line leaving it where you turned back. That makes trails
+**trees**, and every surface that reads one had to follow the structure or silently draw a hop
+nobody made (§2.1).
+
+### The model: a flat array with parent pointers
+
+- [x] **`TrailStep.parent`** — the step this one continues from. **Absent means `i-1`**, which is
+      exactly what every trail saved before this already meant, so there is no migration, no
+      back-compat branch, and no change to the Supabase `steps` jsonb or any share payload. Set
+      only on a branch root.
+- [x] **`src/lib/branch.ts`** (pure, 16 tests) is the only module that knows about the tree:
+      `parentOf` / `pathTo` / `childrenOf` / `mainLine` / `readingOrder` / `hasBranches`.
+      **`parentOf` is also the sanitisation point**: a parent counts only if it is a whole number
+      pointing strictly backwards and inside the array, so a corrupt or hostile payload (a share is
+      untrusted input) degrades to the linear reading instead of cycling. That single rule makes
+      the graph a forest by construction — no traversal here can loop.
+- [x] ⚠️ **`history` is now APPEND-ONLY, and that is load-bearing.** `pushStep` used to
+      `h.slice(0, pos + 1)`, so going back and pulling a thread **deleted every stop after it**.
+      It forks instead. That is better on its own terms (nothing you read is thrown away to make
+      room for what you read next) and it is what keeps numeric parents valid forever. Anything
+      that starts removing steps has to renumber every `parent` in the same breath.
+
+### The map: parallel lanes
+
+- [x] `layoutMeander` is tree-aware. **A trail that never forks lays out exactly as before** — the
+      pre-existing tests are the guard. A branch gets its own lane, starting one row below its
+      fork, so it runs *beside* the trunk and the vertical axis still means time.
+- [x] Segments carry `from`/`to` (step indices) instead of the caller doing `i`/`i+1`, plus `fork`,
+      `viaDoor` and a **label anchor**: a fork leaves the same node as the hop below it, so two
+      badges at two midpoints half a row apart landed on top of each other. A fork's badge rides
+      ¾ of the way out, over the lane gap, and reads `came back for` straight into the node title
+      beside it.
+- [x] **Titles pin per lane** once a trail forks (main line reads left, branches read right);
+      alternating them would throw a title across the gap onto the next lane. The layout now owns
+      the title column geometry (`titleX`/`titleW`), because with lanes it is no longer "everything
+      to that side" — the column has to stop before the next lane.
+- [x] **No title goes between the main line and the first branch**, so that one gap is air (200px)
+      rather than a column (340px). Worth the special case: one trunk plus one branch is by far the
+      commonest shape, and it is 140px that would otherwise push the branch off the exit screen.
+      The end-screen modal widens to `max-w-4xl` when a trail has branches, for the same reason —
+      the fork is the thing that was just made, and hiding it behind a sideways scroll would put
+      the new thing off the edge of the reward.
+- [x] **Two bugs the drawing found.** Door spurs are drawn "inward", which quietly meant "away from
+      the title" — once titles pin, a right-side trunk node spurred straight through its own title.
+      The rule is now stated as what it always meant. And `stubsFor` counted `doorsLeft.length`, so
+      a door you came back and walked kept the spur saying you never went; it now counts only
+      still-open doors, from the same filter the list under the map uses.
+
+### Walking a door
+
+- [x] **Two ways in, one step builder.** `doorArrival` (pure, tested) makes the arrival — a thread
+      you pulled, just later, marked `viaDoor` — and both entry points go through it: the live exit
+      screen (`onOpen`, branches in place with **no navigation at all**, so the session, its saved
+      trail and its buffers survive) and a saved trail (`?continue=<id>&door=<stop>.<door>`, a
+      reference rather than the door re-encoded into a URL).
+- [x] `door` had to join `SESSION_PARAMS`, or `?continue=X&door=3.0` is the same session key as
+      `?continue=X` and the branch silently never happens.
+- [x] A door that will not load leaves the trail exactly as it was (a hint, and the exit screen
+      stays open) — the same optional-dependency contract as everything else here (§4).
+
+### The feed navigates the tree
+
+`pos` is still the step on screen; `tip` is the far end of the branch being read; `path = pathTo`.
+Back is `parentOf(pos)`, forward steps along `path`, the rail draws the branch you are ON (with a
+fork tick where you left another line), and `history.length` stays the honest stop count.
+
+### Everything else that reads a trail
+
+- [x] **`atlas.ts` was a correctness bug**, not cosmetics: edges came from the previous array
+      element, so a fork invented an edge between the trunk's end and the branch's start. Cluster
+      inheritance follows the tree too, so a branch inherits from the stop it left rather than from
+      wherever the trunk had wandered by then.
+- [x] `TrailStory` indents each branch under "Back at {stop}, you opened a door you had left";
+      `trailToText` writes the main line, then `↳ back at {stop}:` and renumbers; `PublicShareView`
+      numbers in reading order; `TrailSparkline` draws the main line with a tick per fork and
+      counts branches in its label.
+
+**Verified.** 995 unit tests (41 new), build and lint clean. **Playwright over the running app,
+13/13**: a door adds a stop instead of restarting (5 → 6) with the URL unchanged; the map draws two
+lanes; the walked door leaves the open list; the story announces the branch; a saved trail keeps
+and redraws it; its door reopens as `?continue=…&door=3.1` and lands on a branch (8 → 9); and going
+back and threading now forks (4 → 5) where it used to shrink. PNG export and copy-as-text both
+carry the branch. `audit:contrast` **PASS**, 3,579 nodes over 29 views × 2 themes, with a new row
+that walks a door so the branched map is measured — the branch-only text clears AA in both themes
+(`came back for` 5.27 light / 7.04 dark).
+
+⚠️ **The branched end-screen row skips in dark mode when Wikimedia is throttling**: it walks five
+cards before it measures anything, so `networkidle` runs past its budget. The goto timeout for
+trail rows is now 60s; the row was also measured directly, both themes, to prove the coverage.
+
+**Deliberately not built: packing lanes.** Two branches that could share a column keep their own,
+because an edge arriving in a column directly under an unrelated branch's tail reads as a
+continuation of it. Width is cheaper than that confusion; the map already scrolls.
 
 ---
 

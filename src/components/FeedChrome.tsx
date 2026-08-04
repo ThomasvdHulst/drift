@@ -11,13 +11,21 @@ import { DoorwayIcon } from "@/components/ThreadChips";
 
 // The trail rail: every stop as a marker, drift edges dashed/grey and thread
 // edges solid/sage, the current stop ringed. Click a marker to jump to it.
+//
+// It draws the branch you are currently ON (Phase 29), which is the only line
+// that reads as a rail; the whole tree is the trail map's job. A hop that LEFT
+// another line is drawn as a step down rather than a straight link, so the rail
+// never implies you simply carried on.
 function TrailRail({
   steps,
   pos,
+  branchAt,
   onJump,
 }: {
   steps: TrailStep[];
   pos: number;
+  /** Positions along this rail where the reader forked off another line. */
+  branchAt?: Set<number>;
   onJump: (index: number) => void;
 }) {
   if (steps.length < 2) return null;
@@ -26,10 +34,29 @@ function TrailRail({
       {steps.map((s, i) => {
         const isThread = s.arrivedVia.type === "thread";
         const active = i === pos;
+        const forked = !!branchAt?.has(i);
+        const viaDoor = s.arrivedVia.type === "thread" && s.arrivedVia.viaDoor;
         return (
           <div key={`${s.card.pageTitle}-${i}`} className="flex items-center">
             {i > 0 &&
-              (isThread ? (
+              (forked ? (
+                <svg
+                  width="16"
+                  height="12"
+                  viewBox="0 0 16 12"
+                  className="mx-0.5 shrink-0 text-accent"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M0 2h5c3 0 3 8 6 8h5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeOpacity="0.7"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              ) : isThread ? (
                 <span className="mx-0.5 h-px w-4 shrink-0 bg-accent/70" />
               ) : (
                 <span className="mx-0.5 h-0 w-4 shrink-0 border-t border-dashed border-ink/30" />
@@ -37,7 +64,7 @@ function TrailRail({
             <button
               type="button"
               onClick={() => onJump(i)}
-              title={`${s.card.displayTitle}${isThread ? ` · ${s.arrivedVia.type === "thread" ? s.arrivedVia.label : ""}` : ""}`}
+              title={`${s.card.displayTitle}${isThread && s.arrivedVia.type === "thread" ? ` · ${viaDoor ? "came back for " : ""}${s.arrivedVia.label}` : ""}`}
               aria-label={s.card.displayTitle}
               className="flex h-5 w-3 items-center justify-center"
             >
@@ -63,6 +90,7 @@ function TrailRail({
 export function FeedTopBar({
   steps,
   pos,
+  branchAt,
   stops,
   realm,
   otherRealm,
@@ -71,8 +99,11 @@ export function FeedTopBar({
   onJump,
   onEnd,
 }: {
+  // The branch being read, root → tip (Phase 29), with `pos` a position along
+  // it. `stops` is the whole trail, which is what the counter should say.
   steps: TrailStep[];
   pos: number;
+  branchAt?: Set<number>;
   stops: number;
   realm: { label: string; glyph: string };
   // The realm you can cross INTO (Phase 15) + the handler; the quiet control is a
@@ -114,7 +145,9 @@ export function FeedTopBar({
         </span>
       </div>
 
-      {!endless && <TrailRail steps={steps} pos={pos} onJump={onJump} />}
+      {!endless && (
+        <TrailRail steps={steps} pos={pos} branchAt={branchAt} onJump={onJump} />
+      )}
 
       <div className="flex min-w-0 items-center gap-2 sm:gap-4">
         {onCrossRealm && otherRealm && (

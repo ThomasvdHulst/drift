@@ -72,6 +72,15 @@ const ROUTES = [
   // without this row a whole class of new text would never be measured. Same
   // reasoning as `expand` and `selectReport` above.
   { path: "/drift?title=Black%20hole&seed=Black%20hole", endTrail: true },
+  // The same screen after a door has been WALKED (Phase 29): the trail forks, so
+  // the map grows a second lane with its own edge badge ("came back for"), the
+  // story grows a branch heading, and the modal itself widens. None of that
+  // renders on an unbranched trail.
+  {
+    path: "/drift?title=Black%20hole&seed=Black%20hole",
+    endTrail: true,
+    walkDoor: true,
+  },
   { path: "/drift?realm=gallery" },
   { path: "/drift?realm=papers" },
   { path: "/trails" },
@@ -206,7 +215,14 @@ const failures = [];
 
 let sawPapers = false;
 
-for (const { path: route, keepModal, expand, selectReport, endTrail } of ROUTES) {
+for (const {
+  path: route,
+  keepModal,
+  expand,
+  selectReport,
+  endTrail,
+  walkDoor,
+} of ROUTES) {
   const label = keepModal
     ? `${route} [welcome modal]`
     : expand
@@ -214,12 +230,19 @@ for (const { path: route, keepModal, expand, selectReport, endTrail } of ROUTES)
       : selectReport
         ? `${route} [report]`
         : endTrail
-          ? `${route} [end screen]`
+          ? `${route} [end screen${walkDoor ? ", branched" : ""}]`
           : route;
   for (const theme of THEMES) {
     let res;
     try {
-      res = await page.goto(BASE + route, { waitUntil: "networkidle", timeout: 30000 });
+      // The trail rows walk several cards before they measure anything, so the
+      // page is still fetching long after an ordinary route has settled — and
+      // an upstream that is throttling us pushes `networkidle` past a 30s
+      // budget, which skipped the row rather than failing it.
+      res = await page.goto(BASE + route, {
+        waitUntil: "networkidle",
+        timeout: endTrail ? 60000 : 30000,
+      });
     } catch {
       console.log(`  ?  ${theme.padEnd(5)} ${label}  (timed out, skipped)`);
       continue;
@@ -270,6 +293,21 @@ for (const { path: route, keepModal, expand, selectReport, endTrail } of ROUTES)
         await page.waitForTimeout(2500);
       }
       await page.locator('[data-tour="end-trail"]').click().catch(() => {});
+      // Walk one of the doors it left open, so the trail forks and the branched
+      // map / story / wider modal exist to be measured, then end again.
+      if (walkDoor) {
+        const door = page
+          .locator('section[aria-label="Doors you left open"] button')
+          .first();
+        await door.waitFor({ timeout: 20000 }).catch(() => {});
+        if (await door.count()) {
+          await door.click().catch(() => {});
+          await page.waitForTimeout(4000);
+          await page.keyboard.press("ArrowDown");
+          await page.waitForTimeout(3000);
+          await page.locator('[data-tour="end-trail"]').click().catch(() => {});
+        }
+      }
       // The "one you never opened" question is fetched after the screen opens.
       await page
         .locator('section[aria-label="One you never opened"]')
