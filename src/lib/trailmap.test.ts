@@ -85,3 +85,42 @@ describe("layoutMeander", () => {
     expect(layoutMeander([wiki, { ...wiki }]).segments[0].crossRealm).toBe(false);
   });
 });
+
+// Doors left open (Phase 28) are drawn as short dashed spurs. They must stay
+// visually quiet — the map shows THAT a choice happened; the list under it says
+// what the choice was.
+describe("layoutMeander stubs", () => {
+  const withDoors: TrailStep[] = [
+    { ...step({ type: "seed", seedName: "Space" }), doorsLeft: [
+      { pageTitle: "Squid", displayTitle: "Squid" },
+      { pageTitle: "Nautilus", displayTitle: "Nautilus" },
+    ] },
+    step({ type: "drift" }),
+    { ...step({ type: "drift" }), doorsLeft: [{ pageTitle: "Yarn", displayTitle: "Yarn" }] },
+  ];
+
+  it("marks only the stops that left a door", () => {
+    const stubs = layoutMeander(withDoors).stubs;
+    expect(stubs.map((s) => s.index)).toEqual([0, 2]);
+    expect(stubs[0].count).toBe(2);
+  });
+
+  it("spurs INWARD, so it never collides with the title column", () => {
+    const layout = layoutMeander(withDoors, { width: 520 });
+    const [first, second] = layout.stubs;
+    // Node 0 sits left of centre, so its spur runs right; node 2 also sits left
+    // (even indices are the left side), so the same holds.
+    expect(first.x).toBeGreaterThan(layout.nodes[0].cx);
+    expect(second.x).toBeGreaterThan(layout.nodes[2].cx);
+    // and it stays inside the canvas
+    for (const s of layout.stubs) {
+      expect(s.x).toBeGreaterThan(0);
+      expect(s.x).toBeLessThan(layout.width);
+    }
+  });
+
+  it("is empty for a trail that left no doors, including an empty one", () => {
+    expect(layoutMeander(steps).stubs).toEqual([]);
+    expect(layoutMeander([]).stubs).toEqual([]);
+  });
+});

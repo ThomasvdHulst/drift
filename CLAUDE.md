@@ -78,6 +78,14 @@ without them:
   with a news API — see `memory/content-licensing-realms.md` for why that path was parked.
   Parsing/ranking lives in `src/lib/current.ts`; when fetching card props for a title list, pass
   **`exlimit=max`** or only the first page gets an extract.
+- 🔗 **A thread carries the sentence it is linked in ("the bridge", Phase 28).** `morelike:` says
+  two pages are similar but not *why*, so `/api/realm/encyclopedia/related` also fetches the current
+  article's **lead** (`action=parse&section=0`) and attaches the sentence in which the lead links
+  each candidate. That is **one extra Wikimedia call per card**, deliberately made with a 2.5s
+  timeout and **`retries: 0`**: a bridge is a bonus, and an optional thing must never delay threads
+  or spend the shared rate budget. Rules live in `src/lib/bridge.ts` and are not negotiable — whole
+  sentences only (never truncated), 40 to 200 characters, one quote per card. About 42% of chips
+  carry one; a lead-poor article simply shows the plain chips it always did.
 - **Always proxy external calls through Next.js API routes** (`/api/wiki/*`, `/api/threads`),
   never call Wikipedia/Ollama directly from the browser. Reasons: (a) browsers cannot set
   the `Api-User-Agent`/`User-Agent` header Wikimedia etiquette requires; (b) it centralizes

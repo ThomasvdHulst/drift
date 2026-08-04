@@ -158,7 +158,15 @@ export async function fetchImageCredits(
   return out;
 }
 
-export function wikiParse(params: Record<string, string>): Promise<unknown> {
+export function wikiParse(
+  params: Record<string, string>,
+  // `retries: 0` + a timeout is how an OPTIONAL parse asks for itself: a bridge
+  // (Phase 28) is a bonus on top of threads that already work, so it must never
+  // hold the reader's threads open, and retrying for it would spend the shared
+  // rate budget on decoration. The "Read more" body passes nothing and keeps the
+  // default retry, because there the parse IS the content.
+  opts: { retries?: number; timeoutMs?: number } = {},
+): Promise<unknown> {
   const ua = wikiUserAgent();
   const url = `${API}?${new URLSearchParams({
     action: "parse",
@@ -174,5 +182,6 @@ export function wikiParse(params: Record<string, string>): Promise<unknown> {
   return fetchJson(url, {
     headers: { "Api-User-Agent": ua, "User-Agent": ua, ...WIKI_ENCODING },
     gate: wikiGate,
+    ...opts,
   });
 }

@@ -118,6 +118,30 @@ export function TrailMap({
               </g>
             );
           })}
+
+          {/* Doors left open (Phase 28): a short dashed spur inward from the
+              node, ending in a small open ring. Unlabelled by design — the list
+              below the map says what they were. */}
+          {layout.stubs.map((stub) => (
+            <g key={`stub-${stub.index}`} opacity={0.55}>
+              <path
+                d={stub.d}
+                fill="none"
+                stroke="var(--accent)"
+                strokeWidth={1.5}
+                strokeDasharray="2 4"
+                strokeLinecap="round"
+              />
+              <circle
+                cx={stub.x}
+                cy={stub.y}
+                r={3}
+                fill="none"
+                stroke="var(--accent)"
+                strokeWidth={1.5}
+              />
+            </g>
+          ))}
         </svg>
 
         {/* Edge badges: a thread label, or a doorway mark on a realm crossing. */}

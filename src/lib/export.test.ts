@@ -73,3 +73,34 @@ describe("trailToText", () => {
     expect(lines[lines.length - 2]).toBe(TEXT_EXPORT_NOTICE);
   });
 });
+
+// Phase 28: the exported trail now carries quoted article prose, which is what
+// turns the licence notice from courtesy into an obligation (see export.ts).
+describe("trailToText with bridges", () => {
+  const bridgeTrail: Trail = {
+    ...trail,
+    steps: [
+      step("Black hole", { type: "seed", seedName: "Physics" }),
+      step("Event horizon", {
+        type: "thread",
+        label: "Event horizon",
+        fromTitle: "Black hole",
+        bridge: "The boundary of no escape is called the event horizon.",
+      }),
+    ],
+  };
+
+  it("prints the sentence that led to each stop, under that stop", () => {
+    expect(trailToText(bridgeTrail)).toContain(
+      "2. Event horizon (Event horizon)\n   “The boundary of no escape is called the event horizon.”",
+    );
+  });
+
+  it("still names the licence, which now covers real article text", () => {
+    expect(trailToText(bridgeTrail)).toContain(TEXT_EXPORT_NOTICE);
+  });
+
+  it("says nothing extra for a hop that carried no quote", () => {
+    expect(trailToText(trail)).not.toContain("“");
+  });
+});

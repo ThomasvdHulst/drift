@@ -7,10 +7,12 @@ import { AnimatePresence, motion, type Variants } from "motion/react";
 import type {
   ArrivedVia,
   Card,
+  Door,
   RelatedCandidate,
   Thread,
   TrailStep,
 } from "@/lib/types";
+import { doorsFrom, engagedWith } from "@/lib/doors";
 import { candidateToCard } from "@/lib/wiki";
 import { cardId } from "@/lib/card";
 import { selectDiverseThreads, selectFacetThreads } from "@/lib/diversity";
@@ -82,6 +84,9 @@ import { CardView } from "@/components/CardView";
 import { FeedTopBar, FeedBottomNav } from "@/components/FeedChrome";
 import { FocusBanner } from "@/components/FocusBanner";
 import { TrailMap } from "@/components/TrailMap";
+import { TrailStory, hasStory } from "@/components/TrailStory";
+import { DoorsLeft } from "@/components/DoorsLeft";
+import { UnopenedPage } from "@/components/UnopenedPage";
 import { useAuth } from "@/components/AuthProvider";
 import { useTour } from "@/components/tour/TourProvider";
 import { ShareSheet } from "@/components/ShareSheet";
@@ -893,10 +898,49 @@ function DriftFeed() {
       timestamp: Date.now(),
       expanded: false,
     };
+    // The doors this stop leaves behind (Phase 28): the threads it offered and
+    // you did not take. Recorded as you LEAVE, because only now is it known
+    // which one you took — and only for a stop you actually engaged with, so a
+    // card you scrolled straight past leaves nothing (lib/doors.ts).
+    const doors = doorsLeavingHere(card);
     // Slicing to pos+1 means taking a thread from a revisited card branches a
     // new direction from there (and is a no-op at the live end).
-    setHistory((h) => [...h.slice(0, pos + 1), step]);
+    setHistory((h) => {
+      const kept = h.slice(0, pos + 1);
+      const leaving = kept[pos];
+      if (leaving && doors.length > 0) {
+        kept[pos] = { ...leaving, doorsLeft: doors };
+      }
+      return [...kept, step];
+    });
     setPos(pos + 1);
+  }
+
+  /** The untaken threads of the card being left, if it earned any. Reads the
+   *  live dwell from the ref, because the effect that writes `dwellMs` into the
+   *  step has not run yet at this point (it fires on the `pos` change this very
+   *  call is about to cause). */
+  function doorsLeavingHere(taken: Card): Door[] {
+    const leaving = history[pos];
+    if (!leaving) return [];
+    const offered = threadCache[cardId(leaving.card)];
+    if (!offered || offered.length === 0) return [];
+    const live =
+      dwellRef.current.index === pos && dwellRef.current.at > 0
+        ? Date.now() - dwellRef.current.at
+        : 0;
+    if (
+      !engagedWith({
+        expanded: leaving.expanded,
+        reacted: !!reactions[cardId(leaving.card)],
+        dwellMs: (leaving.dwellMs ?? 0) + live,
+      })
+    ) {
+      return [];
+    }
+    // The card being pushed IS where you went, whether you pulled it or drifted
+    // onto it, so it is never a door you left.
+    return doorsFrom(offered, taken.pageTitle);
   }
 
   async function advance() {
@@ -1733,6 +1777,10 @@ function DriftFeed() {
         fromTitle: current.card.pageTitle,
         kind: thread.kind,
         ...(crossing ? { crossedFrom: realm } : {}),
+        // The quoted reason travels with the step (Phase 28), which is what
+        // turns a saved trail from a list of titles into something that reads:
+        // each hop carries the sentence that justified it.
+        ...(thread.bridge ? { bridge: thread.bridge.sentence } : {}),
       },
       "thread",
     );
@@ -2240,6 +2288,15 @@ function EndOverlay({
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
           <TrailMap steps={history} mapRef={mapRef} />
+          {hasStory(history) && (
+            <div className="mt-6 border-t border-line pt-5">
+              <TrailStory steps={history} />
+            </div>
+          )}
+          <div className="mt-6 space-y-6 border-t border-line pt-5 empty:mt-0 empty:border-0 empty:pt-0">
+            <DoorsLeft steps={history} />
+            <UnopenedPage steps={history} />
+          </div>
         </div>
 
         <div className="flex shrink-0 items-center justify-center gap-5 border-t border-line px-6 py-2.5 text-sm">

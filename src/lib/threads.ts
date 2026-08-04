@@ -1,4 +1,5 @@
 import type { Card, RelatedCandidate, Thread, ThreadKind } from "./types";
+import { bridgeKey } from "./bridge";
 import { classOf } from "./diversity";
 import { cardId } from "./card";
 import { isJunk } from "./wiki";
@@ -141,6 +142,21 @@ function pickTangent(
  * back to `nearby`); fewer only for genuinely thin pages. Display order is
  * [deeper, zoomout/nearby, tangent].
  */
+/**
+ * How far down the relevance ranking a bridge is allowed to promote a candidate.
+ *
+ * morelike returns its 20 in relevance order and the interesting ones are at the
+ * top; without a bound, "Charles Babbage's Saturday night soirées" (bridged,
+ * rank 18) would beat "Analytical engine" (unbridged, rank 1) and the feature
+ * would be making threads worse in order to make them explainable.
+ *
+ * Twelve, not eight, from measuring where quotable candidates actually sit: over
+ * ten articles, 30 candidates had a usable lead sentence, 19 of them inside the
+ * top 8 and 25 inside the top 12. The five beyond it are the tail this bound
+ * exists to refuse.
+ */
+const BRIDGE_WINDOW = 12;
+
 export function classifyThreads(
   current: Card,
   candidates: RelatedCandidate[],
@@ -162,12 +178,21 @@ export function classifyThreads(
     return c;
   };
 
-  const deeper = take(
-    pool.find((c) => !used.has(cardId(c)) && isDeeper(current, c)),
-  );
-  const zoom = take(
-    pool.find((c) => !used.has(cardId(c)) && isZoomOut(current, c)),
-  );
+  // Among the candidates that satisfy a slot, the one the article itself
+  // explains wins (Phase 28). The slot's own test is unchanged, so a "deeper"
+  // chip is still deeper — the bridge only breaks a tie, and only inside the
+  // relevance window: reaching into the tail of the morelike ranking for a
+  // quotable candidate would trade a good thread for an explained bad one.
+  const explained = (test: (c: RelatedCandidate) => boolean) => {
+    const fits = (c: RelatedCandidate) => !used.has(cardId(c)) && test(c);
+    return (
+      pool.slice(0, BRIDGE_WINDOW).find((c) => c.bridge && fits(c)) ??
+      pool.find(fits)
+    );
+  };
+
+  const deeper = take(explained((c) => isDeeper(current, c)));
+  const zoom = take(explained((c) => isZoomOut(current, c)));
   const tangent = take(pickTangent(current, pool, used));
 
   const slots: { kind: ThreadKind; cand?: RelatedCandidate }[] = [
@@ -178,7 +203,7 @@ export function classifyThreads(
   // Fill any empty slot with the next unused (closest) candidate, as `nearby`.
   for (const slot of slots) {
     if (!slot.cand) {
-      const next = pool.find((c) => !used.has(cardId(c)));
+      const next = explained(() => true);
       if (next) {
         slot.cand = take(next);
         slot.kind = "nearby";
@@ -186,13 +211,25 @@ export function classifyThreads(
     }
   }
 
+  // One sentence is quoted once per card. An article's lead often explains
+  // several of its neighbours in a single line ("…grouped within the class
+  // Cephalopoda with squids, cuttlefish, and nautiloids"), and three chips
+  // repeating it verbatim would look broken and would say nothing about the
+  // difference between them. Applied HERE, over the three actually shown,
+  // rather than upstream over all twenty candidates: see lib/bridge.ts for the
+  // bug that taught us the difference.
+  const quoted = new Set<string>();
   const out: Thread[] = [];
   for (const slot of slots) {
     if (slot.cand && out.length < count) {
+      const bridge = slot.cand.bridge;
+      const fresh = bridge && !quoted.has(bridgeKey(bridge.sentence));
+      if (bridge && fresh) quoted.add(bridgeKey(bridge.sentence));
       out.push({
         candidate: slot.cand,
         label: slot.cand.displayTitle || slot.cand.pageTitle,
         kind: slot.kind,
+        ...(fresh ? { bridge } : {}),
       });
     }
   }

@@ -27,9 +27,21 @@ export interface MeanderSegment {
   crossRealm?: boolean; // this hop crossed realms (Phase 15) — a "bridge" edge
 }
 
+/** A stop that left a door open (Phase 28): a short dashed spur off its node,
+ *  with the point to hang the marker on. */
+export interface MeanderStub {
+  index: number;
+  /** How many doors this stop left. */
+  count: number;
+  d: string; // SVG path for the spur
+  x: number; // the spur's free end
+  y: number;
+}
+
 export interface MeanderLayout {
   nodes: MeanderNode[];
   segments: MeanderSegment[];
+  stubs: MeanderStub[];
   width: number;
   height: number;
   nodeSize: number;
@@ -86,5 +98,40 @@ export function layoutMeander(
       ? nodes[nodes.length - 1].cy + nodeSize / 2 + padY
       : padY * 2;
 
-  return { nodes, segments, width, height, nodeSize };
+  return { nodes, segments, stubs: stubsFor(steps, nodes, nodeSize), width, height, nodeSize };
+}
+
+/**
+ * The short dashed spurs marking stops that left a door open (Phase 28).
+ *
+ * Drawn INWARD, toward the centre line the spine meanders around, because the
+ * outer side of every node is where its title sits. Deliberately unlabelled and
+ * short: the map's job is to show that a choice happened, and the list under it
+ * says what the choice was. A road not taken drawn as loudly as the road taken
+ * would be a map of regret.
+ */
+const STUB_LENGTH = 26;
+
+function stubsFor(
+  steps: TrailStep[],
+  nodes: MeanderNode[],
+  nodeSize: number,
+): MeanderStub[] {
+  const stubs: MeanderStub[] = [];
+  steps.forEach((step, i) => {
+    const count = step.doorsLeft?.length ?? 0;
+    const node = nodes[i];
+    if (count === 0 || !node) return;
+    // Inward: a left-side node spurs right, a right-side node spurs left.
+    const dir = node.side === "left" ? 1 : -1;
+    const x0 = node.cx + dir * (nodeSize / 2 + 4);
+    stubs.push({
+      index: i,
+      count,
+      d: `M ${x0} ${node.cy} L ${x0 + dir * STUB_LENGTH} ${node.cy}`,
+      x: x0 + dir * STUB_LENGTH,
+      y: node.cy,
+    });
+  });
+  return stubs;
 }

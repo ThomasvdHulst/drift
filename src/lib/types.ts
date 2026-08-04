@@ -53,6 +53,22 @@ export type Attribution = {
   modification?: string; // "excerpted and reformatted"
 };
 
+/**
+ * "The bridge" (Phase 28): the sentence in which the article you are on links to
+ * the page a thread would take you to, quoted from that article rather than
+ * guessed. It is what makes a thread a citation instead of a recommendation, and
+ * it is the app's honest answer to "why is this chip here?" (§2.1).
+ *
+ * Never invented and never truncated (see lib/bridge.ts). Absent means the lead
+ * did not link there, or did so in a sentence too long to quote — the chip then
+ * reads exactly as it did before bridges existed.
+ */
+export type Bridge = {
+  sentence: string;
+  /** The words inside the sentence that carry the link. */
+  anchor: string;
+};
+
 // A related page returned by a realm's "related" endpoint — already carries
 // enough to render a Card without a second fetch (we synthesize the canonical
 // URL). `threadLabel`/`facet` are set by realms whose threads are facet-based
@@ -83,6 +99,9 @@ export type RelatedCandidate = {
   imageAlt?: string;
   facts?: { label: string; value: string }[];
   cover?: { hue: string; motif: string; seed: number }; // Papers: field-themed cover
+  /** The sentence in which the CURRENT card's article links here (Phase 28).
+   *  Encyclopedia only, and only when the lead links here in a quotable line. */
+  bridge?: Bridge;
 };
 
 // The "direction" a thread takes you (Phase 6). Encyclopedia threads are
@@ -100,6 +119,8 @@ export type Thread = {
   // A cross-realm "doorway" (Phase 15): presence marks this chip a realm-crossing,
   // the value is the destination realm. Pulling it lands you in the other realm.
   doorway?: RealmId;
+  /** The quoted reason this thread exists (Phase 28), when there is one. */
+  bridge?: Bridge;
 };
 
 export type ArrivedVia =
@@ -115,6 +136,10 @@ export type ArrivedVia =
       fromTitle: string;
       kind?: ThreadKind;
       crossedFrom?: RealmId;
+      /** The sentence that justified this step, quoted from the card you left
+       *  (Phase 28). Only the sentence is persisted, not the anchor: a saved
+       *  trail is read, not re-highlighted, and every byte here is synced. */
+      bridge?: string;
     }
   // A drift may carry the topic it landed in (interesting-random, M8) and why
   // that topic was chosen (M9): "interest" = weighted by what you like,
@@ -158,8 +183,28 @@ export type ArrivedVia =
       fromLiked?: string;
     };
 
+/**
+ * A thread that was offered at a stop and not taken (Phase 28) — "a door you
+ * left open". Flattened rather than holding a whole candidate, because this is
+ * persisted with the trail and synced: enough to name it, explain it and reopen
+ * it, and nothing else. The logic lives in lib/doors.ts.
+ */
+export type Door = {
+  pageTitle: string;
+  displayTitle: string;
+  kind?: ThreadKind;
+  /** The realm it leads into. Absent ⇒ Wikipedia, as everywhere in this model. */
+  source?: SourceId;
+  /** The sentence that justified it, when the thread carried one. */
+  bridge?: string;
+};
+
 export type TrailStep = {
   card: Card;
+  /** The threads this stop offered and you did NOT take (Phase 28), recorded
+   *  only for stops you actually engaged with. See lib/doors.ts. Optional, so
+   *  every trail saved before it still resolves. */
+  doorsLeft?: Door[];
   arrivedVia: ArrivedVia;
   timestamp: number;
   dwellMs?: number;

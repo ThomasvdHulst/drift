@@ -16,6 +16,9 @@ import { exportTrailPng } from "@/lib/export-image";
 import { getRealm } from "@/lib/realms";
 import { trailRealms } from "@/lib/crossrealm";
 import { TrailMap } from "@/components/TrailMap";
+import { TrailStory, hasStory } from "@/components/TrailStory";
+import { DoorsLeft } from "@/components/DoorsLeft";
+import { doorsOf } from "@/lib/doors";
 import { useAuth } from "@/components/AuthProvider";
 import { ShareSheet } from "@/components/ShareSheet";
 import { trailToSharePayload } from "@/lib/social/share";
@@ -220,6 +223,20 @@ export default function TrailDetailPage() {
       >
         <TrailMap steps={trail.steps} mapRef={mapRef} />
       </div>
+
+      {hasStory(trail.steps) && (
+        <div className="mt-4 rounded-2xl bg-paper-raised p-5 shadow-sm ring-1 ring-line">
+          <TrailStory steps={trail.steps} />
+        </div>
+      )}
+
+      {/* A saved trail keeps its open doors: the point of recording them is that
+          they are still there next week, not only in the minute you stopped. */}
+      {doorsOf(trail.steps).length > 0 && (
+        <div className="mt-4 rounded-2xl bg-paper-raised p-5 shadow-sm ring-1 ring-line">
+          <DoorsLeft steps={trail.steps} />
+        </div>
+      )}
 
       {/* A second offer to share, under the map. The map is the end of the
           session and the thing actually worth showing someone (principle 3: the

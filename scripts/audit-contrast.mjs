@@ -66,6 +66,12 @@ const ROUTES = [
   { path: "/contact", selectReport: true },
   { path: "/drift" },
   { path: "/drift?title=Mohs%20scale&seed=Mohs%20scale", expand: true },
+  // The end screen (Phase 28). Everything it now holds — the quoted bridge
+  // sentences of "How you got here", the doors you left open, and the one you
+  // never opened — exists ONLY after a real trail has been walked and ended, so
+  // without this row a whole class of new text would never be measured. Same
+  // reasoning as `expand` and `selectReport` above.
+  { path: "/drift?title=Black%20hole&seed=Black%20hole", endTrail: true },
   { path: "/drift?realm=gallery" },
   { path: "/drift?realm=papers" },
   { path: "/trails" },
@@ -200,14 +206,16 @@ const failures = [];
 
 let sawPapers = false;
 
-for (const { path: route, keepModal, expand, selectReport } of ROUTES) {
+for (const { path: route, keepModal, expand, selectReport, endTrail } of ROUTES) {
   const label = keepModal
     ? `${route} [welcome modal]`
     : expand
       ? `${route} [expanded]`
       : selectReport
         ? `${route} [report]`
-        : route;
+        : endTrail
+          ? `${route} [end screen]`
+          : route;
   for (const theme of THEMES) {
     let res;
     try {
@@ -246,6 +254,29 @@ for (const { path: route, keepModal, expand, selectReport } of ROUTES) {
         if (await details.count()) await details.first().click().catch(() => {});
         await page.waitForTimeout(500);
       }
+    }
+
+    // Walk a short trail and end it, so the exit screen's sections exist to be
+    // measured. Best-effort throughout: a thread that never loads leaves a
+    // shorter trail, and a shorter trail still opens an end screen.
+    if (endTrail) {
+      for (let hop = 0; hop < 3; hop++) {
+        const readMore = page.getByRole("button", { name: /^Read more$/ });
+        if (await readMore.count()) await readMore.first().click().catch(() => {});
+        const chip = page.locator('[data-tour="card-threads"] button:visible').first();
+        await chip.waitFor({ timeout: 15000 }).catch(() => {});
+        if (!(await chip.count())) break;
+        await chip.click().catch(() => {});
+        await page.waitForTimeout(2500);
+      }
+      await page.locator('[data-tour="end-trail"]').click().catch(() => {});
+      // The "one you never opened" question is fetched after the screen opens.
+      await page
+        .locator('section[aria-label="One you never opened"]')
+        .waitFor({ timeout: 25000 })
+        .catch(() => {});
+      await page.getByRole("button", { name: /^Show me$/ }).click().catch(() => {});
+      await page.waitForTimeout(600);
     }
 
     // Switch the contact form into its DSA Article 16 mode, which reveals the

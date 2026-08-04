@@ -105,6 +105,36 @@ export function KindIcon({ kind, size = 13 }: { kind: ThreadKind; size?: number 
   }
 }
 
+/**
+ * "The bridge" (Phase 28): the sentence in which the card you are reading links
+ * to this one, quoted from that article. It is the difference between a chip
+ * that suggests and a chip that cites, and it is why a thread can now answer
+ * the question §2.1 promises the reader always sees an answer to.
+ *
+ * Quiet on purpose: ink rather than accent, one step down in size, clamped to
+ * two lines so three chips still fit a phone. Absent whenever the lead did not
+ * link here or did so in a sentence too long to quote whole (lib/bridge.ts), in
+ * which case the chip reads exactly as it did before bridges existed — which is
+ * itself honest, since an unexplained thread should not look explained.
+ */
+function Bridge({ sentence }: { sentence?: string }) {
+  if (!sentence) return null;
+  return (
+    <span className="mt-0.5 line-clamp-3 text-[11px] font-normal not-italic leading-snug text-ink/75">
+      <span aria-hidden="true">“</span>
+      {sentence}
+      <span aria-hidden="true">”</span>
+    </span>
+  );
+}
+
+/** How wide a chip's text column may run. A chip that quotes needs a paragraph's
+ *  width or the sentence arrives in slivers; an unexplained chip stays compact so
+ *  two still sit side by side. The wrapper's flex-wrap does the rest: a bridged
+ *  chip simply takes its own row. */
+const textWidth = (bridged: boolean) =>
+  bridged ? "max-w-[74vw] sm:max-w-[24rem]" : "max-w-[42vw] sm:max-w-[16rem]";
+
 export function ThreadChips({
   threads,
   loading,
@@ -161,11 +191,15 @@ export function ThreadChips({
             data-realm={doorway}
             title={thread.candidate.description || thread.candidate.displayTitle}
             aria-label={
-              kind
+              // The bridge rides along, because a label overrides the content it
+              // labels: without this the one chip that explains itself would be
+              // the one chip a screen reader hears least about.
+              (kind
                 ? `${KIND_META[kind].word}: ${thread.label}`
                 : eyebrow
                   ? `${eyebrow}: ${thread.label}`
-                  : thread.label
+                  : thread.label) +
+              (thread.bridge ? `. ${thread.bridge.sentence}` : "")
             }
             className={
               twoLine
@@ -185,9 +219,10 @@ export function ThreadChips({
                   )}
                   {kind ? KIND_META[kind].word : eyebrow}
                 </span>
-                <span className="max-w-[42vw] truncate sm:max-w-[16rem]">
+                <span className={`truncate ${textWidth(!!thread.bridge)}`}>
                   {thread.label}
                 </span>
+                <Bridge sentence={thread.bridge?.sentence} />
               </>
             ) : (
               <>

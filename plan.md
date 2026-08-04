@@ -11,8 +11,8 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > small friends-and-family beta. Two realms ship: **Encyclopedia** (Wikipedia) and **Gallery** (Art
 > Institute of Chicago, CC0).
 >
-> **Gates:** 897 unit tests green, `npm run build` and `npm run lint` clean, `npm run audit:contrast`
-> PASS (4,930 text nodes, 28 views x 2 themes; pass `BASE=http://localhost:3000` or it measures
+> **Gates:** 954 unit tests green, `npm run build` and `npm run lint` clean, `npm run audit:contrast`
+> PASS (3,509 text nodes, 28 views x 2 themes; pass `BASE=http://localhost:3000` or it measures
 > nothing and still says PASS). Backend: `npm run verify:supabase`, `verify:social`, `verify:share`.
 > Update these numbers when they change.
 >
@@ -39,7 +39,7 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 >
 > ### Where things stand
 >
-> **Shipped:** Phases 1, 2, 4, 5, 6, 8, 9, 10, 13, 14, 15, 18, 19, 20, 22, 23, 24, 25, 26. The core
+> **Shipped:** Phases 1, 2, 4, 5, 6, 8, 9, 10, 13, 14, 15, 18, 19, 20, 22, 23, 24, 25, 26, 28. The core
 > drift loop, directional threads, trails and the trail-map reward, the Atlas, the interest model,
 > accounts and cloud sync, friends and sharing, cross-realm doorways, focused drift (field, orbit, in
 > the news), branded email, the guided tour, the contact form, WCAG 2.2 AA colour contrast, and
@@ -66,16 +66,22 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 >
 > ### ▶ Next
 >
-> Open. **Phase 27 (sharing a card or trail outward) is complete and verified.** Ads were ruled out,
-> so growth is now "a reader shows someone a thing": `/s/<token>` is a public page anyone can open
-> from a chat, with three cards to try before an account is needed. ⚠️ Public links reclassify Drift
-> as a DSA **online platform**; Article 19 (micro enterprise) keeps the obligation delta near zero,
-> `/terms` now says so accurately, and **that exemption depends on staying one person**.
+> Open. **Phase 28 (own the edges) is complete and verified**, and it is the answer to "what is
+> actually ours": Drift borrows its nodes, so it now owns the connections between them. A thread
+> carries the sentence the article links it in, and the exit knows what you did not take. See the
+> entry at the bottom, including the two coverage bugs that measuring found and reading would not
+> have.
 >
-> Candidates: Phase 16 (Memory and Reflection) is the last of the three brainstorm directions. A
-> **second art source** (Cleveland Museum of Art: CC0, no API key, 41,476 open-access works) is the
-> obvious follow-up if artist drifts feel thin, and would want the same EU-term filter M3 built for
-> the Art Institute.
+> Candidates, in rough order of how much they build on that: **raise bridge coverage** (42% of chips
+> today; the lever is redirect-resolving lead links, which costs one more batched call), **the
+> unopened page on saved trails** (it only runs at the exit today, deliberately), Phase 16 (Memory
+> and Reflection), and a **second art source** (Cleveland Museum of Art: CC0, no API key, 41,476
+> open-access works) if artist drifts feel thin, which would want the same EU-term filter M3 built
+> for the Art Institute.
+>
+> **Phase 27 (sharing outward) also stands complete.** ⚠️ Public links reclassify Drift as a DSA
+> **online platform**; Article 19 (micro enterprise) keeps the obligation delta near zero, `/terms`
+> says so accurately, and **that exemption depends on staying one person**.
 >
 > _Full per-phase history is in the log below, oldest first. Keep this block SHORT: it is status, not
 > history. When something ships, add a log entry at the bottom and update the summary here rather
@@ -3917,6 +3923,91 @@ into it, the URL at each step, and an orbit crossing out and back) and **11/11**
 to the Encyclopedia and back into the slice). `audit:contrast` PASS over 3,361 nodes across 27 views ×
 2 themes (Papers off, no share token, so fewer views than the 4,930-node run above — run it with
 `BASE=http://localhost:3000`, the script defaults to port 3111).
+
+---
+
+## Phase 28: own the edges ✅ *(2026-08-04)*
+
+**Why.** AdSense refused the site for "low value content", which is the outside view of a real
+thing: Drift borrows its nodes (Wikipedia articles, museum works) and every Wikipedia feed on the
+internet shows the same ones. What only Drift produces is the **edges** — the connection between
+two cards, and the shape of the path a person took — and those were the thinnest part of the app.
+
+The gap was concrete. Principle §2.1 promises the reader always sees *why* the next card appeared,
+but threads come from `morelike:`, a similarity search, so **not even the app knew why a chip was
+there**: `threads.ts` inferred a direction from title and description overlap and honestly said
+"Nearby" when the inference was weak. This phase closes that gap and then spends it twice.
+
+Measured on the live API before any code was written, which is what the design rests on:
+
+- The **lead section alone** contains 3 to 6 of the top-20 morelike candidates on 5 of 6 sample
+  articles, and they are the good ones (Analytical engine, Cephalopod, Walter Gropius, Event horizon).
+- Quotable sentences are short: *"The boundary of no escape is called the event horizon."* The
+  unusable ones are 270 to 434 characters, so length is a hard filter and never a truncation.
+- Across a trail, link intersection gives real answers: Black hole + Time dilation + GPS →
+  **General relativity**; Bauhaus + Graphic design → **Form follows function**.
+
+### M1 + M2 — the bridge: a thread is now a citation, not a recommendation
+
+- [x] **`src/lib/bridge.ts`** (pure, 17 tests): the lead's `<p>` links with the sentence each sits
+      in. Whole sentences only, 40 to 200 characters, one quoted once per card, and a sentence the
+      reader can already see on the card loses to one further down the lead.
+- [x] **One extra Wikimedia call per card**, made on the terms an optional thing deserves: a 2.5s
+      timeout, **no retry** (a bonus must not spend the shared rate budget), every failure
+      swallowed. `wikiParse` gained the options to say so.
+- [x] **Selection prefers the explained candidate among equals** and never changes a slot's meaning.
+      Bounded by a **relevance window of 12**, measured: of 30 quotable candidates across ten
+      articles, 19 sit in morelike's top 8 and 25 in the top 12; the rest are the tail the bound
+      exists to refuse.
+- [x] **The chip quotes it**, ink not accent, clamped, and a bridged chip takes a wider row so the
+      sentence is not delivered in slivers. The quote rides on the `aria-label` too, since a label
+      overrides the content it labels.
+- [x] **The trail keeps it.** `ArrivedVia.bridge` carries the sentence, so a saved trail can be read
+      as prose: new `TrailStory` ("How you got here") on the end screen and on a saved trail, and
+      `trailToText` prints each quote under its stop.
+- [x] ⚠️ **The text export now redistributes article prose**, not just titles and URLs. The licence
+      notice did not need to change but its justification did, and the long comment above
+      `TEXT_EXPORT_NOTICE` that explained why it was *not* required has been rewritten: it is
+      required now.
+
+**Two bugs found by measuring rather than by reading.** A sentence ending in `").”` or in a digit
+was not recognised as a sentence at all: the guard that protects "J. R. R." looked for a letter
+before the full stop, found none, and read that as an initial, so whole paragraphs merged into one
+400-character "sentence" and every quote in them was thrown away for length (Octopus opens exactly
+that way). And the quoted-once rule was applied server-side over all twenty candidates, so
+Octopus's shared line went to Squid at rank 0 and left Cephalopod — the chip actually shown — bare;
+it now runs where the three chips are chosen. Both cost real coverage: **13/36 chips explained
+before the fixes, 15/36 after, and 9 of 12 articles now carry at least one.**
+
+### M3 + M4 — the exit knows what you left
+
+- [x] **Doors you left open** (`src/lib/doors.ts`, 14 tests): the threads a stop offered and you did
+      not take, recorded **only for stops you engaged with** (read, reacted, or stayed 15 seconds).
+      A card you scrolled past did not offer you a choice you declined, and recording all three
+      chips of twenty stops would bury the handful that mean something under fifty-five that do not.
+      Listed on the end screen and on saved trails with the quote that made each interesting, each
+      one reopening as a drift; drawn on the map as a short dashed spur, inward so it never collides
+      with the title column.
+- [x] **One you never opened** (`src/lib/common.ts` + `/api/wiki/links`, 14 tests): the page several
+      of your stops all point at and you never went to. Asked as a question, answered on request, no
+      score and no streak. Filters earned against real data (the first honest run returned "Bibcode
+      (identifier)" at 4/4, which is a fact about how physicists cite, not about the reader).
+      **Under-answers rather than answers badly**: below three agreeing stops the section does not
+      exist.
+- [x] Both are computed from the shape of a path, which is the one thing the encyclopedia does not
+      contain and nobody else has.
+
+**Verified.** 954 unit tests (85 new), build and lint clean. Playwright over the running app,
+**9/9**: a lead-rich article explains its threads and a lead-poor one (Silk Road) silently does not;
+a bridged thread pulled carries its sentence into the trail; the exit shows the story, the doors and
+the question; "Show me" reveals **Milky Way** for a black-hole trail and offers a drift into it; a
+door reopens as a real drift. `audit:contrast` PASS over **3,509 nodes across 28 views × 2 themes**,
+including a new row that walks and ends a real trail so the exit screen's new text is measured at
+all (it is unreachable without interaction, like the `expand` and `report` rows before it).
+
+**Deliberately not built: publishing trails as walks.** A trail is not fully hand-picked — of twenty
+stops perhaps twelve were wanted and eight were drifts past something dull — so presenting one as
+authorship would be dishonest. Revisit only if the reader gains a way to say which stops they meant.
 
 ---
 

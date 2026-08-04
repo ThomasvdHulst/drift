@@ -125,3 +125,78 @@ describe("classifyThreads", () => {
     expect(threads.map((t) => t.candidate.pageTitle)).toEqual(["Common octopus"]);
   });
 });
+
+// A bridge (Phase 28) is the sentence the current article links a candidate in.
+// It decides ties; it must never decide direction, and it must never drag a
+// candidate up from the tail of the ranking just because it can be quoted.
+describe("classifyThreads with bridges", () => {
+  const bridged = (c: RelatedCandidate, sentence: string): RelatedCandidate => ({
+    ...c,
+    bridge: { sentence, anchor: "x" },
+  });
+  const SENTENCE = "The order consists of some 300 species grouped with squids.";
+
+  it("carries the bridge onto the chip it belongs to", () => {
+    const threads = classifyThreads(octopus, [
+      bridged(cand("Squid", "Superorder of cephalopods"), SENTENCE),
+    ]);
+    expect(threads[0].bridge?.sentence).toBe(SENTENCE);
+  });
+
+  it("prefers the explained candidate among equals, without changing the slot", () => {
+    // Both are "deeper" (title containment). The explained one should win the
+    // deeper slot, and still be labelled deeper.
+    const threads = classifyThreads(octopus, [
+      cand("Common octopus", "Species of cephalopod"),
+      bridged(cand("Giant Pacific octopus", "Species of cephalopod"), SENTENCE),
+      cand("Naval warfare", "Combat at sea"),
+    ]);
+    const deeper = threads.find((t) => t.kind === "deeper");
+    expect(deeper?.label).toBe("Giant Pacific octopus");
+  });
+
+  it("never promotes a bridged candidate from outside the relevance window", () => {
+    // morelike returns its 20 in relevance order. A quotable candidate ranked
+    // 12th is not worth losing the top one over: the feature would be making
+    // threads worse in order to make them explainable. Both octopus titles here
+    // are "deeper", so they compete for the same slot and only rank separates
+    // them. (The tangent slot keeps its own rule and is not asserted on: being
+    // the most lateral candidate is a reason to show something, bridged or not.)
+    const pool: RelatedCandidate[] = [cand("Common octopus", "Species of cephalopod")];
+    for (let i = 0; i < 15; i++) pool.push(cand(`Neighbour ${i}`, "Related thing"));
+    pool.push(bridged(cand("Giant Pacific octopus", "Species of cephalopod"), SENTENCE));
+    const deeper = classifyThreads(octopus, pool).find((t) => t.kind === "deeper");
+    expect(deeper?.label).toBe("Common octopus");
+  });
+
+  it("does promote one from inside the window, which is what the window is for", () => {
+    // Pins the other side of the bound: rank 11 is in, rank 16 is out. Measured
+    // over ten articles, 25 of 30 quotable candidates sit inside the top 12.
+    const pool: RelatedCandidate[] = [];
+    for (let i = 0; i < 11; i++) pool.push(cand(`Neighbour ${i}`, "Related thing"));
+    pool.push(bridged(cand("Explained neighbour", "Related thing"), SENTENCE));
+    const threads = classifyThreads(octopus, pool);
+    expect(threads.some((t) => t.label === "Explained neighbour")).toBe(true);
+  });
+
+  it("quotes one sentence once, across the three it shows", () => {
+    // A lead often explains several neighbours in one line. Three chips
+    // repeating it verbatim would look broken; the first keeps it.
+    const shared = "The order is grouped with squids, cuttlefish and nautiloids.";
+    const threads = classifyThreads(octopus, [
+      bridged(cand("Common octopus", "Species of cephalopod"), shared),
+      bridged(cand("Squid", "Superorder of cephalopods"), shared),
+      bridged(cand("Naval warfare", "Combat at sea"), shared),
+    ]);
+    expect(threads.filter((t) => t.bridge).length).toBe(1);
+    expect(threads[0].bridge?.sentence).toBe(shared);
+  });
+
+  it("leaves chips unbridged rather than inventing one", () => {
+    const threads = classifyThreads(octopus, [
+      cand("Squid", "Superorder of cephalopods"),
+      cand("Cuttlefish", "Order of cephalopods"),
+    ]);
+    expect(threads.every((t) => t.bridge === undefined)).toBe(true);
+  });
+});

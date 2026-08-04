@@ -28,7 +28,45 @@ import {
 import { fileKey } from "@/lib/imagecredit";
 import { topParagraphs } from "@/lib/extract";
 import { preprocessMath } from "@/lib/mathtext";
-import type { Card, ExtendedBody, RelatedCandidate } from "@/lib/types";
+import { leadLinks, pickBridges } from "@/lib/bridge";
+import type { Bridge, Card, ExtendedBody, RelatedCandidate } from "@/lib/types";
+
+/**
+ * The article's own lead, turned into "why is this thread here?" answers
+ * (Phase 28): for each candidate the lead actually links to, the sentence it is
+ * linked in. See lib/bridge.ts for the rules the quote has to pass.
+ *
+ * Costs ONE extra Wikimedia call per card, and buys the app its first honest
+ * answer to the question principle §2.1 promises. It is also entirely optional,
+ * so it is fetched on the terms an optional thing deserves: a short timeout, no
+ * retry, every failure swallowed. Threads are never delayed or lost for it.
+ */
+const BRIDGE_TIMEOUT_MS = 2500;
+
+async function leadBridges(
+  title: string,
+  candidateTitles: string[],
+): Promise<Map<string, Bridge>> {
+  if (candidateTitles.length === 0) return new Map();
+  try {
+    const parsed = await wikiParse(
+      { page: title, section: "0" },
+      { retries: 0, timeoutMs: BRIDGE_TIMEOUT_MS },
+    );
+    const html = (parsed as { parse?: { text?: string } })?.parse?.text;
+    if (!html) return new Map();
+    const links = leadLinks(html);
+    // The card shows the lead's first sentences, so the opening paragraph is
+    // what the reader is already looking at: `avoid` demotes it, and bridges
+    // come from further down the lead wherever the lead offers a choice.
+    const firstParagraph = htmlBlocks(html).find((b) => b.kind === "p");
+    return pickBridges(candidateTitles, links, {
+      avoid: firstParagraph?.kind === "p" ? firstParagraph.text : undefined,
+    });
+  } catch {
+    return new Map(); // no bridges; the chips read exactly as they did before
+  }
+}
 
 /** morelike related candidates for a title (client selects the diverse 3). */
 export async function wikiRelated(title: string): Promise<RelatedCandidate[]> {
@@ -55,9 +93,18 @@ export async function wikiRelated(title: string): Promise<RelatedCandidate[]> {
   const credits = await fetchImageCredits(
     candidates.map((c) => c.imageFile ?? "").filter(Boolean),
   );
+  // Relevance order matters here: when two candidates can only be explained by
+  // the same sentence, `pickBridges` gives it to the earlier one.
+  const bridges = await leadBridges(
+    title,
+    candidates.map((c) => c.pageTitle),
+  );
   return candidates.map((c) => {
     const credit = c.imageFile ? credits.get(fileKey(c.imageFile)) : undefined;
-    return credit ? { ...c, imageCredit: credit } : c;
+    const bridge = bridges.get(c.pageTitle);
+    return credit || bridge
+      ? { ...c, ...(credit ? { imageCredit: credit } : {}), ...(bridge ? { bridge } : {}) }
+      : c;
   });
 }
 
