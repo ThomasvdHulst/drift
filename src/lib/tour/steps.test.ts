@@ -193,11 +193,11 @@ describe("tour steps — the card's controls are all explained", () => {
     expect(banner!.advance).toBe("next");
   });
 
-  // Crossing realms is a single-realm intent, so the feed disables it whenever a
-  // focus is set. The orbit step turns a focus ON a few steps earlier, so the
-  // cross step MUST come later than the banner step that explains letting go,
-  // and the feed releases the focus as it opens (see drift/page.tsx). Without
-  // that the tour asks for a swipe it has itself just disabled.
+  // The orbit step turns a focus ON a few steps earlier, so the cross step has
+  // to come after the banner step that explains what a focus is. It no longer
+  // has to release it: crossing works under a focus (the focus goes dormant in
+  // the other realm and resumes when you return), so the orbit the reader just
+  // started survives the crossing instead of being confiscated by the tour.
   it("puts the cross-realm step after the orbit steps, never before", () => {
     expect(ids.indexOf("cross-realm")).toBeGreaterThan(ids.indexOf("orbit-banner"));
   });

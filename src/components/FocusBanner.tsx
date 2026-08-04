@@ -10,12 +10,18 @@ import { describeFocus } from "@/lib/focus";
 export function FocusBanner({
   focus,
   proximity,
+  releaseLabel = "Drift freely",
   onRelease,
 }: {
   focus: Focus;
-  // Orbit-only: a "how far from the seed" word ("nearby" … "far out"). Absent for
-  // a field focus (a field has no distance).
+  // The trailing word after the name: an orbit's distance from its seed, how far
+  // an artist drift has widened, or — when this focus belongs to the realm you
+  // are not currently in — where it resumes. Absent for a plain field focus.
   proximity?: string;
+  // What letting go does. "Drift freely" unless this focus is nested inside a
+  // broader one, where it names what you fall back to ("Back to Mathematics"):
+  // releasing must never be a surprise (§2.1).
+  releaseLabel?: string;
   onRelease: () => void;
 }) {
   return (
@@ -32,9 +38,9 @@ export function FocusBanner({
         <button
           type="button"
           onClick={onRelease}
-          className="ml-0.5 inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 font-semibold transition hover:bg-accent/20"
+          className="ml-0.5 inline-flex min-w-0 items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 font-semibold transition hover:bg-accent/20"
         >
-          Drift freely
+          <span className="truncate">{releaseLabel}</span>
           <svg
             width="11"
             height="11"

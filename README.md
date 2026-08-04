@@ -67,6 +67,8 @@ in `src/lib/*` (small, unit-tested, no React/DOM) so it can be reused by a futur
 - **`CLAUDE.md`** — working rules + hard-won technical facts.
 - **`docs/backend.md`** — accounts, cloud sync, and scaling.
 - **`docs/deploy.md`** — going live on Vercel + installing as a phone web-app.
+- **`docs/onboarding-prompt.md`** — paste-in orientation for a new AI session: what Drift is, what
+  to read, how work is done here, and a space to write what you want done today.
 
 ## Contact
 

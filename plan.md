@@ -5,15 +5,16 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 **tested with success**. Keep the "Current status" line accurate. Full product detail is in
 `drift-spec.md`; working rules are in `CLAUDE.md`.
 
-> ## Current status: 2026-08-01
+> ## Current status: 2026-08-04
 >
 > **Drift is live** at <https://www.usedrift.org> (Vercel + Supabase) as an installable PWA, in a
 > small friends-and-family beta. Two realms ship: **Encyclopedia** (Wikipedia) and **Gallery** (Art
 > Institute of Chicago, CC0).
 >
-> **Gates:** 869 unit tests green, `npm run build` and `npm run lint` clean, `npm run audit:contrast`
-> PASS (4,930 text nodes, 28 views x 2 themes). Backend: `npm run verify:supabase`,
-> `verify:social`, `verify:share`. Update these numbers when they change.
+> **Gates:** 897 unit tests green, `npm run build` and `npm run lint` clean, `npm run audit:contrast`
+> PASS (4,930 text nodes, 28 views x 2 themes; pass `BASE=http://localhost:3000` or it measures
+> nothing and still says PASS). Backend: `npm run verify:supabase`, `verify:social`, `verify:share`.
+> Update these numbers when they change.
 >
 > ### The compliance audit is fully implemented and closed out
 >
@@ -3867,6 +3868,55 @@ clean, `verify:share` 11/11, contrast PASS over **4,930 nodes across 28 views** 
 gesture layer are written for a screen the feed owns. Reusing them elsewhere is right, and the
 attribution machinery is the reason to, but check what they assume about their container before
 trusting a desktop screenshot. And verify at 390px in both auth states, not one of the four.
+
+---
+
+## Bug fix: a focused drift had no realm and no depth ✅ *(2026-08-04)*
+
+**The report, two halves of one missing idea.** (1) Drifting inside a field, a thread on a card led
+into the Gallery, and there was no way back: the drift was stuck in the Gallery while the banner still
+said "Within Mathematics". (2) Drifting in mathematics, circling one interesting page found there, and
+then letting that page go dropped the reader into a completely free drift instead of back into
+mathematics.
+
+**Cause.** A focus was a single value with **no realm** and **no depth**.
+
+- No realm meant the only defence against a focus that could not apply in the Gallery was to disable
+  crossing outright whenever a focus was set (`crossEnabled = canCross && !focus`). That read as
+  principled and behaved as a cage: threads stay free (§2.2), so a doorway thread could still carry a
+  focused drift across, and the control that would have brought it home was the one thing hidden.
+- No depth meant anchoring an orbit **overwrote** the field it was found in. "Done with this page,
+  back to mathematics" was not expressible, because nothing remembered mathematics.
+
+- [x] **A focus belongs to one realm** (`focusRealm`, `lib/focus.ts`): field, orbit and "in the news"
+      are Encyclopedia; a form slice and an artist are the Gallery. It steers only there. Carried into
+      the other realm it goes **dormant**, and the drift there is an ordinary free drift, because
+      pretending otherwise is the dishonest option.
+- [x] **Crossing is always available again.** The top-bar doorway and the sideways swipe work under a
+      focus, in both directions.
+- [x] **Coming back resumes it, and coming back lands *inside* it.** A crossing into a realm with a
+      live focus skips the doorway and draws its card from that focus (the same function a drift
+      uses), so you re-enter the field rather than land next to it under a banner claiming otherwise.
+- [x] **Focuses stack, broad to narrow.** Anchoring an orbit nests it inside the field or news drift
+      it was found in; releasing it falls back there with that pool intact. A second orbit replaces
+      the first rather than growing a stack to unwind, and choosing a new broad focus resets its
+      realm. Both realms can hold one at once.
+- [x] **The banner says which of these is true.** It names a dormant focus and where it resumes
+      ("Within Mathematics · resumes in the Encyclopedia"), and the release control names what letting
+      go lands you in ("Back to Mathematics") rather than always claiming "Drift freely" (§2.1).
+- [x] **The nesting survives a reload**, encoded as `under=<the parent's params>`, validated by
+      re-pushing it so a hand-edited URL cannot claim a nesting the app would never produce.
+- [x] The tour no longer has to confiscate the reader's orbit when its "cross realms" step opens; the
+      orbit survives the crossing, which demonstrates the feature better than taking it away.
+
+**Verified.** 897 unit tests (28 new, covering realm binding, push/release, the banner state and the
+URL round-trip), build + lint clean, and two Playwright passes over the running app: **21/21** (a field
+drift crossing to the Gallery and back into the field, an orbit nested in a field and released back
+into it, the URL at each step, and an orbit crossing out and back) and **11/11** (an orbit nested in an
+"in the news" drift, released back into a section whose pool carries on; a Gallery form slice crossing
+to the Encyclopedia and back into the slice). `audit:contrast` PASS over 3,361 nodes across 27 views ×
+2 themes (Papers off, no share token, so fewer views than the 4,930-node run above — run it with
+`BASE=http://localhost:3000`, the script defaults to port 3111).
 
 ---
 

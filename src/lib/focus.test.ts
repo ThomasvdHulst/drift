@@ -3,13 +3,30 @@ import {
   focusFromParams,
   focusToParams,
   focusBucket,
+  focusRealm,
+  focusForRealm,
+  focusUnder,
+  focusName,
+  bannerFocus,
+  pushFocus,
+  releaseFocusIn,
+  focusStackFromParams,
+  focusStackToParams,
+  writeFocusParams,
   describeFocus,
   sessionKey,
   SESSION_PARAMS,
+  FOCUS_PARAMS,
   type Focus,
 } from "./focus";
 
 const p = (qs: string) => new URLSearchParams(qs);
+
+const FIELD: Focus = { kind: "field", bucket: "mathematics", label: "Mathematics" };
+const ORBIT: Focus = { kind: "orbit", seedTitle: "Category theory", seedLabel: "Category theory" };
+const NEWS: Focus = { kind: "current", section: "sports", label: "Sports" };
+const ARTIST: Focus = { kind: "artist", artistId: "40610", label: "Vincent van Gogh" };
+const ORBIT_OCTOPUS: Focus = { kind: "orbit", seedTitle: "Octopus", seedLabel: "Octopus" };
 
 // The key /drift compares each render to decide "are these params still the
 // session I am showing?". It exists because reading the params once per MOUNT
@@ -290,5 +307,211 @@ describe("describeFocus", () => {
     expect(describeFocus({ kind: "current", section: "sports", label: "Sports" })).toBe(
       "In the news: Sports",
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The focus stack. Two reader-reported bugs live here, and both were the same
+// missing idea: a focus is a promise about ONE realm's drift, and a broad one
+// can hold a narrow one inside it.
+// ---------------------------------------------------------------------------
+
+describe("focusRealm", () => {
+  it("puts a field, an orbit and a news drift in the Encyclopedia", () => {
+    expect(focusRealm(FIELD)).toBe("encyclopedia");
+    expect(focusRealm(ORBIT)).toBe("encyclopedia");
+    expect(focusRealm(NEWS)).toBe("encyclopedia");
+  });
+
+  it("puts a form slice and an artist in the Gallery", () => {
+    expect(focusRealm(ARTIST)).toBe("gallery");
+    expect(
+      focusRealm({ kind: "form", form: "painting", era: "all", label: "Paintings" }),
+    ).toBe("gallery");
+  });
+});
+
+describe("focusForRealm", () => {
+  // The trap: a thread carried a field drift into the Gallery, where the field
+  // could not apply, and crossing back was disabled *because* a focus was set.
+  it("steers only its own realm, and goes dormant in the other one", () => {
+    const stack = [FIELD];
+    expect(focusForRealm(stack, "encyclopedia")).toEqual(FIELD);
+    expect(focusForRealm(stack, "gallery")).toBeNull();
+  });
+
+  it("lets one realm's focus wait while another's steers", () => {
+    const stack = pushFocus([FIELD], ARTIST);
+    expect(focusForRealm(stack, "encyclopedia")).toEqual(FIELD);
+    expect(focusForRealm(stack, "gallery")).toEqual(ARTIST);
+  });
+
+  it("serves the innermost focus a realm has", () => {
+    expect(focusForRealm(pushFocus([FIELD], ORBIT), "encyclopedia")).toEqual(ORBIT);
+  });
+
+  it("is null for a realm nobody focused, and for an empty stack", () => {
+    expect(focusForRealm([], "encyclopedia")).toBeNull();
+    expect(focusForRealm([ARTIST], "encyclopedia")).toBeNull();
+  });
+});
+
+describe("pushFocus", () => {
+  it("nests a page orbit inside the field it was found in", () => {
+    expect(pushFocus([FIELD], ORBIT)).toEqual([FIELD, ORBIT]);
+  });
+
+  it("replaces an orbit with the next orbit, so the stack can't grow forever", () => {
+    const second: Focus = { kind: "orbit", seedTitle: "Topos", seedLabel: "Topos" };
+    const stack = pushFocus(pushFocus([FIELD], ORBIT), second);
+    expect(stack).toEqual([FIELD, second]);
+  });
+
+  it("resets its realm when a new BROAD focus is entered", () => {
+    // Picking a different field is starting over inside that realm, not
+    // burying the old one where releasing would resurface it.
+    const other: Focus = { kind: "field", bucket: "physics", label: "Physics" };
+    expect(pushFocus(pushFocus([FIELD], ORBIT), other)).toEqual([other]);
+  });
+
+  it("leaves the other realm's focus alone", () => {
+    expect(pushFocus([ARTIST, FIELD], ORBIT)).toEqual([ARTIST, FIELD, ORBIT]);
+  });
+});
+
+describe("releaseFocusIn", () => {
+  // The second reported bug: drifting in mathematics, circling one page found
+  // there, then letting that page go dropped the reader into a free drift
+  // instead of back into mathematics.
+  it("falls back to the focus the released one was nested inside", () => {
+    const stack = releaseFocusIn(pushFocus([FIELD], ORBIT), "encyclopedia");
+    expect(stack).toEqual([FIELD]);
+    expect(focusForRealm(stack, "encyclopedia")).toEqual(FIELD);
+  });
+
+  it("frees the realm once the last focus in it is released", () => {
+    expect(releaseFocusIn([FIELD], "encyclopedia")).toEqual([]);
+  });
+
+  it("touches nothing when that realm has no focus", () => {
+    expect(releaseFocusIn([ARTIST], "encyclopedia")).toEqual([ARTIST]);
+    expect(releaseFocusIn([], "gallery")).toEqual([]);
+  });
+
+  it("releases the named realm's focus, never the other realm's", () => {
+    expect(releaseFocusIn([FIELD, ARTIST], "encyclopedia")).toEqual([ARTIST]);
+  });
+});
+
+describe("focusUnder", () => {
+  it("names what letting go lands you in, or nothing", () => {
+    expect(focusUnder(pushFocus([FIELD], ORBIT), "encyclopedia")).toEqual(FIELD);
+    expect(focusUnder([FIELD], "encyclopedia")).toBeNull();
+    expect(focusUnder([], "encyclopedia")).toBeNull();
+  });
+});
+
+describe("bannerFocus", () => {
+  it("shows the focus steering this realm", () => {
+    expect(bannerFocus([FIELD], "encyclopedia")).toEqual({
+      focus: FIELD,
+      dormant: false,
+    });
+  });
+
+  // Silence here would be the dishonest option in the other direction: the drift
+  // WILL snap back into the field the moment you cross home, so the banner keeps
+  // saying it exists and marks it as not currently steering (§2.1).
+  it("keeps showing a focus waiting in the other realm, marked dormant", () => {
+    expect(bannerFocus([FIELD], "gallery")).toEqual({ focus: FIELD, dormant: true });
+  });
+
+  it("shows nothing when no focus is set at all", () => {
+    expect(bannerFocus([], "encyclopedia")).toBeNull();
+  });
+});
+
+describe("focusName", () => {
+  it("gives a bare name that reads inside a sentence", () => {
+    expect(`Back to ${focusName(FIELD)}`).toBe("Back to Mathematics");
+    expect(`Back to ${focusName(ORBIT)}`).toBe("Back to Category theory");
+    expect(`Back to ${focusName(NEWS)}`).toBe("Back to Sports news");
+    expect(`Back to ${focusName(ARTIST)}`).toBe("Back to Vincent van Gogh");
+  });
+});
+
+describe("the focus stack in the URL", () => {
+  it("round-trips a nested stack, so a reload resumes the nesting", () => {
+    const stack = pushFocus([FIELD], ORBIT);
+    const params = new URLSearchParams(focusStackToParams(stack));
+    expect(focusStackFromParams(params)).toEqual(stack);
+  });
+
+  it("round-trips a single focus with no `under` at all", () => {
+    const params = new URLSearchParams(focusStackToParams([FIELD]));
+    expect(params.get("under")).toBeNull();
+    expect(focusStackFromParams(params)).toEqual([FIELD]);
+  });
+
+  it("is empty when there is no focus", () => {
+    expect(focusStackToParams([])).toEqual({});
+    expect(focusStackFromParams(p("realm=encyclopedia"))).toEqual([]);
+  });
+
+  it("drops an `under` that is junk, oversized, or a nesting that can't happen", () => {
+    const junk = p("focus=orbit&title=Octopus&under=" + encodeURIComponent("focus=field&bucket=notatopic"));
+    expect(focusStackFromParams(junk)).toEqual([ORBIT_OCTOPUS]);
+    const huge = p("focus=orbit&title=Octopus&under=" + "x".repeat(600));
+    expect(focusStackFromParams(huge)).toEqual([ORBIT_OCTOPUS]);
+    // An orbit claiming to be nested inside another orbit: entering one replaces
+    // the other, so the outer claim collapses rather than being honoured.
+    const flat = p(
+      "focus=orbit&title=Octopus&under=" +
+        encodeURIComponent("focus=orbit&title=Topos"),
+    );
+    expect(focusStackFromParams(flat)).toEqual([ORBIT_OCTOPUS]);
+  });
+
+  it("keeps a cross-realm pair, so both realms' focuses survive a reload", () => {
+    const stack = pushFocus([FIELD], ARTIST);
+    expect(focusStackFromParams(new URLSearchParams(focusStackToParams(stack)))).toEqual(
+      stack,
+    );
+  });
+
+  it("names every param it writes in SESSION_PARAMS and FOCUS_PARAMS", () => {
+    // Same guard as the single-focus test above: a param the writer emits but
+    // sessionKey ignores means two different sessions share a key, and one a
+    // rewrite forgets to clear means a released focus haunts the next one.
+    for (const key of Object.keys(focusStackToParams(pushFocus([FIELD], ORBIT)))) {
+      expect(SESSION_PARAMS, `stack writes ${key}`).toContain(key);
+      expect(FOCUS_PARAMS, `stack writes ${key}`).toContain(key);
+    }
+  });
+});
+
+describe("writeFocusParams", () => {
+  it("clears the focus it replaces, keeping everything else", () => {
+    const sp = p("realm=encyclopedia&mode=endless&focus=current&section=sports&seed=Sports");
+    writeFocusParams(sp, [FIELD]);
+    expect(sp.get("section")).toBeNull();
+    expect(sp.get("focus")).toBe("field");
+    expect(sp.get("bucket")).toBe("mathematics");
+    expect(sp.get("realm")).toBe("encyclopedia");
+    expect(sp.get("mode")).toBe("endless");
+  });
+
+  it("strips every focus param when the last focus is released", () => {
+    const sp = p("realm=gallery&continue=abc&focus=orbit&title=Octopus&seed=Octopus&under=focus%3Dfield%26bucket%3Dmathematics");
+    writeFocusParams(sp, []);
+    for (const key of FOCUS_PARAMS) expect(sp.get(key), key).toBeNull();
+    expect(sp.get("continue")).toBe("abc");
+    expect(sp.get("realm")).toBe("gallery");
+  });
+
+  it("writes a nested stack the parser reads back", () => {
+    const sp = p("realm=encyclopedia");
+    writeFocusParams(sp, pushFocus([FIELD], ORBIT));
+    expect(focusStackFromParams(sp)).toEqual([FIELD, ORBIT]);
   });
 });

@@ -24,7 +24,20 @@ import {
 } from "@/lib/gesture";
 import { randomOffset, interleave } from "@/lib/discover";
 import { applyFeedback, type Interest, type Reaction } from "@/lib/interest";
-import { focusFromParams, focusBucket, sessionKey, type Focus } from "@/lib/focus";
+import {
+  focusStackFromParams,
+  focusBucket,
+  focusRealm,
+  focusForRealm,
+  focusUnder,
+  bannerFocus,
+  pushFocus,
+  releaseFocusIn,
+  writeFocusParams,
+  focusName,
+  sessionKey,
+  type Focus,
+} from "@/lib/focus";
 import {
   artistRingLabel,
   describeArtistRing,
@@ -197,12 +210,7 @@ function DriftFeed() {
   // is a no-op unless the tour is active and waiting on that event. `holdNav` is
   // true while the user is "looking around" in the tour: navigation is frozen so
   // they can read without drifting off the card they're studying.
-  const {
-    signal: tourSignal,
-    holdNav,
-    active: tourActive,
-    step: tourStep,
-  } = useTour();
+  const { signal: tourSignal, holdNav, active: tourActive } = useTour();
   const [shareCard, setShareCard] = useState<Card | null>(null);
   // Ad interstitial (Phase 21): `showAd` renders a calm ad card in place of the
   // knowledge card; `driftsSinceAdRef` counts drift-scrolls toward the next one.
@@ -237,12 +245,26 @@ function DriftFeed() {
   const [initialRealm, setInitialRealm] = useState<RealmId>("encyclopedia");
   const realmRef = useRef<RealmId>("encyclopedia");
   // A "focused drift" (Phase 18): confine drift to a field or spiral out from a
-  // seed. `focus` drives the banner; `focusRef` is the live truth read by the
-  // buffer refill + gesture handlers. Set from URL params on load, or mid-session
-  // via "Drift around this" / released via "Drift freely".
-  const [focus, setFocus] = useState<Focus | null>(null);
-  const focusRef = useRef<Focus | null>(null);
-  focusRef.current = focus;
+  // seed. Held as a STACK, because a focus is bound to one realm and can hold a
+  // narrower focus inside it (lib/focus.ts explains why both were needed). The
+  // state drives the banner; the ref is the live truth read by the buffer refill
+  // + gesture handlers. Set from URL params on load, or mid-session via "Drift
+  // around this" / released via the banner.
+  const [focusStack, setFocusStack] = useState<Focus[]>([]);
+  const focusStackRef = useRef<Focus[]>([]);
+  focusStackRef.current = focusStack;
+  /** The focus steering `rid`'s passive drift right now, or null. Async handlers
+   *  read this rather than a single "current focus", so a crossing that is still
+   *  in flight already asks about the realm it is landing in. */
+  function focusIn(rid: RealmId): Focus | null {
+    return focusForRealm(focusStackRef.current, rid);
+  }
+  /** Set the stack in one place, so the ref (read by in-flight fetches) can never
+   *  lag the state (read by the banner). */
+  function applyFocusStack(next: Focus[]) {
+    focusStackRef.current = next;
+    setFocusStack(next);
+  }
   // The live orbit engine (Phase 18, page-orbit focus): a widening BFS
   // neighbourhood of the seed, served lowest-ring-first. Null unless orbiting.
   // Phase 23 reuses it for the widening half of an "in the news" drift, seeded
@@ -332,10 +354,16 @@ function DriftFeed() {
   // self-contained for now (its cross-realm doorways arrive later), so it neither
   // offers the cross control nor reacts to a horizontal swipe.
   const canCross = realm === "encyclopedia" || realm === "gallery";
-  // While a focus is set, the cross-realm control is hidden and the horizontal
-  // swipe is inert: a focus is a single-realm intent (Phase 18). Release it
-  // ("Drift freely") to cross again.
-  const crossEnabled = canCross && !focus;
+  // Crossing is ALWAYS available in those two realms, focused or not. It used to
+  // be disabled while a focus was set ("a focus is a single-realm intent"), which
+  // read as principled and behaved as a trap: threads stay free, so a doorway
+  // thread could carry a focused drift into the other realm and then refuse to
+  // let it back. A focus now suspends itself when you leave its realm and resumes
+  // when you return (lib/focus.ts), which keeps the same intent without the cage.
+  const crossEnabled = canCross;
+  // The focus steering THIS realm's drift, if any (the stack may also hold one
+  // waiting in the other realm — see `banner` below).
+  const focus = focusForRealm(focusStack, realm);
   // Is the session orbiting the page this card shows? Drives the lit state of
   // the orbit control, so it reads as a toggle rather than a button that seems
   // to do nothing. Matched on the seed title, not merely "a focus exists": once
@@ -365,13 +393,24 @@ function DriftFeed() {
           articEraById(artistProfileRef.current.era)?.label,
         )
       : undefined;
-  // The focus banner's trailing word: an orbit's distance, how far an artist
-  // drift has widened, or — for an "in the news" drift you've read to the end —
-  // a persistent, honest "caught up" marker.
-  const bannerSuffix =
-    orbitProx ??
-    artistProx ??
-    (focus?.kind === "current" && caughtUp ? "caught up" : undefined);
+  // What the banner shows, which is not always what is steering: a focus you
+  // carried into the other realm is DORMANT there, and saying so is the whole
+  // point (§2.1). Without it the pill would keep promising "Within Mathematics"
+  // over a Gallery drift that is not in mathematics at all.
+  const banner = bannerFocus(focusStack, realm);
+  // Where letting go lands you: the broader focus this one was entered inside, or
+  // nothing (a free drift). Names the release control, so the tap is never a
+  // surprise.
+  const bannerRealm = banner ? focusRealm(banner.focus) : realm;
+  const revealed = banner ? focusUnder(focusStack, bannerRealm) : null;
+  // The focus banner's trailing word: where a dormant focus resumes, an orbit's
+  // distance, how far an artist drift has widened, or — for an "in the news"
+  // drift you've read to the end — a persistent, honest "caught up" marker.
+  const bannerSuffix = banner?.dormant
+    ? `resumes in the ${getRealm(bannerRealm).label}`
+    : (orbitProx ??
+      artistProx ??
+      (focus?.kind === "current" && caughtUp ? "caught up" : undefined));
   // The displayed card's app-wide id (thread cache key) and source-native id
   // (used to fetch related/summary). Distinct because two realms can share a
   // native title string.
@@ -442,11 +481,11 @@ function DriftFeed() {
         setEnded(false);
         setError(null);
         setInitialLoading(true);
-        setFocus(null);
+        setFocusStack([]);
         setCaughtUp(false);
         setEndless(false);
         setArtistRing(0);
-        focusRef.current = null;
+        focusStackRef.current = [];
         orbitRef.current = null;
         randomBufferRef.current = [];
         currentBufferRef.current = [];
@@ -471,10 +510,13 @@ function DriftFeed() {
       // always keeps its trail (that branch returns before we set endless).
       const wantEndless = params.get("mode") === "endless";
       // A focused drift (Phase 18): field (stay in one topic) or orbit (spiral
-      // out from a seed). Validated → an unknown/injected field bucket yields no
-      // focus. Applied only on a fresh session (a continued trail returns first).
-      const parsedFocus = focusFromParams(params);
-      focusRef.current = parsedFocus;
+      // out from a seed), plus whatever broader focus it was entered inside
+      // (`under`), so a reload resumes the nesting rather than flattening it.
+      // Validated → an unknown/injected field bucket yields no focus. Applied
+      // only on a fresh session (a continued trail returns first).
+      const parsedStack = focusStackFromParams(params);
+      const parsedFocus = parsedStack[parsedStack.length - 1] ?? null;
+      focusStackRef.current = parsedStack;
       if (!sessionIdRef.current) {
         sessionIdRef.current = crypto.randomUUID();
         sessionStartRef.current = Date.now();
@@ -692,8 +734,7 @@ function DriftFeed() {
                   seedLabel: card.displayTitle,
                 }
               : parsedFocus;
-          focusRef.current = effectiveFocus;
-          setFocus(effectiveFocus);
+          applyFocusStack([...parsedStack.slice(0, -1), effectiveFocus]);
           if (effectiveFocus.kind === "orbit") {
             orbitRef.current = initOrbit(card.pageTitle, card.displayTitle);
           }
@@ -889,16 +930,42 @@ function DriftFeed() {
     await doDrift();
   }
 
-  // The real drift (focused orbit / liked-thread follow / independent random),
-  // extracted so advance() can slip a calm ad in front of it every N drifts.
-  async function doDrift() {
+  // Hold the feed busy across an async move, without stealing the lock from an
+  // outer move that already holds it (a crossing INTO a focused realm runs the
+  // focused-card fetch inside its own busy window). Nested calls are no-ops.
+  async function withBusy<T>(fn: () => Promise<T>): Promise<T> {
+    if (busyRef.current) return fn();
+    busyRef.current = true;
+    setAdvancing(true);
+    try {
+      return await fn();
+    } finally {
+      busyRef.current = false;
+      setAdvancing(false);
+    }
+  }
+
+  /**
+   * The next card a POOL-SERVED focus should hand over — an "in the news" drift
+   * or a page orbit, both of which draw from their own pool rather than the
+   * discover buffer. Null when the focus has nothing left (a hint has been shown
+   * saying so). Bucket-pinned focuses aren't here: they pin `fetchDiscoverBatch`
+   * instead, and so are served by the ordinary buffer path.
+   *
+   * Shared by a passive drift and by a crossing that lands back in this focus's
+   * realm, so both keep the same promise.
+   */
+  async function nextFocusedCard(
+    f: Focus,
+    // Always a *drift* arrival (narrowed from ArrivedVia so a crossing can add
+    // `crossedFrom` to it, which only a drift or a thread carries).
+  ): Promise<{ card: Card; via: Extract<ArrivedVia, { type: "drift" }> } | null> {
     // "In the news" drift (Phase 23): serve the section's current articles,
     // best-ranked first, paging deeper into the pool as it empties. Once the
     // pool is genuinely dry we widen into the neighbourhood of the stories
     // themselves (a multi-seed orbit over everything we served) rather than
     // dropping you into a generic field, and the chip says so.
-    if (focusRef.current?.kind === "current") {
-      const f = focusRef.current;
+    if (f.kind === "current") {
       const via = (extra: {
         daysAgo?: number;
         widened?: boolean;
@@ -918,9 +985,7 @@ function DriftFeed() {
       if (!currentDryRef.current) {
         let nc = takeCurrentCard();
         if (!nc) {
-          busyRef.current = true;
-          setAdvancing(true);
-          try {
+          await withBusy(async () => {
             for (let guard = 0; guard < CURRENT_DRIFT_PAGES && !nc; guard++) {
               const { fresh, status } = await fetchCurrentPage(f.section);
               currentBufferRef.current.push(...fresh);
@@ -931,15 +996,9 @@ function DriftFeed() {
               }
               if (status === "error") break;
             }
-          } finally {
-            busyRef.current = false;
-            setAdvancing(false);
-          }
+          });
         }
-        if (nc) {
-          pushStep(nc.card, via({ daysAgo: nc.daysAgo }), "drift");
-          return;
-        }
+        if (nc) return { card: nc.card, via: via({ daysAgo: nc.daysAgo }) };
       }
 
       // 2) Pool dry: widen into the neighbourhood of the stories themselves (a
@@ -950,20 +1009,12 @@ function DriftFeed() {
       }
       let oc = takeOrbitCard();
       if (!oc) {
-        busyRef.current = true;
-        setAdvancing(true);
-        try {
+        oc = await withBusy(async () => {
           await refillOrbit();
-          oc = takeOrbitCard();
-        } finally {
-          busyRef.current = false;
-          setAdvancing(false);
-        }
+          return takeOrbitCard();
+        });
       }
-      if (oc) {
-        pushStep(oc.card, via({ widened: true }), "drift");
-        return;
-      }
+      if (oc) return { card: oc.card, via: via({ widened: true }) };
 
       // 3) Read the stories AND their neighbourhood dry: rather than dead-ending,
       //    gently re-show current articles you've already read (best-ranked, on a
@@ -972,49 +1023,56 @@ function DriftFeed() {
       const rc = takeRevisitCard();
       if (rc) {
         enterCaughtUp();
-        pushStep(rc.card, via({ daysAgo: rc.daysAgo, revisit: true }), "drift");
-      } else {
-        showHint(
-          "You've read everything in this story and around it. Pull a thread, or drift freely.",
-        );
+        return { card: rc.card, via: via({ daysAgo: rc.daysAgo, revisit: true }) };
       }
-      return;
+      showHint(
+        "You've read everything in this story and around it. Pull a thread, or drift freely.",
+      );
+      return null;
     }
 
     // Focused orbit drift (Phase 18): serve the seed's widening neighbourhood
     // (BFS, lowest ring first) instead of the topic buffer. Refill by expanding
     // the frontier via morelike (the healthy endpoint), on empty only.
-    if (focusRef.current?.kind === "orbit") {
-      const orbit = focusRef.current;
+    if (f.kind === "orbit") {
       let oc = takeOrbitCard();
       if (!oc) {
-        busyRef.current = true;
-        setAdvancing(true);
-        try {
+        oc = await withBusy(async () => {
           await refillOrbit();
-          oc = takeOrbitCard();
-        } finally {
-          busyRef.current = false;
-          setAdvancing(false);
-        }
+          return takeOrbitCard();
+        });
       }
       if (oc) {
-        pushStep(
-          oc.card,
-          {
+        return {
+          card: oc.card,
+          via: {
             type: "drift",
             reason: "orbit",
-            topic: { id: "orbit", label: orbit.seedLabel },
-            orbit: { seedLabel: orbit.seedLabel, ring: oc.ring },
+            topic: { id: "orbit", label: f.seedLabel },
+            orbit: { seedLabel: f.seedLabel, ring: oc.ring },
           },
-          "drift",
-        );
-      } else {
-        showHint(
-          "You've wandered this whole orbit. Pull a thread, or drift freely to go wider.",
-        );
+        };
       }
-      return;
+      showHint(
+        "You've wandered this whole orbit. Pull a thread, or drift freely to go wider.",
+      );
+      return null;
+    }
+
+    return null; // bucket-pinned focuses are served by the discover buffer
+  }
+
+  // The real drift (focused orbit / liked-thread follow / independent random),
+  // extracted so advance() can slip a calm ad in front of it every N drifts.
+  async function doDrift() {
+    // A focus steers the passive drift only inside its OWN realm: carried through
+    // a doorway into the other one it goes dormant (and the banner says so), so
+    // what happens here is an ordinary drift in the realm you are actually in.
+    const focused = focusIn(realmRef.current);
+    if (focused && (focused.kind === "current" || focused.kind === "orbit")) {
+      const next = await nextFocusedCard(focused);
+      if (next) pushStep(next.card, next.via, "drift");
+      return; // null ⇒ the pool is dry and has already said so
     }
 
     // At the live card → drift. By default every drift is an independent random
@@ -1027,9 +1085,10 @@ function DriftFeed() {
     // the liked-card shortcut is suspended while one is set: following a thread on
     // your behalf would quietly carry you out of the field you asked to stay in,
     // while the banner still said you were inside it. Pulling a thread yourself
-    // stays free, as it always is under a focus.
+    // stays free, as it always is under a focus. A DORMANT focus makes no such
+    // promise about this realm, so the shortcut is back on here.
     const likedCurrent =
-      !focusRef.current && current
+      !focused && current
         ? reactions[cardId(current.card)] === "like"
         : false;
     const choice = pickDriftNext(threads, { likedCurrent });
@@ -1077,8 +1136,7 @@ function DriftFeed() {
       // of thousands of pages and `refillRandomBuffer` has already reached deeper
       // before giving up, so an empty buffer here means the source is unavailable,
       // not that the field ran out. Say so, and keep the promise.
-      const t =
-        focusRef.current?.kind === "field" ? null : pickRandomThread(threads);
+      const t = focused?.kind === "field" ? null : pickRandomThread(threads);
       if (t) {
         pushStep(candidateToCard(t.candidate), { type: "drift" }, "drift");
       } else {
@@ -1102,27 +1160,44 @@ function DriftFeed() {
     setAdvancing(true);
     try {
       let landed: { card: Card; via: ArrivedVia } | null = null;
+      // A focus waiting in the realm we're crossing INTO is a promise we made
+      // and never withdrew, so the crossing has to land inside it: a doorway
+      // would put you on a genuinely related page that is nonetheless outside
+      // the field, under a banner insisting you were within it. Pool-served
+      // focuses come from the same function a drift uses; the bucket-pinned ones
+      // need nothing here, since #2's discover batch is already pinned to them.
+      const destFocus = focusIn(otherRealm);
+      if (destFocus) {
+        const next = await nextFocusedCard(destFocus);
+        if (next) {
+          landed = { card: next.card, via: { ...next.via, crossedFrom: fromRealm } };
+        } else if (destFocus.kind === "current" || destFocus.kind === "orbit") {
+          return; // the pool is dry and has said so; don't cross to a random card
+        }
+      }
 
       // #1 the current card's doorway (related crossing).
-      try {
-        const res = await fetch(doorwayUrl(fromRealm, current.card.pageTitle), {
-          signal: AbortSignal.timeout(6000),
-        });
-        const data = (await res.json()) as { candidate?: RelatedCandidate };
-        const cand = data?.candidate;
-        if (cand?.pageTitle && !seenRef.current.has(cardId(cand))) {
-          landed = {
-            card: candidateToCard(cand),
-            via: {
-              type: "thread",
-              label: cand.threadLabel || cand.displayTitle || cand.pageTitle,
-              fromTitle: current.card.pageTitle,
-              crossedFrom: fromRealm,
-            },
-          };
+      if (!landed && !destFocus) {
+        try {
+          const res = await fetch(doorwayUrl(fromRealm, current.card.pageTitle), {
+            signal: AbortSignal.timeout(6000),
+          });
+          const data = (await res.json()) as { candidate?: RelatedCandidate };
+          const cand = data?.candidate;
+          if (cand?.pageTitle && !seenRef.current.has(cardId(cand))) {
+            landed = {
+              card: candidateToCard(cand),
+              via: {
+                type: "thread",
+                label: cand.threadLabel || cand.displayTitle || cand.pageTitle,
+                fromTitle: current.card.pageTitle,
+                crossedFrom: fromRealm,
+              },
+            };
+          }
+        } catch {
+          /* no doorway — fall through to a fresh card */
         }
-      } catch {
-        /* no doorway — fall through to a fresh card */
       }
 
       // #2 no doorway → a fresh discover card in the other realm.
@@ -1192,12 +1267,13 @@ function DriftFeed() {
     // field focus in the Encyclopedia (Phase 18), and a form+era slice or an
     // artist in the Gallery (Phase 24). Otherwise the normal interest-weighted /
     // uniform topic mix (personalization is suspended while focused).
-    const focus = focusRef.current;
+    //
+    // Asked of the realm being FETCHED, not the one on screen: a crossing back
+    // into a focused realm fetches its first card while the feed still shows the
+    // realm it is leaving, and that batch has to arrive already inside the focus.
+    const focus = focusIn(rid);
     const pinned =
-      focus &&
-      ((focus.kind === "field" && rid === "encyclopedia") ||
-        ((focus.kind === "form" || focus.kind === "artist") &&
-          rid === "gallery"))
+      focus && (focus.kind === "field" || focus.kind === "form" || focus.kind === "artist")
         ? focus
         : null;
     const pinnedBucket = pinned
@@ -1353,7 +1429,7 @@ function DriftFeed() {
       randomBufferRef.current.push(...batch);
       return;
     }
-    const focused = focusRef.current;
+    const focused = focusIn(realmRef.current);
     // A field drift samples the top ~400 pages of its topic, so a long stay in
     // one field can leave a refill holding nothing but pages already seen. The
     // field itself is nowhere near empty (tens of thousands of pages), so reach
@@ -1540,11 +1616,9 @@ function DriftFeed() {
    *  releases the focus (the same thing the banner's "Drift freely" does), so the
    *  lit button can always be un-lit by the control that lit it. */
   function toggleOrbitHere(card: Card) {
-    if (
-      focusRef.current?.kind === "orbit" &&
-      focusRef.current.seedTitle === card.pageTitle
-    ) {
-      clearFocus();
+    const here = focusIn("encyclopedia");
+    if (here?.kind === "orbit" && here.seedTitle === card.pageTitle) {
+      releaseFocus("encyclopedia");
       return;
     }
     startOrbitHere(card);
@@ -1557,61 +1631,67 @@ function DriftFeed() {
       seedTitle: card.pageTitle,
       seedLabel: card.displayTitle,
     };
-    focusRef.current = f;
-    setFocus(f);
+    // Nested INSIDE whatever broader focus is already set here, not instead of
+    // it: finding a page worth circling while inside a field is the ordinary way
+    // this happens, and letting the orbit go should return you to that field
+    // rather than to a free drift you never asked for.
+    applyFocusStack(pushFocus(focusStackRef.current, f));
     orbitRef.current = initOrbit(card.pageTitle, card.displayTitle);
     randomBufferRef.current = [];
-    // Re-anchoring here also leaves any "in the news" pool behind.
-    currentBufferRef.current = [];
-    currentSeedsRef.current = [];
-    currentOffsetRef.current = 0;
-    currentDryRef.current = false;
-    currentRevisitRef.current = [];
-    caughtUpRef.current = false;
-    setCaughtUp(false);
-    try {
-      const u = new URL(window.location.href);
-      u.searchParams.set("focus", "orbit");
-      u.searchParams.set("title", card.pageTitle);
-      u.searchParams.set("seed", card.displayTitle);
-      ["bucket", "section"].forEach((k) => u.searchParams.delete(k));
-      // The session-watching effect must read this as "already applied", not as a
-      // new session to start: the reader anchored an orbit on the card they are
-      // on, they did not ask to begin again somewhere else.
-      appliedKeyRef.current = sessionKey(u.searchParams);
-      window.history.replaceState(null, "", `${u.pathname}${u.search}`);
-    } catch {
-      /* non-fatal */
-    }
+    // Any "in the news" pool is left INTACT: an orbit anchored inside a news
+    // drift is nested inside it, so releasing the orbit picks that section back
+    // up where it was. (Its widening orbit state is the one thing lost, since
+    // the two share `orbitRef`; it simply rebuilds from the stories it served.)
+    writeFocusUrl(focusStackRef.current);
   }
 
-  // Release a focused drift ("Drift freely", Phase 18): drop the focus + its
-  // buffered cards / orbit so the next drift refills from the normal
-  // (interest-weighted) mix, and strip the focus params from the URL so a reload
-  // doesn't re-apply it. The trail continues seamlessly.
-  function clearFocus() {
-    focusRef.current = null;
-    setFocus(null);
-    orbitRef.current = null;
-    randomBufferRef.current = [];
-    currentBufferRef.current = [];
-    currentSeedsRef.current = [];
-    currentOffsetRef.current = 0;
-    currentDryRef.current = false;
-    currentRevisitRef.current = [];
-    caughtUpRef.current = false;
-    setCaughtUp(false);
+  /**
+   * Let go of the focus steering `rid` ("Drift freely" / tapping a lit orbit
+   * control again), revealing whatever broader focus it was entered inside —
+   * back to "Within Mathematics" after circling a page you found there — or a
+   * free drift if there was none. Only the released focus's own machinery is
+   * dropped; a revealed parent keeps its pool and carries straight on.
+   */
+  function releaseFocus(rid: RealmId) {
+    const released = focusForRealm(focusStackRef.current, rid);
+    if (!released) return;
+    applyFocusStack(releaseFocusIn(focusStackRef.current, rid));
+    if (released.kind === "orbit") orbitRef.current = null;
+    if (released.kind === "current") {
+      orbitRef.current = null; // the widening half of a news drift
+      currentBufferRef.current = [];
+      currentSeedsRef.current = [];
+      currentOffsetRef.current = 0;
+      currentDryRef.current = false;
+      currentRevisitRef.current = [];
+      caughtUpRef.current = false;
+      setCaughtUp(false);
+    }
+    if (released.kind === "artist") {
+      artistRingRef.current = 0;
+      setArtistRing(0);
+      artistOffsetRef.current = 0;
+    }
+    // Buffered cards were chosen under the promise just released, so drop the
+    // ones from that realm; another realm's leftovers are still good.
+    randomBufferRef.current = randomBufferRef.current.filter(
+      (bc) => realmOfSource(bc.card.source) !== rid,
+    );
+    writeFocusUrl(focusStackRef.current);
+  }
+
+  /** Rewrite the URL to spell the focus stack the session is actually in, so a
+   *  reload resumes it. The session-watching effect must read the rewrite as
+   *  "already applied", not as a new session to start: entering or releasing a
+   *  focus continues THIS drift, it does not ask to begin again somewhere else. */
+  function writeFocusUrl(stack: Focus[]) {
     try {
       const u = new URL(window.location.href);
-      ["focus", "bucket", "seed", "title", "section"].forEach((k) =>
-        u.searchParams.delete(k),
-      );
-      // Same as the orbit rewrite: letting a focus go continues THIS drift, so
-      // the effect must not read the stripped URL as a request to start over.
+      writeFocusParams(u.searchParams, stack);
       appliedKeyRef.current = sessionKey(u.searchParams);
       window.history.replaceState(null, "", `${u.pathname}${u.search}`);
     } catch {
-      /* URL API unavailable — non-fatal; focus is still cleared in memory */
+      /* URL API unavailable — non-fatal; the stack is still right in memory */
     }
   }
 
@@ -1664,25 +1744,15 @@ function DriftFeed() {
   const keyExtrasRef = useRef<{ pull: (i: number) => void; escape: () => void }>(
     { pull: () => {}, escape: () => {} },
   );
-  // The tour's "cross into the other realm" step cannot possibly work while a
-  // focus is set: crossing is a deliberately single-realm intent, so `crossEnabled`
-  // is false, the top bar's doorway control is not rendered at all and a sideways
-  // swipe is ignored. The step just before it now invites the reader to start an
-  // orbit, so without this the tour would spotlight a control that isn't there.
-  // Releasing here keeps the instruction honest; the banner step directly above
-  // has already explained what a focus is and how to let one go.
-  const focusedRef = useRef(false);
-  focusedRef.current = !!focus;
-  useEffect(() => {
-    if (tourStep?.id !== "cross-realm") return;
-    if (focusedRef.current) queueMicrotask(() => clearFocusRef.current());
-    // `clearFocus` is redefined every render; the ref keeps this effect keyed to
-    // the step alone, so it fires once when that step opens.
-  }, [tourStep?.id]);
-  const clearFocusRef = useRef<() => void>(() => {});
+  // The tour's "cross into the other realm" step used to have to release the
+  // reader's focus as it opened, because crossing was disabled whenever one was
+  // set — the step just before it invites them to start an orbit, so the tour
+  // would otherwise spotlight a control that wasn't rendered. Crossing now works
+  // under a focus (it goes dormant in the other realm and resumes when you come
+  // back), so the step needs nothing: the orbit the reader just started survives
+  // the crossing, which is a better demonstration than confiscating it.
 
   useEffect(() => {
-    clearFocusRef.current = clearFocus;
     advanceRef.current = advance;
     backRef.current = goBack;
     keyExtrasRef.current = {
@@ -1853,8 +1923,17 @@ function DriftFeed() {
         onEnd={endSession}
       />
 
-      {focus && current && (
-        <FocusBanner focus={focus} proximity={bannerSuffix} onRelease={clearFocus} />
+      {banner && current && (
+        <FocusBanner
+          focus={banner.focus}
+          proximity={bannerSuffix}
+          // Letting go says where it lands you, because with nesting that is no
+          // longer always "drift freely" (§2.1).
+          releaseLabel={
+            revealed ? `Back to ${focusName(revealed)}` : "Drift freely"
+          }
+          onRelease={() => releaseFocus(bannerRealm)}
+        />
       )}
 
       <main className="relative min-h-0 flex-1">
