@@ -90,6 +90,43 @@ export function mainLine(steps: TrailStep[]): number[] {
   return out;
 }
 
+/**
+ * The far end of the line that continues from `i`: its first child, then that
+ * child's first child, down to a leaf.
+ *
+ * This is what makes a `pos`/`tip` pair valid. The feed reads `pathTo(tip)` and
+ * locates `pos` on it, so a tip that is not DOWNSTREAM of `pos` yields a path
+ * `pos` is not on, and the rail then highlights the root while the card shows
+ * something else entirely. Any landing that does not happen by walking —
+ * switching branches, reopening a saved trail at a stop (Phase 30) — has to
+ * compute its tip through here rather than reaching for `steps.length - 1`,
+ * which after a fork belongs to whichever branch was made last.
+ *
+ * It cannot loop: a child's index is always greater than its parent's (see
+ * `parentOf`), so each hop moves strictly forward through a finite array.
+ */
+export function tipOf(steps: TrailStep[], i: number): number {
+  if (i < 0 || i >= steps.length) return i;
+  const kids = childrenOf(steps);
+  let cur = i;
+  while (kids[cur].length > 0) cur = kids[cur][0];
+  return cur;
+}
+
+/**
+ * Every step nothing continues from: where the trail actually came to rest.
+ *
+ * In reading order, so a sentence listing them names them in the order the map
+ * draws them. An unbranched trail has exactly one, which is why the surfaces
+ * that say anything about this only speak when there are two or more.
+ */
+export function leavesOf(steps: TrailStep[]): number[] {
+  const kids = childrenOf(steps);
+  return readingOrder(steps)
+    .map((p) => p.index)
+    .filter((i) => kids[i].length === 0);
+}
+
 /** Where a step sits once the tree is flattened for reading or drawing. */
 export interface BranchPlace {
   index: number;

@@ -5,14 +5,14 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 **tested with success**. Keep the "Current status" line accurate. Full product detail is in
 `drift-spec.md`; working rules are in `CLAUDE.md`.
 
-> ## Current status: 2026-08-04
+> ## Current status: 2026-08-07
 >
 > **Drift is live** at <https://www.usedrift.org> (Vercel + Supabase) as an installable PWA, in a
 > small friends-and-family beta. Two realms ship: **Encyclopedia** (Wikipedia) and **Gallery** (Art
 > Institute of Chicago, CC0).
 >
-> **Gates:** 995 unit tests green, `npm run build` and `npm run lint` clean, `npm run audit:contrast`
-> PASS (3,579 text nodes, 29 views x 2 themes; pass `BASE=http://localhost:3000` or it measures
+> **Gates:** 1,014 unit tests green, `npm run build` and `npm run lint` clean, `npm run audit:contrast`
+> PASS (3,643 text nodes, 30 views x 2 themes; pass `BASE=http://localhost:3000` or it measures
 > nothing and still says PASS). Backend: `npm run verify:supabase`, `verify:social`, `verify:share`.
 > Update these numbers when they change.
 >
@@ -39,11 +39,11 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 >
 > ### Where things stand
 >
-> **Shipped:** Phases 1, 2, 4, 5, 6, 8, 9, 10, 13, 14, 15, 18, 19, 20, 22, 23, 24, 25, 26, 28, 29. The
-> core drift loop, directional threads, trails and the trail-map reward, the Atlas, the interest
+> **Shipped:** Phases 1, 2, 4, 5, 6, 8, 9, 10, 13, 14, 15, 18, 19, 20, 22, 23, 24, 25, 26, 28, 29, 30.
+> The core drift loop, directional threads, trails and the trail-map reward, the Atlas, the interest
 > model, accounts and cloud sync, friends and sharing, cross-realm doorways, focused drift (field,
 > orbit, in the news), branded email, the guided tour, the contact form, WCAG 2.2 AA colour contrast,
-> article tables, and branching trails.
+> article tables, branching trails, and branching as a move the reader makes and sees.
 >
 > **Behind a flag:** Phase 17 **Papers** (arXiv), `NEXT_PUBLIC_REALM_PAPERS=1`. ⚠️ Do not enable in
 > production before the two compliance items noted at the flag in `src/lib/realms/index.ts` (audit
@@ -4119,6 +4119,105 @@ trail rows is now 60s; the row was also measured directly, both themes, to prove
 **Deliberately not built: packing lanes.** Two branches that could share a column keep their own,
 because an edge arriving in a column directly under an unrelated branch's tail reads as a
 continuation of it. Width is cheaper than that confusion; the map already scrolls.
+
+---
+
+## Phase 30: branching as a move you make ✅ *(2026-08-07)*
+
+**Why.** Phase 29 built the tree and every surface reads it correctly. The *experience* of it was
+unfinished, in three ways that reading the code made plain:
+
+1. **One of the two ways to make a branch was invisible.** `pushStep` stopped truncating, so going
+   back and pulling a thread forks — and nothing said so. You found out at the exit screen. That is
+   a §2.1 failure, and it is why branches felt rare: the mechanism existed, unadvertised.
+2. **A branch you left became unreachable.** `tip` moved onto the new line and never moved back, so
+   `advance()` walked toward it and the rail drew only it. Cards you had actually read had no route
+   to them for the rest of the session, which is the opposite of agency (§2.2).
+3. **A saved trail was a closed artifact.** It could be rejoined at its tip, or through a door it
+   happened to have RECORDED. There was no way to stand on stop 4 of last week's trail.
+
+Reader-facing vocabulary settled here: the noun is **branch**, the verb is **go another way**.
+"Fork" stays a code word and appears in no copy.
+
+### The move is named (M1)
+
+- [x] The chip heading reads **"Another way from here"** whenever `pos !== tip` — the same test the
+      bottom nav already uses for its "Return" label. `CardView` takes a `revisiting` prop; the
+      share page and the landing demo pass nothing and are untouched.
+- [x] The transient toast carries whether the move forked: **"New branch: X…"** instead of
+      "Following: X…", and holds a little longer (1.6s) because it is saying something about the
+      shape of the session rather than narrating a hop.
+
+### The fork has a switch (M2)
+
+- [x] **`tipOf(steps, i)`** (pure, tested) — follow the first child to a leaf. This is the rule that
+      makes a `pos`/`tip` pair legal: the feed reads `pathTo(tip)` and locates `pos` on it, so a tip
+      that is not downstream of `pos` yields a path `pos` is not on, and the rail then highlights
+      the root while the card shows something else. A test asserts the property directly, including
+      that `steps.length - 1` does NOT have it once a trail forks.
+- [x] **"Two ways from here"** renders on a stop with more than one child: one quiet outline button
+      per way, the line being read marked with a dot **and `aria-current`** (that is the question
+      the control exists to answer, so it belongs in the accessible tree too). Stepping onto one
+      moves `pos` and `tip` together. Deliberately outlined, not filled: these lead somewhere you
+      have already been and must not compete with the chips, which are the ways onward.
+- [x] ⚠️ **The strip sits OUTSIDE `data-tour="card-threads"`.** That marker means "a thread chip" to
+      the tour and to every script that drives the feed; a way-switch answering to it would be read
+      as a direction onward, which is the one thing it is not.
+
+### Where the trail ended (M3)
+
+- [x] **`leavesOf(steps)`** (pure, tested) + `TrailEndings`: *"This trail ended in two places: 1991
+      Mount Unzen eruption and Mount Pinatubo."* On the exit screen and on `/trails/[id]`, under the
+      map, **and nothing at all on an unbranched trail** — one ending is not an observation, and an
+      app that announces the ordinary is one you stop reading. Outside the `mapRef` element, so the
+      PNG export is unchanged.
+- [x] `src/lib/text.ts`: `sentenceList` + `countWord`, replacing the private `joinTitles` that
+      `UnopenedPage` was carrying.
+
+### A saved trail is a tree you can grow (M4)
+
+- [x] **`?continue=<id>&from=<stop>`.** `stopBranchHref` / `parseStopParam` live beside the door
+      pair in `doors.ts`, because a door is the SPECIAL case of this: it names a stop *and* a
+      destination. The general case names only the stop and fetches the threads live, which is what
+      lets an old trail grow a line it never recorded a door for.
+- [x] ⚠️ **`from` had to join `SESSION_PARAMS`**, exactly as `door` did — otherwise
+      `?continue=X&from=4` is the same session key as `?continue=X`, the load effect returns early
+      and the landing silently never happens.
+- [x] The landing computes `tip` through `tipOf`, never `steps.length - 1`, which after a fork
+      belongs to whichever branch was made last and may not pass through `from` at all.
+- [x] **`GoAnotherWay` on `/trails/[id]`**, collapsed by default — and that is the point, not a
+      compromise: twenty stops sitting open under the map turns a finished thing into a to-do list
+      (§2.4). Stops in reading order, indented by lane, with a `two ways` marker only where the
+      trail already forked.
+- [x] Two behaviours from one mechanism: an **interior stop** lands with `pos !== tip`, so a thread
+      pull branches; a **leaf** lands with `pos === tip`, so drifting onward continues that line.
+      Resuming an abandoned branch fell out for free.
+
+**Deliberate limitation:** from an interior stop the forward control still says "Return" and walks
+the line you already took, so a *drift* cannot start a branch there — only a thread pull can. That
+matches the existing back-nav semantics and was not worth changing here.
+
+### A bug the verification found
+
+**Both ways at a fork were titled "Mount Unzen".** Threads are selected against the seen-set when
+they are fetched and then cached per card, so a stop you come BACK to still offers whatever you read
+after leaving it — and pulling that forks to a page already on the trail. Latent since Phase 29;
+Phase 30 makes it common (it invites revisiting) and makes it absurd (a "two ways from here" switch
+offering the same word twice is a lie about the shape of the trail). **`threadsNotInTrail`** (pure,
+3 tests) filters the chip row against the trail's own pages. Against the TRAIL, not the whole
+seen-list: threads were already selected against that, and the only staleness is what this trail
+picked up since — narrowing to it repairs the leak without quietly emptying the chip row.
+
+**Verified.** 1,014 unit tests (19 new), build and lint clean. **Playwright over the running app,
+28/28 across two scripts**: the heading changes on a revisit; the fork announces itself; forking
+grows the trail 4 → 5 instead of truncating it; the switch offers exactly the fork's two children
+with the read line marked; clicking the other lands exactly on it, adds no stop, and walking forward
+from there reaches the tip that had been abandoned; the exit screen names both endings and an
+unbranched trail says nothing; and a saved trail reopens at `?…&from=1` with all 5 stops intact,
+reads as revisiting, and grows to 6 when a thread is pulled. `audit:contrast` **PASS**, 3,643 nodes
+over 30 views × 2 themes, with a new `[feed, at a fork]` row that walks three cards, backs up two
+and forks so the mid-feed text is measured rather than assumed — a probe replaying that row confirms
+it reaches the state, since a row that quietly measured an ordinary card would still have said PASS.
 
 ---
 

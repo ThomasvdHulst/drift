@@ -7,6 +7,7 @@ import type { RealmId } from "@/lib/realms/types";
 import { summaryUrl, getRealm } from "@/lib/realms";
 import { proximityWord } from "@/lib/orbit";
 import { freshnessWord } from "@/lib/current";
+import { countWord } from "@/lib/text";
 import {
   licenseFor,
   MODIFICATION_CARD,
@@ -470,12 +471,80 @@ function ImageCreditChip({ credit }: { credit?: ImageCredit }) {
 //
 // Only one copy is ever visible, so `data-tour` sits on both and the tour picks
 // whichever is on screen.
+/** One of the ways a stop was left, for the switch below (Phase 30). */
+export interface Way {
+  /** Index into the trail's steps — what `onWay` is called with. */
+  index: number;
+  title: string;
+  /** Is this the line currently being read? */
+  onPath: boolean;
+}
+
+/**
+ * "Two ways from here" (Phase 30) — the switch at a stop the trail forked at.
+ *
+ * Without it a branch was a one-way door: `tip` moved onto the new line and the
+ * one you left had no route back, so cards you had actually read became
+ * unreachable for the rest of the session. That is the opposite of agency
+ * (§2.2), and it is why this is navigation rather than a feature.
+ *
+ * Deliberately quieter than the thread chips beside it: an outline, not a fill.
+ * These lead somewhere you have already been, and they must not compete with
+ * the chips, which are the ways ONWARD.
+ */
+function WaysFromHere({
+  ways,
+  onWay,
+}: {
+  ways: Way[];
+  onWay: (index: number) => void;
+}) {
+  // One way out is just the trail carrying on; the forward control already says
+  // that. This only has something to say at a genuine fork.
+  if (ways.length < 2) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-xs font-medium uppercase tracking-widest text-ink-soft">
+        {countWord(ways.length)} ways from here
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {ways.map((w) => (
+          <button
+            key={w.index}
+            type="button"
+            onClick={() => onWay(w.index)}
+            // "Which of these am I on" is the question the control exists to
+            // answer, so the answer is in the accessible tree, not only in a dot.
+            aria-current={w.onPath ? "true" : undefined}
+            className={`inline-flex max-w-full items-center gap-2 rounded-full border bg-paper-raised px-3.5 py-1.5 text-sm text-ink transition hover:border-accent/50 hover:text-accent-strong focus-ring ${
+              w.onPath ? "border-accent/50" : "border-line"
+            }`}
+          >
+            {w.onPath && (
+              <span
+                className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
+                aria-hidden="true"
+              />
+            )}
+            <span className="truncate max-w-[42vw] sm:max-w-[14rem]">
+              {w.title}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ThreadsSection({
   threads,
   threadsLoading,
   onThread,
   variant,
   innerRef,
+  revisiting,
+  ways,
+  onWay,
 }: {
   threads: Thread[];
   threadsLoading: boolean;
@@ -485,6 +554,9 @@ function ThreadsSection({
    *  page-flow card renders at every width (see CardView's `flow` prop). */
   variant: "pinned" | "inline" | "flow";
   innerRef?: React.Ref<HTMLDivElement>;
+  revisiting?: boolean;
+  ways?: Way[];
+  onWay?: (index: number) => void;
 }) {
   const CLASSES = {
     pinned:
@@ -495,19 +567,26 @@ function ThreadsSection({
     flow: "flex flex-col gap-3 border-t border-line pt-4",
   } as const;
   return (
-    <div
-      ref={innerRef}
-      data-tour="card-threads"
-      className={CLASSES[variant]}
-    >
-      <p className="text-xs font-medium uppercase tracking-widest text-ink-soft">
-        Pull a thread
-      </p>
-      <ThreadChips
-        threads={threads}
-        loading={threadsLoading}
-        onThread={onThread}
-      />
+    <div ref={innerRef} className={CLASSES[variant]}>
+      {/* Outside `data-tour="card-threads"` on purpose. That marker means "a
+          thread chip" to the tour and to every script that drives the feed, and
+          a way-switch button answering to it would be read as a direction
+          onward, which is the one thing it is not. */}
+      {ways && onWay && <WaysFromHere ways={ways} onWay={onWay} />}
+      <div data-tour="card-threads" className="flex flex-col gap-3">
+        <p className="text-xs font-medium uppercase tracking-widest text-ink-soft">
+          {/* Standing on a stop you already left, a chip does not continue the
+              line, it starts a new one. Phase 29 made that true and nothing said
+              so, which left the reader to discover the fork at the exit screen
+              (§2.1). Naming it here is the whole fix. */}
+          {revisiting ? "Another way from here" : "Pull a thread"}
+        </p>
+        <ThreadChips
+          threads={threads}
+          loading={threadsLoading}
+          onThread={onThread}
+        />
+      </div>
     </div>
   );
 }
@@ -539,6 +618,9 @@ export function CardView({
   onOrbit,
   orbiting = false,
   flow = false,
+  revisiting = false,
+  ways,
+  onWay,
 }: {
   card: Card;
   realm: RealmId;
@@ -577,6 +659,14 @@ export function CardView({
    * desktop thread bar (nothing to pin against).
    */
   flow?: boolean;
+  /** The reader is on a stop they already left (Phase 30), so pulling a thread
+   *  branches rather than continues. Feeds the heading above the chips. */
+  revisiting?: boolean;
+  /** The ways this stop was left, when it was left more than once, plus the
+   *  handler that steps onto one. Both absent outside the feed (a share page
+   *  and the landing demo have no trail to navigate). */
+  ways?: Way[];
+  onWay?: (index: number) => void;
 }) {
   // "Read more" reveals the first several BODY paragraphs (fetched lazily, once).
   // Local state resets per card because the parent re-keys CardView by pageTitle.
@@ -958,6 +1048,9 @@ export function CardView({
             onThread={onThread}
             variant={flow ? "flow" : "inline"}
             innerRef={inlineThreadsRef}
+            revisiting={revisiting}
+            ways={ways}
+            onWay={onWay}
           />
 
           {/* A quiet, static wayfinding cue for the overscroll-to-advance
@@ -1025,6 +1118,9 @@ export function CardView({
             threadsLoading={threadsLoading}
             onThread={onThread}
             variant="pinned"
+            revisiting={revisiting}
+            ways={ways}
+            onWay={onWay}
           />
         )}
       </div>

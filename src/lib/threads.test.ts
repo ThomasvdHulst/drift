@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { classifyThreads, isDeeper, isZoomOut } from "./threads";
-import type { Card, RelatedCandidate } from "./types";
+import { classifyThreads, isDeeper, isZoomOut, threadsNotInTrail } from "./threads";
+import type { Card, RelatedCandidate, Thread } from "./types";
 
 function card(pageTitle: string, description: string, extract: string): Card {
   return {
@@ -198,5 +198,39 @@ describe("classifyThreads with bridges", () => {
       cand("Cuttlefish", "Order of cephalopods"),
     ]);
     expect(threads.every((t) => t.bridge === undefined)).toBe(true);
+  });
+});
+
+describe("threadsNotInTrail", () => {
+  const t = (title: string): Thread => ({
+    candidate: { pageTitle: title, displayTitle: title, source: "wikipedia" },
+    label: title,
+  });
+  const s = (title: string, source = "wikipedia") => ({
+    card: { pageTitle: title, source },
+  });
+
+  it("drops a thread pointing at a page the trail already holds", () => {
+    // The stale-cache case: standing back on an earlier stop, its cached chips
+    // still offer what you went on to read from there.
+    const out = threadsNotInTrail([t("Krakatoa"), t("Lahar")], [
+      s("Stratovolcano"),
+      s("Krakatoa"),
+    ]);
+    expect(out.map((x) => x.label)).toEqual(["Lahar"]);
+  });
+
+  it("leaves an ordinary chip row untouched", () => {
+    const threads = [t("Krakatoa"), t("Lahar")];
+    expect(threadsNotInTrail(threads, [s("Stratovolcano")])).toEqual(threads);
+    expect(threadsNotInTrail(threads, [])).toEqual(threads);
+  });
+
+  it("compares by card id, so the same title in another realm survives", () => {
+    const gallery: Thread = {
+      candidate: { pageTitle: "129884", displayTitle: "Volcano", source: "artic" },
+      label: "Volcano",
+    };
+    expect(threadsNotInTrail([gallery], [s("Volcano")])).toEqual([gallery]);
   });
 });

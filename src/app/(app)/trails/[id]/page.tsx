@@ -18,6 +18,8 @@ import { trailRealms } from "@/lib/crossrealm";
 import { TrailMap } from "@/components/TrailMap";
 import { TrailStory, hasStory } from "@/components/TrailStory";
 import { DoorsLeft } from "@/components/DoorsLeft";
+import { GoAnotherWay } from "@/components/GoAnotherWay";
+import { TrailEndings } from "@/components/TrailEndings";
 import { doorsOf } from "@/lib/doors";
 import { useAuth } from "@/components/AuthProvider";
 import { ShareSheet } from "@/components/ShareSheet";
@@ -222,6 +224,18 @@ export default function TrailDetailPage() {
         className="mt-8 rounded-2xl bg-paper-raised p-4 shadow-sm ring-1 ring-line"
       >
         <TrailMap steps={trail.steps} mapRef={mapRef} />
+        {/* What the map draws, said out loud. Silent on a straight trail, which
+            is most of them. */}
+        <div className="px-1 empty:hidden">
+          <TrailEndings steps={trail.steps} />
+        </div>
+      </div>
+
+      {/* A saved trail is a tree you can come back and GROW (Phase 30), not only
+          one you can resume at its tip. Collapsed, because a finished thing
+          should not read as a list of things left to do (§2.4). */}
+      <div className="mt-4 rounded-2xl bg-paper-raised p-5 shadow-sm ring-1 ring-line">
+        <GoAnotherWay steps={trail.steps} trailId={trail.id} />
       </div>
 
       {hasStory(trail.steps) && (

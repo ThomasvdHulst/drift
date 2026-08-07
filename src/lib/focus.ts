@@ -202,6 +202,7 @@ export const SESSION_PARAMS = [
   "mode",
   "continue",
   "door",
+  "from",
 ] as const;
 
 /** Every param that spells a focus. Cleared before a new one is written, so a

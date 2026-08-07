@@ -156,6 +156,11 @@ export function doorHref(door: Door): string {
 // the door led existed nowhere afterwards. It now forks from that stop, and the
 // two places that can start such a fork (the exit screen, in session; a saved
 // trail, via the URL) build the same step through the same two functions.
+//
+// Phase 30 generalises the URL half. A door names a stop AND a destination; a
+// saved trail can now also be reopened at a stop with the destination left open,
+// and the threads fetched live. Both live here so that all of the saved-trail
+// re-entry vocabulary is in one file and cannot diverge.
 // ---------------------------------------------------------------------------
 
 /** Reopen a SAVED trail on a branch through one of its doors. Carries a
@@ -167,6 +172,31 @@ export function doorBranchHref(trailId: string, od: OpenDoor): string {
     door: `${od.stepIndex}.${od.doorIndex}`,
   });
   return `/drift?${params.toString()}`;
+}
+
+/**
+ * Reopen a SAVED trail STANDING ON one of its stops (Phase 30).
+ *
+ * A door is the special case of this: it names a destination as well as a stop.
+ * The general case names only the stop, and the threads are fetched live, which
+ * is what lets an old trail grow a line it never recorded a door for. Same
+ * reference-not-payload rule as `doorBranchHref`: the trail in storage stays the
+ * only description of itself.
+ */
+export function stopBranchHref(trailId: string, stepIndex: number): string {
+  const params = new URLSearchParams({
+    continue: trailId,
+    from: String(stepIndex),
+  });
+  return `/drift?${params.toString()}`;
+}
+
+/** Read `?from=<stop>` back, or null if it is missing or junk. Same posture as
+ *  `parseDoorParam` below: a URL is untrusted input, and a bad one must resume
+ *  the trail at its tip rather than fail to open it. */
+export function parseStopParam(value: string | null): number | null {
+  const m = /^(\d{1,6})$/.exec((value ?? "").trim());
+  return m ? Number(m[1]) : null;
 }
 
 /** Read `?door=<stop>.<door>` back, or null if it is missing or junk (it is a

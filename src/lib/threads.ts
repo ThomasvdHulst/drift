@@ -235,3 +235,28 @@ export function classifyThreads(
   }
   return out;
 }
+
+/**
+ * Threads minus any pointing at a page this trail ALREADY holds (Phase 30).
+ *
+ * Threads are chosen against the seen-set at the moment they are fetched, and
+ * the result is cached per card. Going back to an earlier stop reuses that
+ * cache, so its chips still offer whatever you went on to read AFTER standing
+ * there — and pulling one adds the same page to the trail a second time. Before
+ * branching that produced a confusing repeat; now it produces two siblings with
+ * one title, and a "two ways from here" switch offering the same word twice is
+ * simply a lie about the shape of the trail.
+ *
+ * Filtered against the trail rather than the whole seen-list on purpose. The
+ * seen-list spans every session ever, and threads were already selected against
+ * it; the only staleness is what THIS trail picked up since. Narrowing to that
+ * repairs the leak without quietly emptying the chip row.
+ */
+export function threadsNotInTrail(
+  threads: Thread[],
+  steps: { card: Pick<Card, "source" | "pageTitle"> }[],
+): Thread[] {
+  if (steps.length === 0) return threads;
+  const held = new Set(steps.map((s) => cardId(s.card)));
+  return threads.filter((t) => !held.has(cardId(t.candidate)));
+}

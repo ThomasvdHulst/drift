@@ -17,13 +17,14 @@ import {
   doorsFrom,
   engagedWith,
   parseDoorParam,
+  parseStopParam,
   type OpenDoor,
 } from "@/lib/doors";
-import { childrenOf, hasBranches, parentOf, pathTo } from "@/lib/branch";
+import { childrenOf, hasBranches, parentOf, pathTo, tipOf } from "@/lib/branch";
 import { candidateToCard } from "@/lib/wiki";
 import { cardId } from "@/lib/card";
 import { selectDiverseThreads, selectFacetThreads } from "@/lib/diversity";
-import { classifyThreads } from "@/lib/threads";
+import { classifyThreads, threadsNotInTrail } from "@/lib/threads";
 import { pickDriftNext, pickRandomThread } from "@/lib/drift";
 import {
   edgesOf,
@@ -87,11 +88,12 @@ import {
   cacheTopics,
   getSettings,
 } from "@/lib/storage";
-import { CardView } from "@/components/CardView";
+import { CardView, type Way } from "@/components/CardView";
 import { FeedTopBar, FeedBottomNav } from "@/components/FeedChrome";
 import { FocusBanner } from "@/components/FocusBanner";
 import { TrailMap } from "@/components/TrailMap";
 import { TrailStory, hasStory } from "@/components/TrailStory";
+import { TrailEndings } from "@/components/TrailEndings";
 import { DoorsLeft } from "@/components/DoorsLeft";
 import { UnopenedPage } from "@/components/UnopenedPage";
 import { useAuth } from "@/components/AuthProvider";
@@ -239,7 +241,14 @@ function DriftFeed() {
   const [tip, setTip] = useState(0);
   const [threadCache, setThreadCache] = useState<Record<string, Thread[]>>({});
   const [dir, setDir] = useState<Dir>("drift");
-  const [followingLabel, setFollowingLabel] = useState<string | null>(null);
+  // The transient "you are moving" toast. It carries WHETHER the move forked
+  // (Phase 30), because a thread pulled from a stop you already left starts a
+  // new line, and until now the only place that was ever said was the exit
+  // screen, minutes later.
+  const [following, setFollowing] = useState<{
+    label: string;
+    branch: boolean;
+  } | null>(null);
   const [hint, setHint] = useState<string | null>(null);
   const [ended, setEnded] = useState(false);
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
@@ -369,8 +378,11 @@ function DriftFeed() {
   // and which is not the first of them. Given as positions along `path`, since
   // that is what the rail indexes by. The rail marks them so a branch is never
   // drawn as if it were simply the next stop along.
+  // The tree, read once per render. The rail's fork ticks, the "ways from here"
+  // switch and the "will this pull branch?" test all ask the same question of it,
+  // and three separate traversals would be three chances to disagree.
+  const kids = childrenOf(history);
   const branchAt = (() => {
-    const kids = childrenOf(history);
     const marks = new Set<number>();
     path.forEach((i, k) => {
       const p = parentOf(history, i);
@@ -378,6 +390,14 @@ function DriftFeed() {
     });
     return marks;
   })();
+  // The ways this stop was left (Phase 30). More than one means the reader is
+  // standing on a fork and can step onto either line; the card renders nothing
+  // for a single way, which is the ordinary case.
+  const ways: Way[] = (kids[pos] ?? []).map((i) => ({
+    index: i,
+    title: history[i].card.displayTitle,
+    onPath: path.includes(i),
+  }));
   // Realm follows the displayed card's source (so back-nav across a crossing shows
   // the right chrome/threads), falling back to the seed realm before the first
   // card. Mirrored into realmRef in render so async handlers/effects read the live
@@ -457,7 +477,15 @@ function DriftFeed() {
   // Threads come from a per-card cache, so going back shows the same threads a
   // card had (fixing the "threads disappear on back" bug) and any viewed card
   // that isn't cached yet counts as still-loading.
-  const threads = displayedId ? (threadCache[displayedId] ?? []) : [];
+  // The chips for the card on screen, minus anything this trail already holds.
+  // The cache is built once per card, so a stop you come BACK to still offers
+  // whatever you read after leaving it, and pulling that would fork to a page
+  // already on the trail (lib/threads.ts). Costless on a forward walk, where
+  // nothing can match.
+  const threads = threadsNotInTrail(
+    displayedId ? (threadCache[displayedId] ?? []) : [],
+    history,
+  );
   const threadsLoading = !!displayedId && !(displayedId in threadCache);
   // The displayed card, mirrored to a ref so the (deferred) threads fetch can
   // classify it (Phase 6) without adding it to the effect deps. The abort on
@@ -618,8 +646,19 @@ function DriftFeed() {
               persistSeen([cardId(steps[steps.length - 1].card)]);
             }
             setHistory(steps);
-            setPos(steps.length - 1);
-            setTip(steps.length - 1);
+            // Where to stand. By default the trail's tip, which is where you
+            // left it; with `?from=<stop>` (Phase 30), the stop named, so an old
+            // trail can grow a new line from ANYWHERE rather than only from its
+            // end or through a door it happened to record. `tip` comes from
+            // `tipOf` and never from `steps.length - 1`, which after a fork is
+            // whichever branch was made last and may not pass through `from` at
+            // all. A junk or out-of-range stop resumes the trail, the same way a
+            // broken door does.
+            const from = parseStopParam(params.get("from"));
+            const at =
+              from !== null && from < steps.length ? from : steps.length - 1;
+            setPos(at);
+            setTip(tipOf(steps, at));
             return;
           }
         }
@@ -1909,10 +1948,27 @@ function DriftFeed() {
     setPos(target);
   }
 
+  /** Step onto one of the ways this stop was left (Phase 30).
+   *
+   *  `tip` has to move with `pos`, through `tipOf`, or the branch being read is
+   *  still the old one: the rail draws `pathTo(tip)` and looks for `pos` on it,
+   *  and a tip on a different line leaves `pos` off the path entirely. */
+  function onWay(index: number) {
+    if (ended || busyRef.current || holdNav) return;
+    if (index === pos || index < 0 || index >= history.length) return;
+    setDir("drift");
+    setPos(index);
+    setTip(tipOf(history, index));
+  }
+
   function onThread(thread: Thread) {
     if (ended || busyRef.current || !current || holdNav) return;
-    setFollowingLabel(thread.label);
-    window.setTimeout(() => setFollowingLabel(null), 950);
+    // A stop that already has a way out of it is being left a SECOND way, which
+    // is a branch. Said now, on the move itself, rather than discovered on the
+    // map afterwards (§2.1).
+    const branch = (kids[pos]?.length ?? 0) > 0;
+    setFollowing({ label: thread.label, branch });
+    window.setTimeout(() => setFollowing(null), branch ? 1600 : 950);
     // A doorway (or any candidate in the other realm) crosses realms — the realm
     // then follows the landed card automatically; we just record where we came
     // from for the honest "Crossed to …" line + a distinct trail-map/atlas edge.
@@ -2203,16 +2259,22 @@ function DriftFeed() {
                       : undefined
                   }
                   orbiting={orbitingThisCard}
+                  // Standing on a stop already left: the chips branch rather
+                  // than continue, and the fork has a switch (Phase 30). Same
+                  // test the bottom nav uses for its "Return" label.
+                  revisiting={pos !== tip}
+                  ways={ways}
+                  onWay={onWay}
                 />
               )}
             </motion.div>
           </AnimatePresence>
         )}
 
-        {followingLabel && (
-          <div className="pointer-events-none absolute inset-x-0 top-6 z-10 flex justify-center">
-            <span className="rounded-full bg-ink/85 px-4 py-2 text-sm font-medium text-paper shadow-lg">
-              Following: {followingLabel}…
+        {following && (
+          <div className="pointer-events-none absolute inset-x-0 top-6 z-10 flex justify-center px-4">
+            <span className="rounded-full bg-ink/85 px-4 py-2 text-center text-sm font-medium text-paper shadow-lg">
+              {following.branch ? "New branch" : "Following"}: {following.label}…
             </span>
           </div>
         )}
@@ -2452,6 +2514,11 @@ function EndOverlay({
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
           <TrailMap steps={history} mapRef={mapRef} />
+          {/* What the map draws, said out loud: a branched trail did not end
+              once. Renders nothing at all on a straight trail. */}
+          <div className="mt-4 empty:mt-0">
+            <TrailEndings steps={history} />
+          </div>
           {hasStory(history) && (
             <div className="mt-6 border-t border-line pt-5">
               <TrailStory steps={history} />

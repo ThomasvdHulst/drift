@@ -8,6 +8,8 @@ import {
   engagedWith,
   openDoorCounts,
   parseDoorParam,
+  parseStopParam,
+  stopBranchHref,
   DOOR_DWELL_MS,
 } from "./doors";
 import type { Door, Thread, TrailStep } from "./types";
@@ -243,5 +245,22 @@ describe("doorArrival", () => {
         { pageTitle: "2", source: "artic" },
       ).crossedFrom,
     ).toBeUndefined();
+  });
+});
+
+describe("reopening a saved trail at a stop", () => {
+  it("carries a reference to the stop, not the stop itself", () => {
+    expect(stopBranchHref("t-1", 4)).toBe("/drift?continue=t-1&from=4");
+  });
+
+  it("reads a stop reference back", () => {
+    expect(parseStopParam("4")).toBe(4);
+    expect(parseStopParam(" 0 ")).toBe(0);
+  });
+
+  it("refuses junk, so a bad link resumes the trail instead of breaking", () => {
+    for (const bad of [null, "", "-1", "1.5", "abc", "1e3", "9999999", "2 OR 1=1"]) {
+      expect(parseStopParam(bad)).toBeNull();
+    }
   });
 });

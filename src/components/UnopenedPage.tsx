@@ -6,6 +6,7 @@ import type { Card, TrailStep } from "@/lib/types";
 import { commonPages, stopsToProbe, type CommonPage } from "@/lib/common";
 import { summaryUrl } from "@/lib/realms";
 import { loadSeen } from "@/lib/storage";
+import { sentenceList } from "@/lib/text";
 
 // ---------------------------------------------------------------------------
 // "One you never opened" (Phase 28) — the exit screen's single question.
@@ -100,7 +101,8 @@ export function UnopenedPage({ steps }: { steps: TrailStep[] }) {
         One you never opened
       </h3>
       <p className="mt-2 text-sm leading-relaxed text-ink/75">
-        {joinTitles(page.from)} all point at the same page. You never went there.
+        {sentenceList(page.from)} all point at the same page. You never went
+        there.
       </p>
 
       {!revealed ? (
@@ -129,10 +131,4 @@ export function UnopenedPage({ steps }: { steps: TrailStep[] }) {
       )}
     </section>
   );
-}
-
-/** "A, B and C" — the stops the question is about, read as a sentence. */
-function joinTitles(titles: string[]): string {
-  if (titles.length <= 1) return titles[0] ?? "";
-  return `${titles.slice(0, -1).join(", ")} and ${titles[titles.length - 1]}`;
 }

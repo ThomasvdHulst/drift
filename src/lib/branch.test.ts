@@ -2,10 +2,12 @@ import { describe, it, expect } from "vitest";
 import {
   childrenOf,
   hasBranches,
+  leavesOf,
   mainLine,
   parentOf,
   pathTo,
   readingOrder,
+  tipOf,
 } from "./branch";
 import type { TrailStep } from "./types";
 
@@ -143,5 +145,62 @@ describe("readingOrder", () => {
 
   it("handles the empty trail", () => {
     expect(readingOrder([])).toEqual([]);
+  });
+});
+
+describe("tipOf", () => {
+  it("follows the first child to the end of the line", () => {
+    expect(tipOf(chain(4), 0)).toBe(3);
+    expect(tipOf(chain(4), 2)).toBe(3);
+  });
+
+  it("returns the step itself when nothing continues from it", () => {
+    const steps = chain(4);
+    expect(tipOf(steps, 3)).toBe(3);
+  });
+
+  it("takes the FIRST child at a fork, which is the line walked first", () => {
+    // trunk 0-1-2-3, branch 4-5 off step 1.
+    const steps = [...chain(4), step(4, 1), step(5)];
+    expect(tipOf(steps, 1)).toBe(3);
+    expect(tipOf(steps, 4)).toBe(5);
+  });
+
+  it("always returns a tip whose path contains the step asked about", () => {
+    // The property the feed depends on: `pathTo(tip)` must contain `pos`, or the
+    // rail highlights one stop while the card shows another. `steps.length - 1`
+    // does NOT have this property once a trail forks, which is why this exists.
+    const steps = [...chain(4), step(4, 1), step(5)];
+    for (let i = 0; i < steps.length; i++) {
+      expect(pathTo(steps, tipOf(steps, i))).toContain(i);
+    }
+    expect(pathTo(steps, steps.length - 1)).not.toContain(3);
+  });
+
+  it("is safe outside the array", () => {
+    expect(tipOf(chain(3), 9)).toBe(9);
+    expect(tipOf([], 0)).toBe(0);
+  });
+});
+
+describe("leavesOf", () => {
+  it("is the last step of an unbranched trail, and only that", () => {
+    expect(leavesOf(chain(4))).toEqual([3]);
+    expect(leavesOf(chain(1))).toEqual([0]);
+  });
+
+  it("names every end of a branched trail, in reading order", () => {
+    // trunk 0-1-2-3, branch 4-5 off step 1: it ended at 3 and at 5.
+    const steps = [...chain(4), step(4, 1), step(5)];
+    expect(leavesOf(steps)).toEqual([3, 5]);
+  });
+
+  it("counts a branch off a branch as its own end", () => {
+    const steps = [...chain(3), step(3, 1), step(4), step(5, 3)];
+    expect(leavesOf(steps)).toEqual([2, 4, 5]);
+  });
+
+  it("handles the empty trail", () => {
+    expect(leavesOf([])).toEqual([]);
   });
 });

@@ -81,6 +81,11 @@ const ROUTES = [
     endTrail: true,
     walkDoor: true,
   },
+  // Branching IN THE FEED (Phase 30). Standing back on a stop already left, the
+  // chips relabel themselves and a fork grows a "ways from here" switch. Both
+  // are mid-feed text that no other row reaches: the end-screen rows measure the
+  // branch only after it has been drawn on the map.
+  { path: "/drift?title=Volcano&seed=Volcano", branchInFeed: true },
   { path: "/drift?realm=gallery" },
   { path: "/drift?realm=papers" },
   { path: "/trails" },
@@ -222,6 +227,7 @@ for (const {
   selectReport,
   endTrail,
   walkDoor,
+  branchInFeed,
 } of ROUTES) {
   const label = keepModal
     ? `${route} [welcome modal]`
@@ -231,7 +237,9 @@ for (const {
         ? `${route} [report]`
         : endTrail
           ? `${route} [end screen${walkDoor ? ", branched" : ""}]`
-          : route;
+          : branchInFeed
+            ? `${route} [feed, at a fork]`
+            : route;
   for (const theme of THEMES) {
     let res;
     try {
@@ -241,7 +249,7 @@ for (const {
       // budget, which skipped the row rather than failing it.
       res = await page.goto(BASE + route, {
         waitUntil: "networkidle",
-        timeout: endTrail ? 60000 : 30000,
+        timeout: endTrail || branchInFeed ? 60000 : 30000,
       });
     } catch {
       console.log(`  ?  ${theme.padEnd(5)} ${label}  (timed out, skipped)`);
@@ -276,6 +284,35 @@ for (const {
         const details = page.getByRole("button", { name: /^Details$/ });
         if (await details.count()) await details.first().click().catch(() => {});
         await page.waitForTimeout(500);
+      }
+    }
+
+    // Walk a few stops, go back to an earlier one and fork it, then return to
+    // the fork. That leaves the feed showing the two things this row exists for:
+    // the "Another way from here" chip heading, and the "two ways from here"
+    // switch with one of its buttons marked as the line being read. Best-effort
+    // throughout: a thread that never loads simply measures a shorter trail.
+    if (branchInFeed) {
+      const gotIt = page.getByRole("button", { name: /^Got it$/ });
+      if (await gotIt.count()) await gotIt.first().click().catch(() => {});
+      for (let hop = 0; hop < 3; hop++) {
+        const chip = page.locator('[data-tour="card-threads"] button:visible').first();
+        await chip.waitFor({ timeout: 15000 }).catch(() => {});
+        if (!(await chip.count())) break;
+        await chip.click().catch(() => {});
+        await page.waitForTimeout(2500);
+      }
+      const back = page.getByRole("button", { name: "Previous stop" });
+      for (let i = 0; i < 2; i++) {
+        await back.click().catch(() => {});
+        await page.waitForTimeout(1200);
+      }
+      const chip = page.locator('[data-tour="card-threads"] button:visible').first();
+      if (await chip.count()) {
+        await chip.click().catch(() => {});
+        await page.waitForTimeout(2800);
+        await back.click().catch(() => {});
+        await page.waitForTimeout(1500);
       }
     }
 
