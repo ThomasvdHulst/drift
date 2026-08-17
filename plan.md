@@ -5,13 +5,13 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 **tested with success**. Keep the "Current status" line accurate. Full product detail is in
 `drift-spec.md`; working rules are in `CLAUDE.md`.
 
-> ## Current status: 2026-08-07
+> ## Current status: 2026-08-17
 >
 > **Drift is live** at <https://www.usedrift.org> (Vercel + Supabase) as an installable PWA, in a
 > small friends-and-family beta. Two realms ship: **Encyclopedia** (Wikipedia) and **Gallery** (Art
 > Institute of Chicago, CC0).
 >
-> **Gates:** 1,014 unit tests green, `npm run build` and `npm run lint` clean, `npm run audit:contrast`
+> **Gates:** 1,017 unit tests green, `npm run build` and `npm run lint` clean, `npm run audit:contrast`
 > PASS (3,643 text nodes, 30 views x 2 themes; pass `BASE=http://localhost:3000` or it measures
 > nothing and still says PASS). Backend: `npm run verify:supabase`, `verify:social`, `verify:share`.
 > Update these numbers when they change.
@@ -47,7 +47,9 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 >
 > **Behind a flag:** Phase 17 **Papers** (arXiv), `NEXT_PUBLIC_REALM_PAPERS=1`. ⚠️ Do not enable in
 > production before the two compliance items noted at the flag in `src/lib/realms/index.ts` (audit
-> M-12). Phase 21 **ads**, `NEXT_PUBLIC_ADS_ENABLED` OFF, see above.
+> M-12). Phase 21 **ads**, `NEXT_PUBLIC_ADS_ENABLED` OFF, see above. ⚠️ **`public/ads.txt` is NOT
+> part of that switch and must stay deployed** — it is how AdSense verifies we own the domain, and
+> it ships no Google code. See the 2026-08-17 entry at the bottom.
 >
 > **Hidden by owner decision (2026-07-27):** friends and sharing, behind `NEXT_PUBLIC_SOCIAL=1`.
 > Nothing was deleted; set that var to bring the whole layer back.
@@ -4218,6 +4220,72 @@ reads as revisiting, and grows to 6 when a thread is pulled. `audit:contrast` **
 over 30 views × 2 themes, with a new `[feed, at a fork]` row that walks three cards, backs up two
 and forks so the mid-feed text is measured rather than assumed — a probe replaying that row confirms
 it reaches the state, since a row that quietly measured an ordinary card would still have said PASS.
+
+---
+
+## `ads.txt` restored: the AdSense review had nothing to verify ✅ *(2026-08-17)*
+
+**The symptom.** The site was resubmitted to AdSense in early August. A week later the Sites list
+still read **Getting ready** with no status detail, and the **Ads.txt status** column read **Not
+found**. Confirmed from outside: `https://usedrift.org/ads.txt` and `https://www.usedrift.org/ads.txt`
+both returned **404**.
+
+**The cause is ours, and it was deliberate.** `public/ads.txt` was moved to `docs/ads.txt.pending`
+on 31 July as part of the compliance work (audit finding **Mi-6**). The instruction recorded in
+`docs/adsense-resubmission.md` and `docs/owner-actions.md` was to put it back *after* approval.
+
+**Why that ordering was wrong.** Google's own documentation treats `ads.txt` as more than a seller
+declaration: *"When you add a new site, Google verifies that you're the owner of the site either via
+your ad code, your ads.txt file, or a meta tag on your site."* Three signals, any one of them
+sufficient, and the review is a verification step before it is a content review. Drift was carrying
+**none of the three**. The loader snippet and the `google-adsense-account` meta tag are both gated
+behind `NEXT_PUBLIC_ADS_ENABLED`, which is `0` on purpose since M0, and the `ads.txt` was parked. So
+the site went into review with nothing proving the domain was ours, which is a coherent explanation
+for a review that neither passed nor failed for a week. Verified against the live site: no
+`/ads.txt`, no `google-adsense-account` meta tag, and zero occurrences of `adsbygoogle` in the
+served HTML.
+
+**Why restoring it does not reopen B-1.** This is the whole reason `ads.txt` is the right one of the
+three to use here. It is a 59-byte static text file served from our own domain: no Google script, no
+third-party request, no cookie, nothing to consent to. `NEXT_PUBLIC_ADS_ENABLED` stays `0` and "off
+means genuinely nothing" is untouched, byte for byte. The invariant is unchanged; what changed is
+the realisation that `ads.txt` was never inside it.
+
+**Mi-6's own reasoning has expired.** It gave two grounds, and called the finding "low consequence"
+while noting that publishing the file "is not a policy breach and creates no direct exposure". The
+first ground was that declaring an intent to monetise pushes the Article 3:15d BW imprint duty from
+arguable to certain: **`/legal` is live**, so that duty is discharged either way. The second was that
+a file pointing at a refused publisher id "serves no purpose": it demonstrably has one.
+
+- [x] **`public/ads.txt` restored** (`git mv` from `docs/ads.txt.pending`, so the file's history
+      survives). One record, `google.com, pub-3106905427372661, DIRECT, f08c47fec0942fa0`, trailing
+      newline intact.
+- [x] **A guard test, because no other gate could have caught this.** `ads.txt` is a static asset:
+      the build, the type checker and the linter all have no opinion about whether it exists, which
+      is exactly how it stayed gone for two and a half weeks. `ads.test.ts` now reads the real file
+      (the way `contrast.test.ts` reads the real stylesheet) and asserts it exists, carries no BOM,
+      ends with a newline, and holds a Google record whose four fields are the exact ones Google
+      parses: `google.com`, a bare `pub-` + 16 digits (**not** the `ca-pub-` form used by the ad
+      tag), `DIRECT`, and the certification id `f08c47fec0942fa0`. Proved it works by deleting the
+      file and watching the suite go red, then restoring it.
+- [x] **The reason is written where it will be read.** The doc comment on `adsenseScriptEnabled` in
+      `src/lib/ads.ts` used to end with a passing note that AdSense "also verifies via `ads.txt`";
+      it now says why that file is what lets the switch stay off, and says not to park it again.
+      `docs/adsense-resubmission.md` gains a section on the whole episode; `docs/owner-actions.md`
+      moves the item out of the parked "only if you decide to run ads" list.
+
+**Verified.** 1,017 unit tests green (2 new), `npm run build` and `npm run lint` clean (one
+pre-existing `exhaustive-deps` warning in `drift/page.tsx`, untouched). Served from a real
+production build: `GET /ads.txt` returns **200** with `Content-Type: text/plain; charset=UTF-8`,
+`Content-Length: 59`, and the correct record. Not verified from here, because it needs the deploy:
+whether Google flips the status to "Authorized". The apex 308-redirects to `www`, which Google
+documents as acceptable ("the root domain needs to return from, or redirect to, the ads.txt file",
+and `domain.com/ads.txt` to `www.domain.com/ads.txt` is named explicitly).
+
+**What this does not fix.** Verification is not approval. The "Low value content" refusal of July
+still stands on its own reasoning, and `docs/adsense-resubmission.md` still advises against
+resubmitting before roughly 20 October 2026 on domain age. This removes a blocker; it does not make
+the case.
 
 ---
 

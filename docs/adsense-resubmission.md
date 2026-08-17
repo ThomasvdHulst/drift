@@ -44,6 +44,41 @@ all are reachable from the footer on every public page.
 
 ---
 
+## The ads.txt hole (found 2026-08-17)
+
+**What happened.** The site was resubmitted in early August. A week later it was still sitting at
+**Getting ready** with **Ads.txt status: Not found**, and `https://usedrift.org/ads.txt` returned
+404 on both the apex and `www`.
+
+**Why.** `public/ads.txt` was moved to `docs/ads.txt.pending` on 31 July as part of the compliance
+work (audit finding Mi-6). Nothing broke it; it was removed on purpose, and the plan recorded here
+was to put it back *after* approval.
+
+**That ordering was wrong, and this is the part worth remembering.** AdSense does not treat
+`ads.txt` only as a seller declaration. It is one of **three interchangeable ways it verifies you
+own the domain**, alongside the AdSense code snippet and the `google-adsense-account` meta tag. The
+review cannot start until one of them is found. Drift had **none** of the three: the snippet and the
+meta tag are both gated behind `NEXT_PUBLIC_ADS_ENABLED`, which is deliberately `0`, and the
+`ads.txt` was parked. So the site was submitted for review with no way for Google to confirm it was
+yours, which is a plausible reason for a review that neither passed nor failed for over a week.
+
+**The fix.** `public/ads.txt` is restored. It is the right one of the three to use here, and the
+only one that costs nothing: it is a 59-byte text file served from our own domain. No Google script,
+no third-party request, no cookie, no consent question. `NEXT_PUBLIC_ADS_ENABLED` stays `0` and the
+"off means genuinely nothing" invariant from audit B-1 is untouched.
+
+Mi-6's own reasoning has also expired. It gave two grounds for parking the file: that it declared an
+intent to monetise, which pushed the Article 3:15d BW imprint duty from arguable to certain; and
+that a file pointing at a refused publisher id served no purpose. `/legal` is now live, so the first
+is moot, and the file demonstrably has a purpose, so the second is wrong.
+
+**What it does not fix.** Verification is not approval. The "Low value content" reasoning below
+still stands, the domain is still under a month past the point this doc said to wait for, and this
+change removes a blocker rather than making the case. Expect the same answer unless the age and
+indexing arguments have moved too.
+
+---
+
 ## Your checklist
 
 ### Now, once this is deployed
@@ -86,16 +121,17 @@ all are reachable from the footer on every public page.
       `0`. As of 31 July 2026 that switch governs *everything* Google: the loader script, the
       ownership meta tag and the consent gate. Turning it on before the gate is built would recreate
       the breach found at B-1 of the compliance audit.
-- [ ] **`public/ads.txt` is parked** at `docs/ads.txt.pending` (compliance audit Mi-6: it publicly
-      declared an intent to monetise while producing no revenue, which is one of the facts that
-      hardens the imprint obligation). Move it back to `public/ads.txt` on approval.
+- [x] **`public/ads.txt` is live again (restored 2026-08-17).** It was parked at
+      `docs/ads.txt.pending` on 31 July (compliance audit Mi-6) and that turned out to be the wrong
+      order. See "The ads.txt hole" below.
 
 ### If it is approved
 
 - [ ] **Set up the crawler login** so ads can serve inside the app. AdSense > Account > Access and
       authorization > Crawler login. This is the thing that does not exist until now.
-- [ ] **Restore `ads.txt`**: move `docs/ads.txt.pending` back to `public/ads.txt` and check it still
-      matches your publisher id.
+- [ ] **Check `ads.txt` says "Authorized"** in the Sites list. It is already deployed; if the status
+      is still "Not found" a few days after a deploy, confirm `https://usedrift.org/ads.txt` returns
+      the line over HTTP 200 and that the publisher id in it matches the account.
 - [ ] **Update `/privacy` and the `/faq` answer about ads** before flipping the switch. Both
       currently say there is no advertising cookie, which stops being true the moment the AdSense
       script loads. `privacy/page.tsx` already branches on `adsenseScriptEnabled`, so check what that

@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   parseAdsConfig,
   shouldShowAd,
@@ -138,5 +140,68 @@ describe("adsenseReady", () => {
     expect(
       adsenseReady({ enabled: false, mode: "adsense", every: 5, client: "ca-pub-1", slot: "2" }),
     ).toBe(false); // disabled
+  });
+});
+
+// ---------------------------------------------------------------------------
+// public/ads.txt — the one Google signal that is NOT behind the kill switch.
+//
+// AdSense verifies domain ownership by any one of three interchangeable signals:
+// the loader snippet, the `google-adsense-account` meta tag, or this file. The
+// first two require NEXT_PUBLIC_ADS_ENABLED and are therefore absent by design,
+// so with ads off this file is the ONLY thing telling Google the domain is ours.
+//
+// It was deleted once while ads were off (compliance audit Mi-6) and the site
+// then sat in "Getting ready" with "Ads.txt status: Not found" for a week, which
+// nothing in the code could have caught: it is a static asset, so no build, lint
+// or type check has an opinion about whether it exists. Hence this test. It reads
+// the real file, the way contrast.test.ts reads the real stylesheet.
+//
+// Google's parser is strict about the record shape and forgiving about nothing,
+// so the assertions are on the exact four fields rather than a loose match.
+// ---------------------------------------------------------------------------
+describe("public/ads.txt", () => {
+  const file = join(process.cwd(), "public", "ads.txt");
+  const raw = existsSync(file) ? readFileSync(file, "utf8") : "";
+
+  it("exists", () => {
+    // Spelled out, because the useful thing to know at 2am is not "ENOENT" but
+    // what deleting it costs: AdSense stops being able to verify the domain.
+    expect(
+      existsSync(file),
+      `${file} is missing. With NEXT_PUBLIC_ADS_ENABLED off this file is the only\n` +
+        `signal AdSense can use to verify we own the domain, so removing it stalls\n` +
+        `site review at "Getting ready" / "Ads.txt status: Not found". See lib/ads.ts.`,
+    ).toBe(true);
+  });
+
+  it("has no BOM and ends with a newline", () => {
+    // A UTF-8 BOM lands in the first field and makes the domain unrecognisable;
+    // a missing final newline is the single most reported cause of a record that
+    // exists but never validates.
+    expect(raw.charCodeAt(0)).not.toBe(0xfeff);
+    expect(raw.endsWith("\n")).toBe(true);
+  });
+
+  it("declares Google as a DIRECT seller with a well-formed publisher id", () => {
+    const records = raw
+      .split("\n")
+      .map((l) => l.split("#")[0].trim()) // `#` starts a comment (IAB spec)
+      .filter(Boolean);
+
+    const google = records.find((l) => l.startsWith("google.com,"));
+    expect(google, `no google.com record in:\n${raw}`).toBeDefined();
+
+    const [domain, publisher, relationship, authority] = google!
+      .split(",")
+      .map((f) => f.trim());
+    expect(domain).toBe("google.com");
+    // 16 digits after `pub-`, and NOT the `ca-pub-` form used by the ad tag:
+    // ads.txt takes the bare id and Google reads `ca-pub-…` as a different one.
+    expect(publisher).toMatch(/^pub-\d{16}$/);
+    expect(relationship).toBe("DIRECT");
+    // Google's certification authority id. A wrong or missing value here is what
+    // turns the status into "Unauthorized" rather than "Authorized".
+    expect(authority).toBe("f08c47fec0942fa0");
   });
 });

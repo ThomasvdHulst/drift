@@ -186,7 +186,14 @@ Ignore this section entirely unless §2 changed your mind. In order:
 
 - [ ] Get AdSense approval first. Not before roughly 20 October 2026, and re-read
       `docs/adsense-resubmission.md` before reapplying.
-- [ ] Move `docs/ads.txt.pending` back to `public/ads.txt`.
+- [x] **`public/ads.txt` is restored (2026-08-17), and it belongs before approval rather than
+      after.** The audit parked it at Mi-6 and the plan was to put it back once the account was
+      approved. That ordering was wrong: `ads.txt` is one of the three ways AdSense verifies that
+      you own the domain, so a site with no `ads.txt`, no ownership meta tag and no ad code has
+      nothing for the review to verify against. It is the only one of the three that ships no
+      Google code and sets no cookie, so it restores the verification signal without touching the
+      consent position. Mi-6's other reason (it hardens the imprint obligation) is spent: `/legal`
+      is live.
 - [ ] Upgrade to **Vercel Pro**. An advert makes the site commercial and Hobby does not permit that.
 - [ ] Accept the **Google Ads Data Processing Terms** inside the AdSense account.
 - [ ] Set up a **Google-certified IAB TCF v2.2 consent platform**. Drift's own consent gate makes you

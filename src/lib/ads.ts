@@ -76,8 +76,17 @@ export function shouldShowAd(driftsSinceAd: number, every: number): boolean {
  * and the copy that says so is true. On means the consent gate runs first and
  * nothing third-party loads before a choice.
  *
- * Ownership verification is not a reason to weaken this. AdSense also verifies via
- * `ads.txt` and via a site-level review that only needs the site reachable.
+ * Ownership verification is not a reason to weaken this, and `public/ads.txt` is
+ * why. AdSense verifies domain ownership by ANY ONE of three interchangeable
+ * signals: the loader snippet, the `google-adsense-account` meta tag, or the
+ * `ads.txt` record. The first two are gated here; the third is a static text file
+ * on our own domain that ships no Google code, makes no third-party request and
+ * sets no cookie. So it carries verification on its own while this returns false.
+ *
+ * That file was once removed while the switch was off (compliance audit Mi-6),
+ * which left the site with none of the three and a review that sat unresolved for
+ * a week (2026-08-17). Do not park it again: `ads.txt` is the reason the switch
+ * can stay off, not something the switch governs. `ads.test.ts` guards it.
  */
 export function adsenseScriptEnabled(cfg: AdsConfig): boolean {
   return cfg.enabled && !!cfg.client;
