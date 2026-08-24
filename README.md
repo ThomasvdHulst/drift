@@ -9,7 +9,7 @@ Sessions have a beginning (a topic seed), a middle (the trail), and an end (a sh
 **trail map** of where your curiosity wandered).
 
 Content comes from vetted, human-curated sources — **Wikipedia** (the Encyclopedia realm) and
-the **Art Institute of Chicago's** public-domain collection (the Gallery realm). AI only ever
+**The Metropolitan Museum of Art's** Open Access collection (the Gallery realm). AI only ever
 *reshapes*; it never invents facts.
 
 ## The anti-slot-machine principles (non-negotiable)

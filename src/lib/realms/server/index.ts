@@ -6,9 +6,6 @@
 import type { Card, ExtendedBody, RelatedCandidate } from "@/lib/types";
 import type { RealmId } from "../types";
 import { topicByKeyword } from "@/lib/topics";
-import { articBucketById } from "../artic.buckets";
-import { parseFormBucket } from "../artic.forms";
-import { parseArtistBucket } from "../artic.artist";
 import { arxivBucketById } from "../arxiv.categories";
 import {
   wikiRelated,
@@ -17,11 +14,12 @@ import {
   wikiDiscoverTopic,
 } from "./wikipedia";
 import {
-  articDiscover,
-  articRelated,
-  articSummary,
-  articExtended,
-} from "./artic";
+  metDiscover,
+  metRelated,
+  metSummary,
+  metExtended,
+  metValidateBucket,
+} from "./met";
 import {
   arxivDiscover,
   arxivRelated,
@@ -55,16 +53,16 @@ const encyclopedia: ServerRealm = {
 };
 
 const gallery: ServerRealm = {
-  // Three bucket shapes: a themed browse bucket, a Phase 24 "form:<form>:<era>"
-  // slice, or an "artist:<id>:<ring>" drift. Each resolves through its own
-  // parser, so an unknown or hand-edited value is rejected before it can reach
-  // the upstream query.
-  validateBucket: (b) =>
-    !!articBucketById(b) || !!parseFormBucket(b) || !!parseArtistBucket(b),
-  discover: ({ bucket, offset, limit }) => articDiscover(bucket, offset, limit),
-  related: (id) => articRelated(id),
-  summary: (id) => articSummary(id),
-  extended: (id) => articExtended(id),
+  // One bucket shape for now: a room in the museum. The Art Institute realm this
+  // replaces also understood "form:<form>:<era>" slices and "artist:<id>:<ring>"
+  // drifts; both were built on Elasticsearch aggregations the Met does not
+  // expose, and both come back in Phase B against the fields it does have.
+  // Anything else is rejected before it can reach the upstream query.
+  validateBucket: (b) => metValidateBucket(b),
+  discover: ({ bucket, offset, limit }) => metDiscover(bucket, offset, limit),
+  related: (id) => metRelated(id),
+  summary: (id) => metSummary(id),
+  extended: (id) => metExtended(id),
 };
 
 const papers: ServerRealm = {

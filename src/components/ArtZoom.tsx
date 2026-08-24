@@ -6,7 +6,15 @@ import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
 // A calm, fullscreen deep-zoom for an artwork (Phase 14 M-G2). Opened by tapping
 // the art on a Gallery card; loads the sanctioned larger public-domain image
-// (IIIF 1686px) and lets you pinch / double-tap / wheel to zoom and drag to pan.
+// (1686px, resized from the museum's original by /api/img/met) and lets you pinch
+// / double-tap / wheel to zoom and drag to pan.
+//
+// It shows something the WHOLE time it is loading. That image can be a megabyte
+// and the museum publishes no blur placeholder, so without a stand-in the reader
+// taps and gets a black void for a second or two, which reads as a broken app
+// rather than a loading one. `previewUrl` (a real small image) is preferred,
+// `blurDataUrl` is the older fallback, and a quiet pulsing label covers the case
+// where a card has neither.
 //
 // Rendered through a PORTAL to <body> so it visually escapes the card, but React
 // synthetic events still bubble through the COMPONENT tree (a portal's events
@@ -21,11 +29,13 @@ export function ArtZoom({
   src,
   alt,
   blurDataUrl,
+  previewUrl,
   onClose,
 }: {
   src: string;
   alt: string;
   blurDataUrl?: string;
+  previewUrl?: string;
   onClose: () => void;
 }) {
   const [loaded, setLoaded] = useState(false);
@@ -71,15 +81,30 @@ export function ArtZoom({
       onTouchEnd={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
     >
-      {blurDataUrl && !loaded && (
-        <img
-          src={blurDataUrl}
-          alt=""
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 h-full w-full object-contain opacity-30 blur-2xl"
-          draggable={false}
-        />
-      )}
+      {!loaded &&
+        (previewUrl ? (
+          // The real picture at ~600px, laid out like the full-size one so the
+          // arrival is a sharpening rather than a swap.
+          <img
+            src={previewUrl}
+            alt=""
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 m-auto max-h-[92vh] max-w-[96vw] object-contain opacity-60"
+            draggable={false}
+          />
+        ) : blurDataUrl ? (
+          <img
+            src={blurDataUrl}
+            alt=""
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 h-full w-full object-contain opacity-30 blur-2xl"
+            draggable={false}
+          />
+        ) : (
+          <p className="pointer-events-none absolute inset-0 flex animate-pulse items-center justify-center text-sm text-paper/70">
+            Loading the full size
+          </p>
+        ))}
 
       <button
         ref={closeRef}

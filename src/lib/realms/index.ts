@@ -10,9 +10,7 @@ import { pickDriftTopic } from "../interest";
 import { uniformTopic } from "../discover";
 import { pickRandom } from "../pick";
 import type { RealmId, RealmMeta, DiscoverPick, SeedTile } from "./types";
-import { ARTIC_BUCKETS, articBucketById } from "./artic.buckets";
-import { describeSlice, parseFormBucket } from "./artic.forms";
-import { parseArtistBucket } from "./artic.artist";
+import { MET_BUCKETS, metBucketById } from "./met.buckets";
 import { ARXIV_BUCKETS, arxivBucketById } from "./arxiv.categories";
 import encyclopediaSeedData from "../../data/seeds.json";
 
@@ -81,13 +79,13 @@ const encyclopedia: RealmClient = {
 
 const gallery: RealmClient = {
   id: "gallery",
-  contentSource: "artic",
+  contentSource: "met",
   label: "Gallery",
   glyph: "❖",
-  blurb: "Public-domain masterpieces from the Art Institute of Chicago.",
+  blurb: "Public-domain masterpieces from The Metropolitan Museum of Art.",
   hasInterestModel: false,
   threadMode: "facet",
-  seeds: ARTIC_BUCKETS.map((b) => ({
+  seeds: MET_BUCKETS.map((b) => ({
     label: b.label,
     glyph: b.glyph,
     blurb: b.blurb,
@@ -95,20 +93,13 @@ const gallery: RealmClient = {
     bucket: b.id,
   })),
   pickDiscover() {
-    const b = pickRandom(ARTIC_BUCKETS) ?? ARTIC_BUCKETS[0];
+    const b = pickRandom(MET_BUCKETS) ?? MET_BUCKETS[0];
     return { id: b.id, label: b.label, bucket: b.id };
   },
-  // Three bucket shapes here: a themed browse bucket, a Phase 24
-  // "form:<form>:<era>" slice, or an "artist:<id>:<ring>" drift. Resolving all
-  // three means the "why this card" line never falls through to a raw slug.
-  // (An artist drift normally labels itself from the focus, which knows the
-  // name; this is the fallback when only the bucket is in hand.)
-  bucketLabel: (id) => {
-    const slice = parseFormBucket(id);
-    if (slice) return describeSlice(slice.form, slice.era);
-    if (parseArtistBucket(id)) return "This artist";
-    return articBucketById(id)?.label ?? id;
-  },
+  // One bucket shape for now, so the "why this card" line resolves straight to
+  // the room's name and never falls through to a raw slug. The form-slice and
+  // artist-ring shapes return in Phase B.
+  bucketLabel: (id) => metBucketById(id)?.label ?? id,
 };
 
 // Papers realm (Phase 17): arXiv preprints, read as text-forward, field-themed

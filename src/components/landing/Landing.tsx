@@ -240,7 +240,7 @@ export function Landing() {
               image="/landing/realm-gallery.jpg"
               glyph="❖"
               label="Gallery"
-              body="Public-domain art from the Art Institute of Chicago. Follow a thread to more by an artist, a style, or a place."
+              body="Public-domain art from The Metropolitan Museum of Art. Follow a thread to more by an artist, a subject, or a place."
             />
           </div>
         </Reveal>

@@ -5,7 +5,7 @@ import { LicenseLink } from "@/components/LicenseLink";
 export const metadata = {
   title: "Where Drift's content comes from",
   description:
-    "Every card in Drift comes from Wikipedia under CC BY-SA 4.0 or the Art Institute of Chicago under CC0. How each is used, credited and licensed.",
+    "Every card in Drift comes from Wikipedia under CC BY-SA 4.0 or The Metropolitan Museum of Art under CC0. How each is used, credited and licensed.",
   alternates: { canonical: "/sources" },
 };
 
@@ -75,14 +75,28 @@ export default function SourcesPage() {
         </P>
       </Section>
 
-      <Section title="The Art Institute of Chicago">
+      <Section title="The Metropolitan Museum of Art">
         <P>
-          The Gallery realm is The Art Institute of Chicago&apos;s
-          <span aria-hidden="true">®</span> open access collection, under{" "}
-          <LicenseLink license={CC0_1} />. Drift serves only works the museum
-          itself marks as public domain, with the artist, date, medium and
-          dimensions from its catalogue, and it checks the licence the museum
-          states on every response rather than assuming it.
+          The Gallery realm is The Metropolitan Museum of Art&apos;s Open Access
+          collection, under <LicenseLink license={CC0_1} />. The museum waives
+          its rights to that material and permits use for any purpose, including
+          commercially, without asking permission. Drift serves only works the
+          museum itself marks as public domain, with the artist, date, medium and
+          dimensions from its catalogue.
+        </P>
+        <P>
+          It then applies a second, stricter test of its own. The museum&apos;s
+          public-domain flag is an American determination, and American copyright
+          expires sooner than European copyright does. Drift is run from the
+          Netherlands, so a work is shown only if every artist credited on it
+          died at least 71 years ago, or, where no artist is recorded, the work
+          was finished before 1830. That is narrower than the museum&apos;s own
+          standard, and deliberately so.
+        </P>
+        <P>
+          Artwork images are served through Drift rather than linked from the
+          museum, so that they can be sized to the page. They are the
+          museum&apos;s own photographs, unaltered apart from being resized.
         </P>
       </Section>
 
@@ -138,8 +152,8 @@ export default function SourcesPage() {
       <Section title="Independence">
         <P>
           Drift is an independent project. It is not affiliated with, endorsed by
-          or sponsored by the Wikimedia Foundation or The Art Institute of
-          Chicago. It uses their names only to say where the content came from.
+          or sponsored by the Wikimedia Foundation or The Metropolitan Museum of
+          Art. It uses their names only to say where the content came from.
         </P>
       </Section>
     </PublicPage>

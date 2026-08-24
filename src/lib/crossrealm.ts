@@ -9,7 +9,12 @@ import type { Trail } from "./types";
  *  (back-compat with pre-realm cards). */
 const SOURCE_TO_REALM: Record<SourceId, RealmId> = {
   wikipedia: "encyclopedia",
+  // Both museums map to the Gallery. "artic" is history — the Art Institute's
+  // image host went behind a blanket Cloudflare block (Phase 31) — but art cards
+  // saved before the move still carry that source and must still resolve to a
+  // room rather than silently falling back to the Encyclopedia.
   artic: "gallery",
+  met: "gallery",
   gutenberg: "library",
   arxiv: "papers",
 };
@@ -48,36 +53,46 @@ function norm(s: string | null | undefined): string {
  * Wikipedia article — artist first (most reliable + interesting), then the
  * movement, then the place. The resolver tries them in order until one resolves.
  */
-export function forwardEntities(art: {
-  artist_title?: string | null;
-  style_title?: string | null;
-  place_of_origin?: string | null;
-}): string[] {
-  return [art.artist_title, art.style_title, art.place_of_origin]
+export interface ForwardEntities {
+  /** The maker, most reliable and most interesting to land on. */
+  artist?: string | null;
+  /** The movement or period, whichever the museum records. */
+  movement?: string | null;
+  /** The culture or country the work comes from. */
+  place?: string | null;
+}
+
+export function forwardEntities(art: ForwardEntities): string[] {
+  return [art.artist, art.movement, art.place]
     .map((s) => (s ?? "").trim())
     .filter((s) => s.length > 0);
 }
 
 export interface ReverseTopResult {
   title?: string | null;
+  /** The museum's own subject keywords for the work (The Met: `tags[].term`). */
   term_titles?: string[] | null;
-  _score?: number;
 }
 
-const REVERSE_SCORE_FLOOR = 12;
-
 /**
- * Encyclopedia → Gallery (reverse): whether the top AIC result for an article
- * title is a *genuine* match worth a doorway. AIC full-text search is noisy (it
- * relevance-ranks against everything), so we require the article term to actually
- * appear in the top result's title or subject tags, with a mild score backstop.
- * Keeps concrete subjects (Octopus, Samurai, Mount Fuji, Cat) and stays silent for
- * abstract ones (Quantum mechanics → "Mechanical Elephant").
+ * Encyclopedia → Gallery (reverse): whether the top museum result for an article
+ * title is a *genuine* match worth a doorway. Museum full-text search is noisy
+ * (it relevance-ranks against everything), so we require the article term to
+ * actually appear in the top result's title or its subject tags. Keeps concrete
+ * subjects (Octopus, Samurai, Mount Fuji, Cat) and stays silent for abstract ones
+ * (Quantum mechanics → "Mechanical Elephant").
+ *
+ * THERE IS NO LONGER A SCORE BACKSTOP, and that is not a weakening. The Art
+ * Institute returned a relevance `_score` and this gate required at least 12 of
+ * it; The Met's API returns no score at all, so the clause could only ever have
+ * been a constant. The term-in-title-or-tags rule was always the load-bearing
+ * half, and it was re-verified against The Met on the original cases before the
+ * score clause was removed: Octopus, Samurai, Mount Fuji and Cat all open a
+ * doorway; Quantum mechanics, Existentialism and Inflation all stay silent.
  */
 export function passesReverseGate(term: string, top: ReverseTopResult): boolean {
   const t = norm(term);
   if (!t) return false;
-  if ((top._score ?? 0) < REVERSE_SCORE_FLOOR) return false;
   if (norm(top.title).includes(t)) return true;
   return (top.term_titles ?? []).some((tag) => norm(tag).includes(t));
 }

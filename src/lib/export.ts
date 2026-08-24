@@ -74,4 +74,4 @@ export function trailToText(trail: Trail): string {
  * that stops carrying it would now be a licence breach rather than a discourtesy.
  */
 export const TEXT_EXPORT_NOTICE =
-  "Titles from Wikipedia and The Art Institute of Chicago. Text under CC BY-SA 4.0 (creativecommons.org/licenses/by-sa/4.0), excerpted. Images not included.";
+  "Titles from Wikipedia and The Metropolitan Museum of Art. Text under CC BY-SA 4.0 (creativecommons.org/licenses/by-sa/4.0), excerpted. Images not included.";

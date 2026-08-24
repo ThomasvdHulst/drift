@@ -21,6 +21,35 @@
 >
 > Current position: `docs/processing-record.md` §3, and `src/lib/terms.ts`.
 
+> ### ⚠️ Later development: the Gallery's source changed (24 August 2026)
+>
+> Findings **M-4** (the US/EU public-domain gap) and **Mi-1** (the Art Institute's caption, linking
+> guideline and per-response licence field) were written about the Art Institute of Chicago. **The
+> Gallery no longer reads from it.** The museum put its whole `www.artic.edu` host behind a blanket
+> Cloudflare block that returns `403` to everyone, including a real browser and the production
+> origin, so Drift moved the realm to **The Metropolitan Museum of Art's Open Access collection**
+> (Phase 31).
+>
+> What this changes about the findings, and what it does not:
+>
+> - **M-4 stands in full, and is unchanged in substance.** The Met's `isPublicDomain` is an American
+>   determination exactly as the Art Institute's was, so the EU life-plus-70 filter this report
+>   asked for still runs on top of it, with the same rules and the same tests. Only the source of
+>   the death dates moved: The Met carries them inline on the object record, so the separate artist
+>   lookup the report describes is no longer needed. The DSM Article 14 reasoning about faithful
+>   reproductions is EU law and is untouched.
+> - **Mi-1 is partly spent.** The per-response `info.license_text` guard the report recommended was
+>   specific to the Art Institute's API, which stated a licence on every payload. The Met's API has
+>   no equivalent field, so that guard went with the adapter; the CC0 grant is stated in The Met's
+>   Open Access terms instead and the per-work public-domain flag is still checked. The requested
+>   caption and the `®` trademark handling were the Art Institute's; The Met's terms instead call
+>   attribution "encouraged but not legally mandatory" while expressly forbidding any implication of
+>   endorsement, which `/sources` and the footer now say.
+> - **The no-endorsement disclaimer** (report §"Independence", and the recommendation at the end of
+>   the report) now names The Metropolitan Museum of Art rather than the Art Institute.
+>
+> Current position: `/sources`, `src/lib/realms/publicdomain.ts`, and `src/lib/realms/server/met.ts`.
+
 **Prepared for:** the operator
 **Date of report:** 31 July 2026
 **Basis:** the operator's written description of the system, plus independent verification against the live production site and primary legal, licence and platform-policy sources. Every external source cited was retrieved on **31 July 2026** unless stated otherwise.

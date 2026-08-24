@@ -1,11 +1,14 @@
 // Static example content for the logged-out landing page (see the landing plan).
 // Everything here is bundled + hand-authored — the marketing page never makes a
-// live Wikipedia/AIC call (respects §2 and avoids rate limits). The demo graph is
+// live Wikipedia or museum call (respects §2 and avoids rate limits). The demo graph is
 // a small, fully-connected "rabbit hole" so a visitor can keep pulling threads and
 // always land on a real card. It's a true wander — The Great Wave → Ukiyo-e →
 // Impressionism → Monet (ukiyo-e genuinely shaped the Impressionists) — and each
 // card is illustrated by a CC0 public-domain artwork from the Art Institute of
-// Chicago (the Gallery realm's own source), so there's no attribution baggage.
+// Chicago, so there's no attribution baggage. (These are hosted copies, added in
+// July 2026 and credited in public/landing/CREDITS.md. The Gallery realm itself
+// moved to The Metropolitan Museum in Phase 31, but that does not change where
+// THESE files came from, so their provenance record stays as it is.)
 
 import type { ThreadKind, TrailStep } from "@/lib/types";
 

@@ -17,6 +17,23 @@ export function cardSource(card: Pick<Card, "source">): SourceId {
   return card.source ?? "wikipedia";
 }
 
+/**
+ * Whether this card is an ARTWORK, whichever museum it came from.
+ *
+ * The Gallery has had two sources: the Art Institute of Chicago until its image
+ * host went behind a blanket block (Phase 31), and The Metropolitan Museum of
+ * Art since. Cards saved before the move still carry `"artic"` and must keep
+ * rendering as art — the museum label, the gallery-wall layout, the zoom affordance.
+ *
+ * This exists so "is this art?" is asked in ONE place. It used to be a bare
+ * `source === "artic"` scattered across the card view, the trail map, the inbox
+ * and the licence table, and every one of those was a site to miss when the
+ * source changed.
+ */
+export function isArtSource(source?: SourceId | null): boolean {
+  return source === "met" || source === "artic";
+}
+
 /** The source-native id/key (Wikipedia title, artwork id, book id, …). */
 export function nativeId(card: Pick<Card, "pageTitle">): string {
   return card.pageTitle;

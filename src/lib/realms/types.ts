@@ -14,7 +14,12 @@
  *  the type and the runtime allowlist in `card.ts` can never drift apart — a new
  *  source added here is immediately recognised by `normalizeSeenEntry`, which
  *  would otherwise mangle its cardIds into "wikipedia:<source>:<id>". */
-export const SOURCE_IDS = ["wikipedia", "artic", "gutenberg", "arxiv"] as const;
+// "artic" (the Art Institute of Chicago) is retained even though the Gallery no
+// longer reads from it: persisted cards key themselves as "artic:<id>", and
+// dropping the id here would mangle every art card in every trail saved before
+// Phase 31. Those cards still render, minus their pictures, which the museum
+// stopped serving anyway.
+export const SOURCE_IDS = ["wikipedia", "artic", "met", "gutenberg", "arxiv"] as const;
 
 /** Where a Card's content originates. Drives cardId, the seen-set, and which
  *  card body renders. `Card.source` is optional and defaults to "wikipedia" so

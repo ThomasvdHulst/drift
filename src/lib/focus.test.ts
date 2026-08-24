@@ -25,7 +25,7 @@ const p = (qs: string) => new URLSearchParams(qs);
 const FIELD: Focus = { kind: "field", bucket: "mathematics", label: "Mathematics" };
 const ORBIT: Focus = { kind: "orbit", seedTitle: "Category theory", seedLabel: "Category theory" };
 const NEWS: Focus = { kind: "current", section: "sports", label: "Sports" };
-const ARTIST: Focus = { kind: "artist", artistId: "40610", label: "Vincent van Gogh" };
+const ARTIST: Focus = { kind: "artist", artistName: "Vincent van Gogh", label: "Vincent van Gogh" };
 const ORBIT_OCTOPUS: Focus = { kind: "orbit", seedTitle: "Octopus", seedLabel: "Octopus" };
 
 // The key /drift compares each render to decide "are these params still the
@@ -67,7 +67,7 @@ describe("sessionKey", () => {
       { kind: "orbit", seedTitle: "Octopus", seedLabel: "Octopus" },
       { kind: "current", section: "sport", label: "Sport" },
       { kind: "form", form: "painting", era: "all", label: "Paintings" },
-      { kind: "artist", artistId: "123", label: "Someone", works: 8 },
+      { kind: "artist", artistName: "Someone", label: "Someone", works: 8 },
     ];
     for (const f of focuses) {
       for (const key of Object.keys(focusToParams(f))) {
@@ -226,17 +226,17 @@ describe("a Gallery form focus (Phase 24)", () => {
   });
 });
 
-describe("a Gallery artist focus (Phase 24)", () => {
+describe("a Gallery artist focus", () => {
   const focus: Focus = {
     kind: "artist",
-    artistId: "40610",
+    artistName: "Vincent van Gogh",
     label: "Vincent van Gogh",
     works: 18,
   };
 
   it("parses an artist, a label and a count", () => {
     expect(
-      focusFromParams(p("focus=artist&artist=40610&seed=Vincent+van+Gogh&works=18")),
+      focusFromParams(p("focus=artist&artist=Vincent+van+Gogh&seed=Vincent+van+Gogh&works=18")),
     ).toEqual(focus);
   });
 
@@ -247,31 +247,35 @@ describe("a Gallery artist focus (Phase 24)", () => {
   });
 
   it("starts every artist drift at ring 0, and widens by swapping the bucket", () => {
-    expect(focusToParams(focus).bucket).toBe("artist:40610:0");
-    expect(focusBucket(focus)).toBe("artist:40610:0");
-    expect(focusBucket(focus, 1)).toBe("artist:40610:1");
-    expect(focusBucket(focus, 2)).toBe("artist:40610:2");
+    // The Met has no artist ids, so the NAME is the handle and is percent-encoded
+    // into the bucket. Two rings only: there is no movement field to widen into.
+    const enc = "Vincent%20van%20Gogh";
+    expect(focusToParams(focus).bucket).toBe(`artist:${enc}:0`);
+    expect(focusBucket(focus)).toBe(`artist:${enc}:0`);
+    expect(focusBucket(focus, 1)).toBe(`artist:${enc}:1`);
   });
 
   // The id reaches a numeric term query upstream, so it is the one field that
   // must be strictly validated here.
-  it("rejects a non-numeric or injected artist id", () => {
-    expect(focusFromParams(p("focus=artist&artist=abc"))).toBeNull();
+  it("rejects an absent or injected artist name", () => {
     expect(focusFromParams(p("focus=artist"))).toBeNull();
+    expect(focusFromParams(p("focus=artist&artist="))).toBeNull();
+    expect(focusFromParams(p("focus=artist&artist=" + encodeURIComponent("<script>")))).toBeNull();
+    expect(focusFromParams(p("focus=artist&artist=" + encodeURIComponent("../../etc/passwd")))).toBeNull();
     expect(
-      focusFromParams(p("focus=artist&artist=" + encodeURIComponent('40610") OR 1=1'))),
+      focusFromParams(p("focus=artist&artist=" + encodeURIComponent('Gogh") OR 1=1'))),
     ).toBeNull();
   });
 
   it("survives a missing label or count rather than voiding the drift", () => {
-    expect(focusFromParams(p("focus=artist&artist=40610"))).toEqual({
+    expect(focusFromParams(p("focus=artist&artist=Vincent+van+Gogh"))).toEqual({
       kind: "artist",
-      artistId: "40610",
-      label: "This artist",
+      artistName: "Vincent van Gogh",
+      label: "Vincent van Gogh",
     });
     expect(
-      focusFromParams(p("focus=artist&artist=40610&seed=X&works=nonsense")),
-    ).toEqual({ kind: "artist", artistId: "40610", label: "X" });
+      focusFromParams(p("focus=artist&artist=Vincent+van+Gogh&seed=X&works=nonsense")),
+    ).toEqual({ kind: "artist", artistName: "Vincent van Gogh", label: "X" });
   });
 });
 
@@ -280,7 +284,7 @@ describe("describeFocus", () => {
     expect(
       describeFocus({
         kind: "artist",
-        artistId: "40610",
+        artistName: "Vincent van Gogh",
         label: "Vincent van Gogh",
       }),
     ).toBe("Vincent van Gogh");

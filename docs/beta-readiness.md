@@ -39,8 +39,11 @@ The four questions this answers:
 >   in `src/lib/cache-headers.ts`; every error/empty branch still sends `NO_STORE`.
 > - **Cost per card, measured over a real 12-card session** (Read more every 4th, a reaction every
 >   6th): **≈2.4 Wikimedia calls per card** — threads 1.0, discover ~0.5, Read more ~0.6 (the HTML
->   body walks 1 to 4 sections), a reaction ~0.3 — plus **~1 Art Institute call** for the cross-realm
->   doorway. A calm reader is ~5 Wikimedia calls/min.
+>   body walks 1 to 4 sections), a reaction ~0.3 — plus **~1 museum call** for the cross-realm
+>   doorway. (Measured against the Art Institute; the Gallery moved to The Met in Phase 31, whose
+>   search returns ids rather than records, so a Gallery batch now costs 1 search + N record
+>   fetches. Both are cached in-process and at the edge, and the Encyclopedia figures are
+>   unaffected.) A calm reader is ~5 Wikimedia calls/min.
 > - **So 10 concurrent readers ≈ 50 req/min, a quarter of the 200/min ceiling.** The wall is around
 >   35 to 40 concurrent readers; a fast drifter alone can reach ~30/min.
 > - The gate in `upstream.ts` paces ONE instance to 200/min exactly (300ms spacing). Vercel runs
@@ -130,7 +133,7 @@ difference. Do this first.
 
 1. **Set a compliant `WIKI_USER_AGENT` in Vercel** (URL + email). Moves the shared budget from a
    possible 10/min to 200/min. Two minutes, do it regardless of everything else. Same for
-   `ARTIC_USER_AGENT` (Gallery).
+   `MET_USER_AGENT` (Gallery).
 2. **Cache the proxy responses.** This is the structural fix. Card summaries and threads are
    **deterministic by title** and change rarely, so they're extremely cacheable. Two good layers,
    ideally both:
@@ -169,15 +172,19 @@ caching above).** Numbers verified 2026-07-19.
 ### Vercel Hobby (free)
 - ~100 GB bandwidth/mo, generous function invocations (Vercel currently quotes ~1M/mo on Hobby;
   older docs said 100k — either way fine), 100 GB-hrs-ish compute, 10 s function timeout.
-- **The heavy asset — images — does NOT touch Vercel bandwidth.** Card images are hotlinked
-  straight from Wikimedia / Art Institute IIIF. Vercel only serves the app bundle + small JSON
-  API responses. So bandwidth is a non-issue at this scale.
-  - ⚠️ **One switch would change that.** `ARTIC_IMAGE_PROXY=1` serves Art Institute images
-    through `/api/img/artic/...` instead of linking to the museum. It defaults ON in local
-    development (the museum's Cloudflare rules refuse a localhost `Referer`, so the Gallery has
-    no pictures otherwise) and OFF in production, precisely to keep this paragraph true. Turn it
-    on in Vercel only if the museum starts refusing the live origin too; budget roughly 250 KB
-    per artwork viewed, 1 MB per zoom, less whatever the CDN absorbs on a 30 day cache.
+- **Wikipedia images do NOT touch Vercel bandwidth** — they are hotlinked straight from
+  Wikimedia. **Artwork does, since Phase 31**, and this paragraph used to say otherwise.
+  - The Met publishes only fixed image sizes (largest "small" ≈600px, then a ~4000px original of
+    several megabytes) and sends no CORS header, so every artwork is fetched once, resized with
+    `sharp`, and served from `/api/img/met/...`. That is structural, not a switch: there is
+    nothing to turn off.
+  - **Budget: ~115 KB per artwork viewed, ~435 KB per zoom, ~6 KB per trail-map thumbnail**, less
+    whatever the CDN absorbs on a 30 day `immutable` cache. At beta scale that is single-digit
+    GB/month against Vercel's ~100 GB. The lever, if it ever matters, is the requested width in
+    `lib/realms/met.ts`, not the proxy itself.
+  - The one-off cost is larger than the steady one: the FIRST view of an artwork pulls the
+    museum's ~8 MB original in order to resize it. That is inbound, cached for 30 days, and paid
+    once per artwork+width for the whole edge population.
 - Function invocations are the thing to watch: each card ≈ 2 invocations today. **Caching (Q3)
   cuts this too**, because CDN-cached responses don't invoke the function.
 - **Overage behaviour is safe:** exceed a limit and the feature locks until the month resets;
@@ -270,7 +277,7 @@ Ordered roughly by importance.
    account" (removes their rows + the auth user) is the right thing, and expected. A "download my
    trails" export is a nice-to-have (some of it exists via trail PNG/text export).
 2. **A plain "what we store" note.** One calm paragraph or a tiny page: what's stored (your email,
-   your trails/reactions/settings), where (Supabase), that content comes from Wikipedia/AIC, and how
+   your trails/reactions/settings), where (Supabase), that content comes from Wikipedia and The Met, and how
    to delete it. Colleagues especially will ask. Doesn't need to be a legal doc.
 3. **A feedback channel.** The entire point of the beta (CLAUDE.md §9) is learning whether people
    reach for Drift. Add a quiet "send feedback" link (mailto or a simple form). Cheap, high signal.
@@ -289,10 +296,10 @@ Ordered roughly by importance.
    domain with the email sending domain also improves deliverability (less spam-foldering).
 8. **Backups.** Supabase Free has no backups. If friends' trails start to matter, Pro adds daily
    backups. At minimum, know the risk before inviting people.
-9. **Content edge cases.** All content is vetted (Wikipedia CC BY-SA + AIC CC0) with junk filtering,
+9. **Content edge cases.** All content is vetted (Wikipedia CC BY-SA + The Met CC0) with junk filtering,
    but Wikipedia can still surface mature/graphic topics. Low risk for a friends-and-colleagues
    group; just a known non-blocker. No "safe mode" exists.
-10. **Attribution stays visible.** "From Wikipedia ↗" links + AIC credits are present — keep them;
+10. **Attribution stays visible.** "From Wikipedia ↗" links + museum credits are present — keep them;
     they're the licence obligation and the §2.5 ethos.
 11. **Social layer expectations.** Handle-only discovery + friends-only sharing (DB-enforced) is a
     small, safe surface. There's **no block/report** yet (`docs/backend.md` §6.10 flags this before
@@ -302,7 +309,7 @@ Ordered roughly by importance.
 
 ## Suggested sequence (if/when you greenlight)
 
-1. **Rate-limit safety (Q3):** set `WIKI_USER_AGENT` + `ARTIC_USER_AGENT` in Vercel, then add proxy
+1. **Rate-limit safety (Q3):** set `WIKI_USER_AGENT` + `MET_USER_AGENT` in Vercel, then add proxy
    caching (CDN headers first, shared cache if needed). Verify throttling doesn't trip under a
    two-browser concurrent test.
 2. **Email (Q1):** Resend domain + SMTP, Confirm-email ON, branded Confirm/Reset templates, then run

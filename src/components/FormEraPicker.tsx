@@ -3,11 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { TileGrid } from "./TileGrid";
 import {
-  ARTIC_FORMS,
+  MET_FORMS,
   ERA_ALL,
-  articFormById,
+  metFormById,
   erasForForm,
-} from "@/lib/realms/artic.forms";
+} from "@/lib/realms/met.forms";
 
 // "Or drift a form and a period" (Phase 24, Gallery homepage). Pick an art form,
 // then optionally a period, and drift stays inside that slice for the session.
@@ -17,8 +17,8 @@ import {
 // go. Choosing a form does NOT start the drift — it reveals its periods, with
 // "All periods" first and selected, so one more tap is always enough.
 //
-// Only periods the collection actually holds are offered (see artic.forms.ts):
-// the Art Institute has no photographs before 1800, so those chips simply do not
+// Only periods the collection actually holds are offered (see met.forms.ts):
+// The Met has no photographs before 1800, so those chips simply do not
 // exist rather than existing and disappointing.
 export function FormEraPicker({
   onStart,
@@ -60,7 +60,7 @@ export function FormEraPicker({
     return () => window.clearTimeout(id);
   }, [formId]);
 
-  const form = articFormById(formId);
+  const form = formId ? metFormById(formId) : undefined;
   const eras = formId ? erasForForm(formId) : [];
 
   return (
@@ -92,7 +92,7 @@ export function FormEraPicker({
 
       <TileGrid
         className="mt-4"
-        tiles={ARTIC_FORMS.map((f) => ({
+        tiles={MET_FORMS.map((f) => ({
           id: f.id,
           label: f.label,
           glyph: f.glyph,

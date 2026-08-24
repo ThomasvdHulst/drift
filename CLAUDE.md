@@ -32,8 +32,9 @@ without them:
    reward (the trail map) is placed at the *exit*, not the next swipe.
 4. **Gentle awareness, not guilt** — a quiet "N stops" counter; after ~25 cards a soft,
    dismissible nudge. No red badges, no streaks, no notification patterns.
-5. **Content is vetted, AI only reshapes** — all content originates from Wikipedia/
-   Wikimedia. AI may summarize, label, and curate; it must **never invent facts**.
+5. **Content is vetted, AI only reshapes** — all content originates from openly-licensed,
+   human-curated sources (Wikipedia/Wikimedia, and The Metropolitan Museum of Art's CC0 Open
+   Access collection). AI may summarize, label, and curate; it must **never invent facts**.
 
 ## 3. Tech stack
 
@@ -86,6 +87,56 @@ without them:
   or spend the shared rate budget. Rules live in `src/lib/bridge.ts` and are not negotiable — whole
   sentences only (never truncated), 40 to 200 characters, one quote per card. About 42% of chips
   carry one; a lead-poor article simply shows the plain chips it always did.
+- 🖼️ **The Gallery reads from The MET, not the Art Institute (Phase 31).** `www.artic.edu` went
+  behind a blanket Cloudflare block in Dec 2025 and returns **403 to everyone** — real Chrome, our
+  Vercel origin, even `/robots.txt`. Their JSON API (`api.artic.edu`) still works, which is why the
+  symptom was "cards but no pictures". Do NOT try to revive it; it is not our IP and not fixable in
+  our code ([their issue #151](https://github.com/art-institute-of-chicago/data-aggregator/issues/151)).
+  The Met's API (`collectionapi.metmuseum.org`, no key) differs in four ways that shape the adapter:
+  - **Search returns object IDs only**, and the WHOLE array at once (no offset/limit). So a batch is
+    `1 search + N record fetches`. Both are cached in-process (`bucketIds`, `objectCache`) and at the
+    edge; the full pool is actually a better fit for `discover(offset)` than pagination was.
+  - **Their edge throttles with `403`, not `429`, and sends no `Retry-After`.** Hence
+    `retryOn: [403]` (an opt-in on `fetchJson` — never make that global, the Art Institute's 403 is
+    permanent) and a `makeGate(50)`. **Docs claim 80 req/SECOND; measured, it is ~80 requests per
+    ~30 SECONDS** (403 after 83 requests at 20/s; recovers after ~31s of quiet). Repeated tripping
+    shrinks the budget hard — down to 6 requests after a day of heavy use. Trust the edge, not the
+    docs.
+  - **Budget the request COST of a feature, because ids-only search makes it high.** Measured per
+    action: a cold room is **21** requests (1 search + ~20 record fetches), one card's threads **9**.
+    So "start a new drift" is ~30 and two in a row approach the ceiling. The knobs are
+    `OVERFETCH_BAKED`/`OVERFETCH_LIVE` and the `FACETS_SHOWN`/`PER_FACET`/`FETCH_PER_FACET`
+    constants in `metRelated` — the client only ever shows ONE candidate per facet, capped at three
+    (`selectFacetThreads`), so fetching more than a spare each is pure waste.
+  - **In production the CDN absorbs nearly all of this and in dev NOTHING does.** discover/related/
+    summary all carry `s-maxage=86400`; verified on the live site (`x-vercel-cache: MISS` then
+    `HIT`). So local development hits the limit far more readily than the deployed app ever will,
+    and a throttle while developing is not a signal about production.
+  - **No aggregations and no style/movement field.** The artist-drift rings, the form/era picker and
+    the relevance-scored Encyclopedia→Gallery doorway were all built on those and are deferred to
+    Phase B. Do not fake a movement from subject tags.
+  - **No descriptive prose, no alt text, no blur placeholder.** `extract` is the catalogue line;
+    `imageAlt` is composed from the record (`metImageAlt`) and invents nothing. "Read more" is
+    therefore GATED on `Card.hasBody` and, where the museum gives an exact `artistWikidata_URL`,
+    filled with that artist's Wikipedia lead — a different work under a different licence, so it
+    carries its own heading and its own CC BY-SA credit, never the card's CC0 line.
+  - ⚠️ **Their search is parameter-ORDER sensitive and fails SILENTLY.** `q` must come LAST or the
+    other filters are ignored: `medium=Prints&dateBegin=1600&dateEnd=1800&q=*` returns **16,405**,
+    the identical query with `q` moved earlier returns **1**. Nothing documents this. `searchIds`
+    in `server/met.ts` enforces the ordering centrally so no caller can get it wrong.
+  - ⚠️ **The Met has NOT released its Impressionists.** Every Monet is catalogued but
+    `isPublicDomain: false` with no image, so an artist search for Monet correctly returns nothing.
+    The Art Institute was strong exactly there. Not a bug; do not "fix" it.
+  - **Room pools and form/period counts are BAKED** into `src/lib/realms/met.pools.json` by
+    `scripts/probe-met-pools.mjs` (hand-run, merges the two passes). That is what keeps a room
+    readable while the museum is throttling us. The EU copyright test is deliberately NOT baked: it
+    is recomputed per request because the cut-off widens every 1 January.
+- 🎨 **Artwork is ALWAYS served through `/api/img/met/{dept}/{name}/{width}`** (sharp resize), and
+  there is deliberately no flag to disable it. Two structural reasons: the Met publishes only fixed
+  sizes (largest "small" ≈600px, too soft for a card; next is a ~4000px/8MB original), and it sends
+  **no CORS header**, which measurably breaks the trail map's `crossOrigin="anonymous"` thumbnails.
+  The URL is rebuilt from two anchored components, never taken from upstream. Note the PNG export
+  drops images entirely by design (`export-image.ts`, audit B-5) — that is NOT a reason for the proxy.
 - **Always proxy external calls through Next.js API routes** (`/api/wiki/*`, `/api/threads`),
   never call Wikipedia/Ollama directly from the browser. Reasons: (a) browsers cannot set
   the `Api-User-Agent`/`User-Agent` header Wikimedia etiquette requires; (b) it centralizes

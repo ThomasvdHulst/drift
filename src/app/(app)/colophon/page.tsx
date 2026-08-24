@@ -131,11 +131,11 @@ export default function ColophonPage() {
 
       <Section title="Thanks">
         <P>
-          To the Wikipedia editors who wrote the content, to the Art Institute of
-          Chicago for putting its collection in the public domain with a usable
-          API, to NASA for putting a telescope&apos;s worth of pictures in the
-          public domain, and to the people in the beta who reported what was
-          broken.
+          To the Wikipedia editors who wrote the content, to The Metropolitan
+          Museum of Art and the Art Institute of Chicago for putting their
+          collections in the public domain with usable APIs, to NASA for putting
+          a telescope&apos;s worth of pictures in the public domain, and to the
+          people in the beta who reported what was broken.
         </P>
       </Section>
     </PublicPage>

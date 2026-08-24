@@ -248,6 +248,7 @@ export function candidateToCard(c: RelatedCandidate): Card {
     // label / zoom / blur / alt (absent on Wikipedia candidates).
     ...(c.zoomUrl ? { zoomUrl: c.zoomUrl } : {}),
     ...(c.blurDataUrl ? { blurDataUrl: c.blurDataUrl } : {}),
+    ...(c.previewUrl ? { previewUrl: c.previewUrl } : {}),
     ...(c.imageAlt ? { imageAlt: c.imageAlt } : {}),
     ...(c.facts ? { facts: c.facts } : {}),
     ...(c.cover ? { cover: c.cover } : {}),

@@ -5,8 +5,9 @@ import type { TrailStep } from "@/lib/types";
 import { layoutMeander } from "@/lib/trailmap";
 import { cardSource } from "@/lib/card";
 import { realmOfSource } from "@/lib/crossrealm";
+import { artImageAtWidth } from "@/lib/realms/met";
 import { KindIcon, DoorwayIcon } from "./ThreadChips";
-import { CC_BY_SA_4, CC0_1 } from "@/lib/licenses";
+import { CC_BY_SA_4, CC0_1, sourceName } from "@/lib/licenses";
 
 // The trail map: a gently meandering vertical spine (see CLAUDE.md §6 + the
 // drift-spec trail-map section). Geometry comes from the pure `layoutMeander`;
@@ -20,9 +21,15 @@ const PAD_X = 16; // outer horizontal padding for title columns
 
 function NodeThumb({ step, isEndpoint }: { step: TrailStep; isEndpoint: boolean }) {
   const { card } = step;
-  // Fall back to the serif initial if the thumbnail fails to load (e.g. a rare
-  // AIC image that doesn't send CORS headers — the crossOrigin is needed so PNG
-  // export stays untainted).
+  // Fall back to the serif initial if the thumbnail fails to load.
+  //
+  // `crossOrigin="anonymous"` below is why that can happen at all: an image host
+  // that sends no `Access-Control-Allow-Origin` refuses a request carrying it,
+  // and the image simply never loads. The Met sends none, which is one of the
+  // two reasons artwork is served through /api/img/met rather than hotlinked.
+  // (It is NOT needed for the PNG export any more — that drops every image by
+  // design; see lib/export-image.ts. It is kept as the safety net for if that
+  // policy ever changes back.)
   const [imgFailed, setImgFailed] = useState(false);
   const ring = step.expanded
     ? "ring-2 ring-accent shadow-[0_0_0_4px_rgba(111,143,116,0.18)]" // read-more glow (dormant until M5)
@@ -50,7 +57,9 @@ function NodeThumb({ step, isEndpoint }: { step: TrailStep; isEndpoint: boolean 
       </div>
       {showImage && (
         <img
-          src={card.imageUrl}
+          // A node is 56px on screen, so ask for a thumbnail rather than the
+          // full card image. No-op for sources we do not resize ourselves.
+          src={artImageAtWidth(card.imageUrl, 160)}
           alt={card.displayTitle}
           crossOrigin="anonymous"
           onError={() => setImgFailed(true)}
@@ -260,10 +269,15 @@ function TrailMapCredit({ steps }: { steps: TrailStep[] }) {
       </span>,
     );
   }
-  if (sources.has("artic")) {
+  // Name the museum a trail actually drew from. A trail can hold both: the
+  // Gallery moved from the Art Institute to the Met (Phase 31), and a long trail
+  // saved across that change carries cards from each. Crediting only one of them
+  // would be wrong on the map AND in the PNG a reader exports.
+  const museums = (["met", "artic"] as const).filter((s) => sources.has(s));
+  if (museums.length) {
     parts.push(
-      <span key="aic">
-        Artworks from The Art Institute of Chicago ·{" "}
+      <span key="art">
+        Artworks from {museums.map((s) => sourceName(s)).join(" and ")} ·{" "}
         <a
           href={CC0_1.url}
           target="_blank"

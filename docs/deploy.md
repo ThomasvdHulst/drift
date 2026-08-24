@@ -53,7 +53,7 @@ _and_ **Preview** (copy the values from your local `.env`):
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://<your-project>.supabase.co` | from `.env` |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | `sb_publishable_…` | from `.env` — safe in the browser (RLS protects data) |
 | `WIKI_USER_AGENT` | `Drift/1.0 (https://www.usedrift.org; you@email)` | **required for multi-user** — a compliant UA (resolvable URL + contact email) gets ~200 req/min per IP from Wikimedia vs ~10/min unidentified. All users share one egress IP, so keep this real. See `docs/beta-readiness.md` Q3. |
-| `ARTIC_USER_AGENT` | `Drift/1.0 (https://www.usedrift.org; you@email)` | recommended (Art Institute etiquette) |
+| `MET_USER_AGENT` | `Drift/1.0 (https://www.usedrift.org; you@email)` | recommended (Metropolitan Museum etiquette). Their edge answers a burst with `403` rather than `429`; the adapter paces itself and retries, but identifying honestly is still the etiquette. |
 | `SUPABASE_SECRET_KEY` | `sb_secret_…` | **server-only, NO `NEXT_PUBLIC_` prefix.** So "Delete my account" fully removes the auth user, and the welcome email can stamp its once-only flag. Used by `/api/account/delete` + `/api/email/welcome`; never inlined into the browser build. |
 | `RESEND_API_KEY` | `re_…` | **server-only.** Lets the app send the welcome (after verifying) + goodbye (after deleting) emails via the Resend API. Unset ⇒ those two emails are skipped, nothing else breaks. |
 | `EMAIL_FROM` | `Drift <noreply@usedrift.org>` | From address for the app-sent emails. Defaults to this if unset. |

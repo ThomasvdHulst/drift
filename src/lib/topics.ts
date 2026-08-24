@@ -14,7 +14,7 @@
 //                  model response and drops any that don't resolve.)
 //
 // Each topic also carries its homepage *face* (glyph / blurb / tint), the way
-// realms/artic.buckets.ts and realms/arxiv.categories.ts carry theirs: the "Or
+// realms/met.buckets.ts and realms/arxiv.categories.ts carry theirs: the "Or
 // drift within a field" section renders one card per topic, so the presentation
 // lives next to the taxonomy instead of in a parallel table that could rot.
 //

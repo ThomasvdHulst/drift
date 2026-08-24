@@ -20,8 +20,9 @@
 // read, not only in the footer of the public pages.
 //
 // Only sources whose licence Drift can state precisely appear here: Wikipedia
-// text (CC BY-SA 4.0 per the Terms of Use) and the Art Institute's open-access
-// images (CC0, and the Gallery only ever serves `is_public_domain` works). Papers
+// text (CC BY-SA 4.0 per the Terms of Use) and the museums' open-access images
+// (CC0, and the Gallery only ever serves works the museum itself marks public
+// domain, further filtered to those out of copyright in the EU). Papers
 // deliberately has no entry: arXiv abstracts are not ours to label, so the card
 // links to the paper and claims nothing.
 //
@@ -32,6 +33,7 @@
 // ---------------------------------------------------------------------------
 
 import type { SourceId } from "./realms/types";
+import { isArtSource } from "./card";
 
 export interface ContentLicense {
   /** Short human name, shown as the notice. */
@@ -56,13 +58,19 @@ export function licenseFor(source?: SourceId): ContentLicense | null {
   // A card with no `source` is a Wikipedia card (the field arrived with realms;
   // older saved trails omit it) — see types.ts.
   if (!source || source === "wikipedia") return CC_BY_SA_4;
-  if (source === "artic") return CC0_1;
+  // Both museums publish their open-access collections under CC0. "artic" is
+  // history (Phase 31) but art cards saved before the move still carry it, and
+  // their licence has not changed retroactively.
+  if (isArtSource(source)) return CC0_1;
   return null;
 }
 
 /** The human name of each source, for the attribution block and the card notice. */
 export function sourceName(source?: SourceId): string {
   if (!source || source === "wikipedia") return "English Wikipedia";
+  if (source === "met") return "The Metropolitan Museum of Art";
+  // Named correctly for the cards that came from there, which are still in
+  // people's saved trails and shares.
   if (source === "artic") return "The Art Institute of Chicago";
   if (source === "arxiv") return "arXiv";
   return "Unknown source";

@@ -1,6 +1,6 @@
 // Test-only colour maths, shared by the tile grids (the 28 field cards in
 // topics.ts, the 10 news sections in current.ts, the 10 art forms in
-// realms/artic.forms.ts). Not a test file itself — vitest only collects
+// realms/met.forms.ts). Not a test file itself — vitest only collects
 // `*.test.ts` — and never imported by the app.
 //
 // It answers two questions every grid needs answered, both about what the eye

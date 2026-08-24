@@ -1,18 +1,18 @@
 import { describe, it, expect } from "vitest";
 import {
-  ARTIC_FORMS,
-  ARTIC_ERAS,
+  MET_FORMS,
+  MET_ERAS,
   ERA_ALL,
   MIN_ERA_WORKS,
-  articFormById,
-  articEraById,
+  metFormById,
+  metEraById,
   describeSlice,
   erasForForm,
   formBucketId,
   parseFormBucket,
   worksInSlice,
-} from "./artic.forms";
-import { ARTIC_BUCKETS } from "./artic.buckets";
+} from "./met.forms";
+import { MET_BUCKETS } from "./met.buckets";
 import {
   THEMES,
   deltaE,
@@ -23,32 +23,32 @@ import {
   MIN_TILE_TEXT_RATIO,
 } from "../tile-contrast.testkit";
 
-describe("art form registry", () => {
+describe("Met form registry", () => {
   it("looks a form or era up by id, and rejects junk", () => {
-    expect(articFormById("painting")?.label).toBe("Paintings");
-    expect(articFormById("not-a-form")).toBeUndefined();
-    expect(articFormById(null)).toBeUndefined();
-    expect(articEraById("1850-1899")?.label).toBe("1850 to 1899");
-    expect(articEraById("1750s")).toBeUndefined();
+    expect(metFormById("painting")?.label).toBe("Paintings");
+    expect(metFormById("not-a-form")).toBeUndefined();
+    expect(metFormById(null)).toBeUndefined();
+    expect(metEraById("1850-1899")?.label).toBe("1850 to 1899");
+    expect(metEraById("1750s")).toBeUndefined();
   });
 
-  it("ids are unique, and every form names an AIC artwork type", () => {
-    const ids = ARTIC_FORMS.map((f) => f.id);
+  it("ids are unique, and every form names a Met medium", () => {
+    const ids = MET_FORMS.map((f) => f.id);
     expect(new Set(ids).size).toBe(ids.length);
-    for (const f of ARTIC_FORMS) expect(f.aicType.trim().length).toBeGreaterThan(0);
+    for (const f of MET_FORMS) expect(f.medium.trim().length).toBeGreaterThan(0);
   });
 
   it("eras are a contiguous, ascending ladder", () => {
-    for (const e of ARTIC_ERAS) expect(e.from).toBeLessThanOrEqual(e.to);
-    for (let i = 1; i < ARTIC_ERAS.length; i++) {
-      expect(ARTIC_ERAS[i].from, ARTIC_ERAS[i].id).toBe(ARTIC_ERAS[i - 1].to + 1);
+    for (const e of MET_ERAS) expect(e.from).toBeLessThanOrEqual(e.to);
+    for (let i = 1; i < MET_ERAS.length; i++) {
+      expect(MET_ERAS[i].from, MET_ERAS[i].id).toBe(MET_ERAS[i - 1].to + 1);
     }
   });
 });
 
-describe("art form registry — homepage face", () => {
+describe("Met form registry — homepage face", () => {
   it("every form has a glyph, a blurb and a #rrggbb tint", () => {
-    for (const f of ARTIC_FORMS) {
+    for (const f of MET_FORMS) {
       expect(f.glyph.trim().length, f.label).toBeGreaterThan(0);
       expect(f.blurb.trim().length, f.label).toBeGreaterThan(0);
       expect(f.tint, f.label).toMatch(/^#[0-9a-f]{6}$/);
@@ -56,13 +56,13 @@ describe("art form registry — homepage face", () => {
   });
 
   it("glyphs are unique so the grid never shows the same mark twice", () => {
-    const glyphs = ARTIC_FORMS.map((f) => f.glyph);
+    const glyphs = MET_FORMS.map((f) => f.glyph);
     expect(new Set(glyphs).size).toBe(glyphs.length);
   });
 
   // Same rule as the field + news grids: typographic symbols, never emoji.
   it("glyphs are single symbols, never emoji", () => {
-    for (const f of ARTIC_FORMS) {
+    for (const f of MET_FORMS) {
       expect([...f.glyph].length, `${f.label}: one code point`).toBe(1);
       expect(f.glyph, `${f.label}: no variation selector`).not.toMatch(/️/);
       expect(f.glyph.codePointAt(0), `${f.label}: stays in the BMP`).toBeLessThan(
@@ -77,23 +77,23 @@ describe("art form registry — homepage face", () => {
   // Standing copy preference: no em/en dashes in anything the reader sees. This
   // is why a period reads "1850 to 1899" and not "1850–1899".
   it("blurbs and labels use no em or en dashes", () => {
-    for (const f of ARTIC_FORMS) {
+    for (const f of MET_FORMS) {
       expect(f.blurb, f.label).not.toMatch(/[—–]/);
       expect(f.label, f.label).not.toMatch(/[—–]/);
     }
-    for (const e of ARTIC_ERAS) expect(e.label, e.id).not.toMatch(/[—–]/);
+    for (const e of MET_ERAS) expect(e.label, e.id).not.toMatch(/[—–]/);
   });
 });
 
-describe("art form registry — grid order", () => {
+describe("Met form registry — grid order", () => {
   it("is alphabetical by label", () => {
-    const labels = ARTIC_FORMS.map((f) => f.label);
+    const labels = MET_FORMS.map((f) => f.label);
     expect(labels).toEqual([...labels].sort((a, b) => a.localeCompare(b)));
   });
 
   it("no card looks like any neighbour in a 2, 3 or 4 column grid", () => {
     for (const theme of THEMES) {
-      for (const [a, b, gap] of neighbourPairs(ARTIC_FORMS)) {
+      for (const [a, b, gap] of neighbourPairs(MET_FORMS)) {
         expect(
           deltaE(a.tint, b.tint, theme),
           `${a.label} vs ${b.label} (${gap} apart, ${theme})`,
@@ -108,7 +108,7 @@ describe("art form registry — grid order", () => {
   // neighbours. See src/lib/tiles.ts.
   it("every card's label and blurb are readable on its own face", () => {
     for (const theme of THEMES) {
-      for (const f of ARTIC_FORMS) {
+      for (const f of MET_FORMS) {
         expect(
           labelRatio(f.tint, theme),
           `${f.label} label (${theme})`,
@@ -122,20 +122,23 @@ describe("art form registry — grid order", () => {
   });
 
   it("uses distinct tints throughout", () => {
-    const tints = ARTIC_FORMS.map((f) => f.tint);
+    const tints = MET_FORMS.map((f) => f.tint);
     expect(new Set(tints).size).toBe(tints.length);
   });
 
-  // Both grids render on the Gallery home, one above the other: the themed
-  // buckets ("start here") and the forms ("stay here"). "Textiles" is a label in
-  // both, so the glyph and blurb have to carry the difference, or the two tiles
-  // read as a duplicate of each other.
+  // Both grids render on the Gallery home, one above the other: the rooms
+  // ("start here") and the forms ("stay here"). "Textiles" is a label in both,
+  // so the glyph and blurb have to carry the difference, or the two tiles read
+  // as a duplicate of each other.
+  //
+  // Checked against MET_BUCKETS: the rooms are the museum's departments and
+  // both grids render on the Gallery home, one above the other.
   it("never shows a form tile that looks like a themed bucket tile", () => {
-    const bucketGlyphs = new Set(ARTIC_BUCKETS.map((b) => b.glyph));
+    const bucketGlyphs = new Set(MET_BUCKETS.map((b) => b.glyph));
     const bucketBlurbs = new Set(
-      ARTIC_BUCKETS.map((b) => b.blurb.toLowerCase()),
+      MET_BUCKETS.map((b) => b.blurb.toLowerCase()),
     );
-    for (const f of ARTIC_FORMS) {
+    for (const f of MET_FORMS) {
       expect(bucketGlyphs, `${f.label}: glyph collides with a bucket`).not.toContain(
         f.glyph,
       );
@@ -149,7 +152,7 @@ describe("art form registry — grid order", () => {
 
 describe("era availability", () => {
   it("offers All periods first for every form", () => {
-    for (const f of ARTIC_FORMS) {
+    for (const f of MET_FORMS) {
       const eras = erasForForm(f.id);
       expect(eras.length, f.label).toBeGreaterThan(0);
       expect(eras[0].id, f.label).toBe(ERA_ALL);
@@ -165,12 +168,17 @@ describe("era availability", () => {
     expect(photo).not.toContain("1700s");
     expect(photo).toContain("1850-1899");
 
-    const coin = erasForForm("coin").map((e) => e.id);
-    expect(coin).toEqual([ERA_ALL, "pre-1500"]);
+    // Jewellery is the sparse one on this collection: plenty before 1500 and
+    // almost nothing in the centuries after, so most of its ladder is hidden.
+    const jewelry = erasForForm("jewelry").map((e) => e.id);
+    expect(jewelry).toContain(ERA_ALL);
+    expect(jewelry).toContain("pre-1500");
+    expect(jewelry).not.toContain("1500s");
+    expect(jewelry).not.toContain("1600s");
   });
 
   it("every offered period clears the floor", () => {
-    for (const f of ARTIC_FORMS) {
+    for (const f of MET_FORMS) {
       for (const era of erasForForm(f.id)) {
         if (era.id === ERA_ALL) continue;
         expect(era.works, `${f.label} / ${era.id}`).toBeGreaterThanOrEqual(
@@ -180,10 +188,18 @@ describe("era availability", () => {
     }
   });
 
-  it("counts All periods as the sum of the ladder", () => {
-    expect(worksInSlice("painting", ERA_ALL)).toBe(
-      ARTIC_ERAS.reduce((n, e) => n + worksInSlice("painting", e.id), 0),
-    );
+  // On the Art Institute `all` WAS the sum of the ladder. It is not here, and
+  // that is a property of the data rather than a fault: a work the museum dates
+  // vaguely, or dates outside 4000 BCE to 1929, is counted in `all` and lands in
+  // no era bucket. So the real invariant is that the ladder cannot exceed the
+  // whole, and a form's ladder should still account for a decent share of it.
+  it("counts All periods as at least the sum of the ladder", () => {
+    for (const f of MET_FORMS) {
+      const ladder = MET_ERAS.reduce((n, e) => n + worksInSlice(f.id, e.id), 0);
+      expect(worksInSlice(f.id, ERA_ALL), f.id).toBeGreaterThanOrEqual(ladder);
+    }
+    const ladder = MET_ERAS.reduce((n, e) => n + worksInSlice("painting", e.id), 0);
+    expect(ladder).toBeGreaterThan(worksInSlice("painting", ERA_ALL) * 0.5);
     expect(worksInSlice("not-a-form", ERA_ALL)).toBe(0);
   });
 
@@ -204,7 +220,7 @@ describe("form bucket encoding", () => {
   });
 
   it("round-trips every offered slice", () => {
-    for (const f of ARTIC_FORMS) {
+    for (const f of MET_FORMS) {
       for (const era of erasForForm(f.id)) {
         const parsed = parseFormBucket(formBucketId(f.id, era.id));
         expect(parsed, `${f.id}/${era.id}`).not.toBeNull();
@@ -243,17 +259,17 @@ describe("form bucket encoding", () => {
 
 describe("describeSlice", () => {
   it("names the form alone, or the form and the period", () => {
-    const painting = articFormById("painting")!;
+    const painting = metFormById("painting")!;
     expect(describeSlice(painting, null)).toBe("Paintings");
-    expect(describeSlice(painting, articEraById("1850-1899")!)).toBe(
+    expect(describeSlice(painting, metEraById("1850-1899")!)).toBe(
       "Paintings, 1850 to 1899",
     );
   });
 
   it("never produces an em or en dash", () => {
-    for (const f of ARTIC_FORMS) {
+    for (const f of MET_FORMS) {
       expect(describeSlice(f, null)).not.toMatch(/[—–]/);
-      for (const e of ARTIC_ERAS) expect(describeSlice(f, e)).not.toMatch(/[—–]/);
+      for (const e of MET_ERAS) expect(describeSlice(f, e)).not.toMatch(/[—–]/);
     }
   });
 });

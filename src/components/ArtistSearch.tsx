@@ -7,17 +7,19 @@ import { useEffect, useRef, useState } from "react";
 // OrbitSearch (debounced, aborting, keyboard-navigable) so the two realms' search
 // bars feel like the same object.
 //
-// The one real difference is honesty about coverage. The Art Institute's
-// public-domain collection is deep in some artists and shallow in others
-// (Hokusai 447 works, Van Gogh 18), and holds nothing at all by anyone still in
-// copyright. So every suggestion carries its true count, and "no match" is shown
-// as a plain sentence rather than silently leaving the last results up: a search
-// for Picasso must not look like it worked (§2.1).
+// The one real difference is honesty about coverage. The Met's Open Access set
+// is deep in some artists and holds nothing at all by others: everyone still in
+// copyright in Europe is filtered out before a suggestion is ever offered, and
+// so, less obviously, are artists whose work the museum simply has not released
+// (its Impressionist paintings are catalogued but not open, so Monet returns
+// nothing). Every suggestion therefore carries its true count, and "no match" is
+// shown as a plain sentence rather than silently leaving the last results up: a
+// search for Picasso must not look like it worked (§2.1).
+//
+// An artist is identified by NAME, not an id: The Met's API has no artist ids.
 export interface ArtistSuggestion {
-  id: number;
   name: string;
   works: number;
-  thumbnail?: string;
 }
 
 export function ArtistSearch({
@@ -130,7 +132,7 @@ export function ArtistSearch({
       {open && results.length > 0 && (
         <ul className="absolute z-20 mt-2 max-h-80 w-full overflow-y-auto rounded-2xl border border-line bg-paper-raised p-1.5 text-left shadow-xl">
           {results.map((r, i) => (
-            <li key={r.id}>
+            <li key={r.name}>
               <button
                 type="button"
                 onMouseEnter={() => setActive(i)}
@@ -139,21 +141,15 @@ export function ArtistSearch({
                   i === active ? "bg-accent/10" : "hover:bg-accent/5"
                 }`}
               >
-                {r.thumbnail ? (
-                  <img
-                    src={r.thumbnail}
-                    alt=""
-                    className="h-10 w-10 shrink-0 rounded-md object-cover"
-                  />
-                ) : (
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-ink/5 font-serif text-ink-soft">
-                    {r.name.slice(0, 1)}
-                  </span>
-                )}
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-ink/5 font-serif text-ink-soft">
+                  {r.name.slice(0, 1)}
+                </span>
                 <span className="min-w-0">
                   <span className="block truncate font-medium text-ink">{r.name}</span>
-                  {/* The real depth, before you commit: 18 works is a short
-                      wander, 447 is an afternoon. */}
+                  {/* The real depth, before you commit. This is the count in the
+                      sample the ranking saw, so it is a floor rather than the
+                      whole oeuvre: honest about order of magnitude, which is
+                      what the choice actually turns on. */}
                   <span className="block truncate text-xs text-ink-soft">
                     {r.works.toLocaleString()}{" "}
                     {r.works === 1 ? "work here" : "works here"}
@@ -167,9 +163,10 @@ export function ArtistSearch({
 
       {open && empty && (
         <div className="absolute z-20 mt-2 w-full rounded-2xl border border-line bg-paper-raised p-4 text-left text-sm leading-relaxed text-ink-soft shadow-xl">
-          No public-domain works by that artist at the Art Institute. The
-          collection is strongest in prints, drawings, and Impressionism, and
-          artists still in copyright are not in it.
+          No public-domain works by that artist at The Met. Either the museum
+          has not released them, or the artist is still in copyright in Europe,
+          which Drift filters for. The collection is deepest in prints,
+          drawings, Asian art and antiquities.
         </div>
       )}
     </div>

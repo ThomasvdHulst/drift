@@ -15,7 +15,7 @@ export const metadata = {
 //
 // It embeds the SAME bundled demo the landing uses (ThreadDemo, EXAMPLE_TRAILS),
 // so the page demonstrates rather than only describes, and it still makes no live
-// Wikipedia or Art Institute call: every card here is hand-authored and every
+// Wikipedia or museum call: every card here is hand-authored and every
 // image is a CC0 artwork. See components/landing/data.ts.
 export default function HowItWorksPage() {
   return (
@@ -33,7 +33,7 @@ export default function HowItWorksPage() {
       <Section title="A card">
         <P>
           Every stop is one card filling the screen: a Wikipedia article, or a
-          public domain artwork from the Art Institute of Chicago. A title, a
+          public domain artwork from The Metropolitan Museum of Art. A title, a
           short description, an opening extract, and a picture if the page has a
           freely licensed one. &ldquo;Read more&rdquo; opens the full article
           inside the card, with tables and the infobox.

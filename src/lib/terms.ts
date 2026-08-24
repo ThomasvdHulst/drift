@@ -108,7 +108,7 @@ export const TERMS: TermsSection[] = [
     heading: "The content, and what you may do with it",
     blocks: [
       {
-        p: "Almost everything you read on a card was written or made by someone else. Article text comes from Wikipedia under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Artworks come from The Art Institute of Chicago under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). Each image on a Wikipedia card is a separate work with its own creator and its own licence, named on the card itself.",
+        p: "Almost everything you read on a card was written or made by someone else. Article text comes from Wikipedia under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Artworks come from The Metropolitan Museum of Art under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). Each image on a Wikipedia card is a separate work with its own creator and its own licence, named on the card itself.",
       },
       {
         p: "**Drift claims no rights in any of it, and adds no conditions to it.** That material stays available to you under its own licence, exactly as if you had gone to the source. Nothing in these terms restricts what you may do with it: not copying it, not redistributing it, not building on it. Where a licence asks something of you, such as crediting the author and passing the same licence on, that comes from the licence and not from us. [Sources](/sources) explains where each piece comes from.",

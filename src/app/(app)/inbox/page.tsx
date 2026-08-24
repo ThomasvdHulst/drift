@@ -19,6 +19,8 @@ import { saveTrail } from "@/lib/storage";
 import { getRealm } from "@/lib/realms";
 import { stripMathMarkers } from "@/lib/mathtext";
 import { licenseFor, MODIFICATION_CARD } from "@/lib/licenses";
+import { isArtSource } from "@/lib/card";
+import { realmOfSource } from "@/lib/crossrealm";
 import { mayDisplayImage } from "@/lib/imagecredit";
 import { TrailSparkline } from "@/components/TrailSparkline";
 import type { Card, Trail, TrailStep } from "@/lib/types";
@@ -279,7 +281,7 @@ function CardShareCard({
   onDelete: () => void;
 }) {
   const card = share.payload as Card;
-  const realm = getRealm(card.source === "artic" ? "gallery" : "encyclopedia");
+  const realm = getRealm(realmOfSource(card.source));
   return (
     <li
       data-realm={realm.id}
@@ -321,7 +323,7 @@ function CardShareCard({
         </p>
       )}
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        {card.source !== "artic" && (
+        {!isArtSource(card.source) && (
           <Link
             href={`/drift?realm=encyclopedia&title=${encodeURIComponent(card.pageTitle)}`}
             className="rounded-full bg-accent px-5 py-2 text-sm font-semibold text-paper-raised transition hover:bg-accent-strong"

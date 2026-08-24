@@ -117,8 +117,10 @@ in ten seconds rather than reason from scratch.
 - [ ] **The Gallery got smaller, and one part of it noticeably so.** Drift now shows an artwork only
       if every named artist died in 1955 or earlier, or, where no artist is recorded, the work was
       finished before 1830. That second rule is what bites: a Japanese print from 1860 is certainly
-      out of copyright, but the museum records no death date, so the filter declines. Japanese prints
-      dropped to 13 of 20 on a sample page, botanical illustration to 9 of 20.
+      out of copyright, but the museum records no death date, so the filter declines. (The sample
+      figures that used to sit here were measured against the Art Institute and no longer describe
+      anything; against The Met, about three works in four survive the filter across a sample of
+      four departments.)
       **Recommendation: relax it to 1870 if the Gallery feels thin to you, otherwise leave it.** 1870
       is derivable and still very conservative: an artist was at least fifteen when they made the
       work and lived at most a hundred years, so a work from year Y implies death by Y plus 85, and
@@ -215,17 +217,42 @@ Ignore this section entirely unless §2 changed your mind. In order:
 
 ---
 
-## 6. Only if the Gallery is missing artwork on the live site
+## 6. The Gallery changed museums (24 August 2026)
 
-Gallery cards lost their pictures in local development. The cause is the museum's image host, which
-now sits behind bot management that refuses a browser-shaped request carrying a `localhost` referrer.
-Measured five times each way: `localhost` is blocked, `usedrift.org` is allowed. So this should only
-ever have affected you locally, and it is fixed there.
+**The earlier version of this section was wrong, and is corrected here rather than quietly deleted.**
+It said the Art Institute's image host blocked only `localhost` and that `usedrift.org` was allowed
+through. That stopped being true. The museum put its whole `www.artic.edu` host behind a blanket
+Cloudflare block, and it now returns `403` to everyone: this laptop, Vercel's servers, and a real
+Chrome browser alike. Even `robots.txt` is refused. It is a known, unresolved, general problem, open
+on the museum's own issue tracker since December 2025 and affecting every third party, not us
+specifically. Nothing Drift did caused it and there was no setting that would have fixed it.
 
-- [ ] If you have actually seen missing artwork on <https://www.usedrift.org>, say so. The fix is
-      already built: set `ARTIC_IMAGE_PROXY=1` in Vercel and images are served through Drift instead.
-      Know the trade first: that moves image bytes onto your Vercel bandwidth, roughly 250 KB per
-      artwork viewed and 1 MB per zoom, less whatever the 30 day cache absorbs.
+The Gallery now reads from **The Metropolitan Museum of Art's Open Access collection** instead: CC0,
+commercial use granted explicitly, no API key, and about 406,000 images rather than roughly 50,000.
+The same stricter European copyright filter runs on top of it.
+
+- [ ] **Nothing to do, unless you want the trade-off changed.** Artwork is now served through Drift
+      rather than linked from the museum, because The Met publishes only fixed image sizes (its
+      largest "small" one is about 600px, too soft for a card) and sends no CORS header. That moves
+      image bytes onto your Vercel bandwidth: roughly 115 KB per artwork viewed and 435 KB per zoom,
+      less whatever the 30 day cache absorbs. At beta scale that is single-digit gigabytes a month,
+      well inside the free tier. If it ever matters, the lever is image quality, not the proxy.
+
+- [ ] **One optional job left, worth doing on a quiet day.** Run
+      `node scripts/probe-met-pools.mjs --rooms` from the repo root. It bakes a list of known-good
+      artwork ids per room into `src/lib/realms/met.pools.json`, which is what keeps a room
+      readable on the occasions The Met throttles us. It takes a while on purpose and saves after
+      each room, so you can stop and resume it. Nothing is broken without it: the Gallery falls
+      back to asking the museum live, which is what it does today.
+
+- [ ] ~~**Two Gallery entry points are temporarily gone.**~~ **Done (24 August).** Both are back:
+      "drift an artist" and "drift a form and a period", rebuilt on the fields The Met does expose.
+      The old note is kept below for the record. "Drift an artist" and "drift a form and a
+      period" were both built on Elasticsearch aggregations that The Met's API does not offer, so
+      they were removed rather than left on screen as buttons that do nothing. They come back once
+      they are rebuilt on the fields The Met does have. The Gallery's rooms replaced them meanwhile,
+      and they are better than the tiles they replace: real curatorial departments (Ancient Egypt,
+      Arms and Armor, Musical Instruments) rather than keyword guesses.
 
 ---
 
@@ -237,9 +264,9 @@ than assumed: 855 unit tests, build and lint clean, and a contrast sweep of 27 v
 | | |
 |---|---|
 | **The live breach** | One switch now governs everything Google: the loader script, the ownership meta tag and the consent gate. Verified against a production build carrying your real publisher id with the switch off: ten public pages, zero third-party requests, zero cookies. `/privacy` no longer describes a consent prompt that does not exist. |
-| **Attribution** | Every card image now carries its own creator and licence, hyperlinked, with a link to the file's own page, because a photograph on a Wikipedia article is a separate work from the article. Two fail-closed rules mean no picture is ever shown that cannot be credited. The "excerpted and reformatted by Drift" line that the licence separately requires. An attribution block that travels with saved and shared cards. Images removed from the exported trail map. The museum's requested caption completed, and every museum response checked against its own licence field. |
+| **Attribution** | Every card image now carries its own creator and licence, hyperlinked, with a link to the file's own page, because a photograph on a Wikipedia article is a separate work from the article. Two fail-closed rules mean no picture is ever shown that cannot be credited. The "excerpted and reformatted by Drift" line that the licence separately requires. An attribution block that travels with saved and shared cards. Images removed from the exported trail map. The museum's requested caption completed. (The per-response licence check was specific to the Art Institute's API, which stated a licence on every payload; The Met's does not, so that guard went with the adapter. The CC0 grant is stated in The Met's Open Access terms instead, and the public-domain flag is still checked per work.) |
 | **The documents** | `/terms` meeting DSA Article 14, with a machine-readable twin at `/terms.md`. A notice-and-action route for reporting illegal content, anonymity included. The Article 11 and 12 contact points. `/privacy` rewritten against the full Article 13 checklist, on a contract basis rather than consent. `/legal`, your imprint. A "Download your data" button. `docs/processing-record.md`, the Article 30 record. |
-| **The Gallery** | Filtered for the European copyright term (life plus 70) instead of the museum's American determination. A work by an artist who died after 1955 is refused even where the museum flags it public domain. |
+| **The Gallery** | Filtered for the European copyright term (life plus 70) instead of the museum's American determination. A work by an artist who died after 1955 is refused even where the museum flags it public domain. The rule survived the move to The Met unchanged; only where the death dates are read from moved. |
 | **The consent gate** | Built and verified in a real browser with ads switched on: nothing from Google before a choice, nothing after a refusal, and Accept and Reject as measured-identical buttons. Plus a never-pre-ticked 16-or-older declaration at sign-up that stores only the boolean. |
 | **Hygiene** | A structural guard making it impossible to put a user's data in the shared CDN cache. Deletion proved to cascade against the real database migrations. Politer behaviour toward Wikimedia's servers. |
 | **The landing page** | One illustration turned out to be NonCommercial licensed and was replaced. The rest are traced and credited on `/colophon`, with the per-file record in `public/landing/CREDITS.md`. |

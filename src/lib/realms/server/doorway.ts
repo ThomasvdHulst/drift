@@ -3,9 +3,12 @@
 //   Gallery → Encyclopedia: resolve the artwork's artist/movement/place onto a
 //     Wikipedia article (the summary endpoint follows redirects, so "Katsushika
 //     Hokusai" → Hokusai).
-//   Encyclopedia → Gallery: search AIC for the article title, gated so only a
-//     genuine match becomes a doorway (Octopus → "Octopus and Shell", but abstract
-//     topics stay silent).
+//   Encyclopedia → Gallery: search The Met for the article title, gated so only a
+//     genuine match becomes a doorway (Octopus → a stirrup jar painted with one,
+//     but abstract topics stay silent). The gate rests on the term appearing in
+//     the work's title or its subject tags; the Art Institute's relevance score,
+//     which it used to also require, has no equivalent here and turned out not to
+//     be the load-bearing half (see passesReverseGate).
 // Best-effort by construction: any miss/failure ⇒ null ⇒ no doorway (§4).
 
 import type { RelatedCandidate } from "@/lib/types";
@@ -16,7 +19,7 @@ import {
   DOORWAY_EYEBROW,
 } from "@/lib/crossrealm";
 import { wikiSummary } from "./wikipedia";
-import { articArtworkMeta, articTopMatch } from "./artic";
+import { metArtworkMeta, metTopMatch } from "./met";
 
 /**
  * `null` means one thing only: we looked, and there is genuinely nothing there.
@@ -32,7 +35,7 @@ export async function crossRealmDoorway(
   id: string,
 ): Promise<RelatedCandidate | null> {
   if (fromRealm === "gallery") {
-    const meta = await articArtworkMeta(id);
+    const meta = await metArtworkMeta(id);
     if (!meta) return null;
     // Try the artist first, then the movement (cap at 2 lookups).
     for (const entity of forwardEntities(meta).slice(0, 2)) {
@@ -56,14 +59,10 @@ export async function crossRealmDoorway(
 
   if (fromRealm === "encyclopedia") {
     // For an Encyclopedia card the native id IS the Wikipedia title.
-    const top = await articTopMatch(id);
+    const top = await metTopMatch(id);
     if (
       !top ||
-      !passesReverseGate(id, {
-        title: top.title,
-        term_titles: top.term_titles,
-        _score: top.score,
-      })
+      !passesReverseGate(id, { title: top.title, term_titles: top.term_titles })
     ) {
       return null;
     }
@@ -74,14 +73,14 @@ export async function crossRealmDoorway(
       description: c.description,
       extract: c.extract,
       imageUrl: c.imageUrl,
-      source: "artic",
+      source: "met",
       sourceUrl: c.sourceUrl,
       threadLabel: c.displayTitle,
       eyebrow: DOORWAY_EYEBROW.gallery,
       // Carry the rich art fields so the landed Gallery card zooms + shows its
       // museum label (candidateToCard preserves these).
       zoomUrl: c.zoomUrl,
-      blurDataUrl: c.blurDataUrl,
+      previewUrl: c.previewUrl,
       imageAlt: c.imageAlt,
       facts: c.facts,
     };

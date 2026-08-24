@@ -116,7 +116,7 @@ export default function AboutPage() {
             <p className="text-ink-soft">
               Every card is made from openly licensed, human curated knowledge:
               Wikipedia articles, under <LicenseLink license={CC_BY_SA_4} />, and
-              public domain artworks from the Art Institute of Chicago, under{" "}
+              public domain artworks from The Metropolitan Museum of Art, under{" "}
               <LicenseLink license={CC0_1} />. Every card links back to the page it
               came from, whose history credits the people who wrote it. Drift only
               reshapes that content into cards and threads. It never invents facts,

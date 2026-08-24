@@ -5,8 +5,12 @@ import {
   describeSlice,
   formBucketId,
   parseFormBucket,
-} from "./realms/artic.forms";
-import { artistBucketId, type ArtistRing } from "./realms/artic.artist";
+} from "./realms/met.forms";
+import {
+  artistBucketId,
+  parseArtistBucket,
+  type MetArtistRing,
+} from "./realms/met.artist";
 import type { RealmId } from "./realms/types";
 
 // ---------------------------------------------------------------------------
@@ -24,7 +28,7 @@ import type { RealmId } from "./realms/types";
 // survives reload and is linkable) and describe it for the banner. No React/DOM,
 // no network. The orbit *engine* (the widening BFS pool) lives in orbit.ts, the
 // current-events pool in current.ts, and the art-form registry in
-// realms/artic.forms.ts.
+// realms/met.forms.ts.
 //
 // A session holds a *stack* of these, not one (see "the focus stack" below):
 // each focus belongs to ONE realm and can hold a narrower focus inside it.
@@ -35,7 +39,7 @@ export type Focus =
   | { kind: "orbit"; seedTitle: string; seedLabel: string }
   | { kind: "current"; section: string; label: string } // news section slug + label
   | { kind: "form"; form: string; era: string; label: string } // art form + era slug
-  | { kind: "artist"; artistId: string; label: string; works?: number };
+  | { kind: "artist"; artistName: string; label: string; works?: number };
 
 /** The URL query params that start this focused drift (appended to /drift?…).
  *  The homepage writes with this and /drift reads with `focusFromParams` below,
@@ -62,9 +66,9 @@ export function focusToParams(focus: Focus): Record<string, string> {
   if (focus.kind === "artist") {
     return {
       focus: "artist",
-      artist: focus.artistId,
+      artist: focus.artistName,
       // Ring 0 is where every artist drift starts; widening swaps the bucket.
-      bucket: artistBucketId(focus.artistId, 0),
+      bucket: artistBucketId(focus.artistName, 0),
       seed: focus.label,
       ...(focus.works ? { works: String(focus.works) } : {}),
     };
@@ -78,10 +82,10 @@ export function focusToParams(focus: Focus): Record<string, string> {
  *
  *  `ring` applies to an artist drift: it is the whole of widening, since bumping
  *  the ring is just a different bucket. */
-export function focusBucket(focus: Focus, ring: ArtistRing = 0): string | null {
+export function focusBucket(focus: Focus, ring: MetArtistRing = 0): string | null {
   if (focus.kind === "field") return focus.bucket;
   if (focus.kind === "form") return formBucketId(focus.form, focus.era);
-  if (focus.kind === "artist") return artistBucketId(focus.artistId, ring);
+  if (focus.kind === "artist") return artistBucketId(focus.artistName, ring);
   return null;
 }
 
@@ -273,16 +277,20 @@ export function focusFromParams(params: {
     };
   }
   if (kind === "artist") {
-    // Digits only: the id is interpolated into a numeric term query upstream.
-    const artistId = params.get("artist") ?? "";
-    if (!/^\d{1,9}$/.test(artistId)) return null;
-    // The label and count are display-only (the drift keys off the id), so a
+    // The Met has no artist ids, so an artist IS a name, and that name reaches
+    // an upstream query. Rather than re-implement the allowlist here, run the
+    // value through the same bucket codec the server validates with: if it
+    // cannot round-trip, it is not a name we will act on.
+    const raw = params.get("artist") ?? "";
+    const parsed = parseArtistBucket(artistBucketId(raw, 0));
+    if (!parsed) return null;
+    // The label and count are display-only (the drift keys off the name), so a
     // missing one falls back rather than voiding the focus.
     const works = Number(params.get("works"));
     return {
       kind: "artist",
-      artistId,
-      label: params.get("seed") || "This artist",
+      artistName: parsed.name,
+      label: params.get("seed") || parsed.name,
       ...(Number.isFinite(works) && works > 0 ? { works } : {}),
     };
   }

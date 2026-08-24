@@ -40,6 +40,18 @@ export interface FetchJsonOptions {
   retries?: number;
   sleep?: (ms: number) => Promise<void>;
   timeoutMs?: number;
+  /**
+   * Extra status codes to treat as "throttled, try again" for THIS source.
+   *
+   * 429 and 503 are always retried because they mean it everywhere. This exists
+   * because not every upstream says so in the standard way: The Met's edge
+   * answers a burst with `403` and no `Retry-After`, which is indistinguishable
+   * from a real refusal by status alone but clears on its own within minutes.
+   * Opt-in per source rather than global, because a blanket "retry 403" would
+   * hammer a host that genuinely means no (compare the Art Institute, whose 403
+   * is permanent and must NOT be retried).
+   */
+  retryOn?: number[];
 }
 
 /**
@@ -56,8 +68,14 @@ async function fetchUpstream(
 ): Promise<Response> {
   // Keep retries shallow: deep retry × backoff compounds with the client's own
   // retry and can freeze the UI for tens of seconds under sustained throttling.
-  const { headers = {}, gate, retries = 2, sleep = defaultSleep, timeoutMs } =
-    opts;
+  const {
+    headers = {},
+    gate,
+    retries = 2,
+    sleep = defaultSleep,
+    timeoutMs,
+    retryOn = [],
+  } = opts;
 
   for (let attempt = 0; ; attempt++) {
     if (gate) await gate.next(sleep);
@@ -68,7 +86,8 @@ async function fetchUpstream(
     });
     if (res.ok) return res;
 
-    const retryable = res.status === 429 || res.status === 503;
+    const retryable =
+      res.status === 429 || res.status === 503 || retryOn.includes(res.status);
     // Say so, once per hit. Being rate-limited is currently invisible: the retry
     // absorbs it and the reader never notices, which is the right behaviour and
     // the wrong amount of information — the decision to raise our quota should be

@@ -55,7 +55,7 @@ export function ThreadDemo() {
     candidate: {
       pageTitle: t.to,
       displayTitle: t.label,
-      source: "artic",
+      source: "met",
     },
     label: t.label,
     kind: t.kind,

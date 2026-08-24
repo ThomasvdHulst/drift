@@ -23,9 +23,26 @@ export type Card = {
   // Optional richer card fields (Phase 14 — Gallery, Deepened). All optional and
   // back-compatible: absent on Wikipedia cards and on trails saved before Phase 14.
   facts?: { label: string; value: string }[]; // structured "museum label" rows
-  zoomUrl?: string; // hi-res image for the deep-zoom lightbox (art: IIIF 1686px)
+  zoomUrl?: string; // hi-res image for the deep-zoom lightbox (art: 1686px)
   blurDataUrl?: string; // tiny base64 placeholder for a blur-up load (art: lqip)
+  // A small, real image shown instantly under the full-size one and crossfaded
+  // out when it loads. The Met publishes no `lqip`, so this is what replaces the
+  // blur-up there: its ~600px derivative, which is a better placeholder than a
+  // blurred data URI because it is the actual picture. See lib/realms/met.ts.
+  previewUrl?: string;
   imageAlt?: string; // real alt text when the source provides one (art: alt_text)
+  // Whether "Read more" has anything to open. ABSENT means "unknown, offer it",
+  // which is every Wikipedia and Papers card and every card saved before this
+  // existed; only an explicit `false` hides the control. Art cards set it,
+  // because The Met publishes no prose and a button that does nothing is a bug.
+  hasBody?: boolean;
+  // Where the expanded body comes from, when that is NOT the card's own source.
+  // An art card has no text of its own, so where the museum identifies the artist
+  // exactly (by Wikidata id, never by guessing a name) we offer that artist's
+  // Wikipedia lead instead. That is a DIFFERENT work under a DIFFERENT licence
+  // from the artwork, so it is rendered with its own heading, its own credit and
+  // its own licence line, and never folded into the card's own CC0 notice.
+  bodyFrom?: { source: SourceId; title: string; label: string };
   // A generated, field-themed "cover" for image-less realms (Phase 17 — Papers):
   // a hue + motif + seed the card renders instead of a photo. Only arXiv sets it.
   cover?: { hue: string; motif: string; seed: number };
@@ -96,6 +113,7 @@ export type RelatedCandidate = {
   // museum label / zoom / blur-up / alt (Phase 14 fields). Only art sets these.
   zoomUrl?: string;
   blurDataUrl?: string;
+  previewUrl?: string;
   imageAlt?: string;
   facts?: { label: string; value: string }[];
   cover?: { hue: string; motif: string; seed: number }; // Papers: field-themed cover

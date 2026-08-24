@@ -1,60 +1,51 @@
 import { NextResponse } from "next/server";
-import {
-  articArtistProfile,
-  articArtistSearch,
-} from "@/lib/realms/server/artic";
+import { metArtistSearch, metArtistProfile } from "@/lib/realms/server/met";
 import { cacheHeaders, CACHE_MEDIUM, NO_STORE } from "@/lib/cache-headers";
 
-// GET /api/realm/gallery/artists?q=<name>
-// → the artists the Art Institute actually holds public-domain work by, each
-//   with a true count, for the homepage's "Or drift an artist" search.
+// GET /api/realm/gallery/artists?q=<name>   → ranked artist suggestions
+// GET /api/realm/gallery/artists?name=<name> → one artist's widening profile
 //
-// GET /api/realm/gallery/artists?id=<artistId>
-// → that artist's profile: how many works, and the movement / period / medium a
-//   drift widens into once their own work runs out. The feed asks for this on
-//   entry so it knows which rings exist before it needs them.
+// Gallery-only, because only the Gallery has artists.
 //
-// An empty array is a MEANINGFUL answer here, not just a failure mode: artists
-// still in copyright (Picasso, Kahlo) have nothing in the public-domain set, and
-// the ranking gate in lib/realms/artic.artist.ts deliberately returns nothing
-// rather than the unrelated pottery a raw relevance search would surface. The
-// client says so plainly (§2.1). Upstream failures also return [] (HTTP 200), so
-// a wobbling API degrades to "no suggestions" instead of breaking the page.
+// AN EMPTY LIST IS A MEANINGFUL ANSWER HERE, not a failure. An artist still in
+// copyright in Europe is deliberately not offered, so a search for Picasso or
+// Kahlo returns nothing at all rather than a suggestion that would resolve to an
+// empty feed. The ranking gate in lib/realms/met.artist.ts does the same for a
+// query that matches nobody: it would rather say nothing than return
+// plausible-looking noise.
+//
+// Errors answer 200 with an empty/absent result on purpose: a search box that
+// goes red because a museum hiccuped is worse than one that finds nothing.
 export async function GET(request: Request) {
-  const params = new URL(request.url).searchParams;
+  const url = new URL(request.url);
+  const name = url.searchParams.get("name");
 
-  // Profile lookup. Digits only, since the id reaches a numeric term query.
-  const id = params.get("id");
-  if (id !== null) {
-    if (!/^\d{1,9}$/.test(id)) {
-      return NextResponse.json({ error: "bad id" }, { status: 400, headers: NO_STORE });
-    }
+  if (name !== null) {
+    // The profile is what lets a drift widen past the artist's own work.
+    // Returning null at HTTP 200 is read by the feed as "cannot widen", which
+    // still serves ring 0 rather than breaking the session.
     try {
-      const profile = await articArtistProfile(id);
+      const profile = await metArtistProfile(name.slice(0, 120));
       return NextResponse.json(profile, {
         headers: profile ? cacheHeaders(CACHE_MEDIUM, request) : NO_STORE,
       });
     } catch (err) {
       console.error("[api/realm/gallery/artists] profile", err);
-      // null, not an error status: the feed treats "no profile" as "cannot
-      // widen" and still serves the artist's own work.
       return NextResponse.json(null, { status: 200, headers: NO_STORE });
     }
   }
 
-  const q = (params.get("q") ?? "").trim();
-  if (q.length < 2) {
-    return NextResponse.json([], { headers: NO_STORE });
+  const q = (url.searchParams.get("q") ?? "").slice(0, 80);
+  if (q.trim().length < 2) {
+    return NextResponse.json([], { status: 200, headers: NO_STORE });
   }
   try {
-    const artists = await articArtistSearch(q.slice(0, 80));
-    return NextResponse.json(artists, {
-      // Only cache a real answer: an empty result may be a transient upstream
-      // hiccup, and caching that would freeze the search empty at the edge.
-      headers: artists.length ? cacheHeaders(CACHE_MEDIUM, request) : NO_STORE,
+    const matches = await metArtistSearch(q);
+    return NextResponse.json(matches, {
+      headers: matches.length ? cacheHeaders(CACHE_MEDIUM, request) : NO_STORE,
     });
   } catch (err) {
-    console.error("[api/realm/gallery/artists]", err);
+    console.error("[api/realm/gallery/artists] search", err);
     return NextResponse.json([], { status: 200, headers: NO_STORE });
   }
 }

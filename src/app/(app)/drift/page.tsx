@@ -52,10 +52,9 @@ import {
   artistRingLabel,
   describeArtistRing,
   nextArtistRing,
-  type ArtistProfile,
-  type ArtistRing,
-} from "@/lib/realms/artic.artist";
-import { articEraById } from "@/lib/realms/artic.forms";
+  type MetArtistProfile,
+  type MetArtistRing,
+} from "@/lib/realms/met.artist";
 import {
   initOrbit,
   nextToExpand,
@@ -319,9 +318,9 @@ function DriftFeed() {
   // needs no pool of its own (unlike an orbit). The ref is the live truth read
   // inside fetches; the state drives the banner. The profile (what the artist's
   // movement/period/medium actually ARE) is measured server-side once on entry.
-  const artistRingRef = useRef<ArtistRing>(0);
-  const [artistRing, setArtistRing] = useState<ArtistRing>(0);
-  const artistProfileRef = useRef<ArtistProfile | null>(null);
+  const artistRingRef = useRef<MetArtistRing>(0);
+  const [artistRing, setMetArtistRing] = useState<MetArtistRing>(0);
+  const artistProfileRef = useRef<MetArtistProfile | null>(null);
   // Ring 0 is finite and ordered, so it is paged through in sequence.
   const artistOffsetRef = useRef(0);
 
@@ -440,15 +439,11 @@ function DriftFeed() {
           : undefined
       : undefined;
   // An artist drift names where it has wandered to once it leaves the artist's
-  // own work: "wandering wider · Post-Impressionism", then their period and
-  // medium. Nothing at ring 0, where you are simply with the artist.
+  // own work: "wandering wider · asian art, 18th century to 19th century".
+  // Nothing at ring 0, where you are simply with the artist.
   const artistProx =
     focus?.kind === "artist" && artistProfileRef.current
-      ? describeArtistRing(
-          artistProfileRef.current,
-          artistRing,
-          articEraById(artistProfileRef.current.era)?.label,
-        )
+      ? describeArtistRing(artistProfileRef.current, artistRing)
       : undefined;
   // What the banner shows, which is not always what is steering: a focus you
   // carried into the other realm is DORMANT there, and saying so is the whole
@@ -550,7 +545,7 @@ function DriftFeed() {
         setFocusStack([]);
         setCaughtUp(false);
         setEndless(false);
-        setArtistRing(0);
+        setMetArtistRing(0);
         focusStackRef.current = [];
         orbitRef.current = null;
         randomBufferRef.current = [];
@@ -672,10 +667,10 @@ function DriftFeed() {
           artistOffsetRef.current = 0;
           try {
             const res = await fetch(
-              `/api/realm/gallery/artists?id=${encodeURIComponent(parsedFocus.artistId)}`,
+              `/api/realm/gallery/artists?name=${encodeURIComponent(parsedFocus.artistName)}`,
               { signal: AbortSignal.timeout(6000) },
             );
-            const p = (await res.json()) as ArtistProfile | null;
+            const p = (await res.json()) as MetArtistProfile | null;
             if (res.ok && p && typeof p.works === "number") {
               artistProfileRef.current = p;
             }
@@ -732,12 +727,25 @@ function DriftFeed() {
           // away, or a moment of upstream throttling. Treating the first empty
           // answer as fatal is what made "drift within a field" report
           // "couldn't load" on a field that works perfectly a second later, so
-          // try another window before believing it. The artist seed is exempt:
-          // an oeuvre is a finite ordered set that MUST be read from the top
-          // (see above), so there is no other window to try.
-          const SEED_TRIES = artistSeed ? 1 : 3;
+          // try again before believing it.
+          //
+          // An artist seed retries the SAME window rather than a different one.
+          // Those are two different things, and conflating them was a bug: an
+          // oeuvre is a finite ordered set that must be read from the top, so
+          // there is no other OFFSET worth trying — but re-asking for offset 0
+          // is perfectly valid and is exactly what recovers from a moment of
+          // upstream throttling. The Met throttles readily, so before this an
+          // artist drift died on the first hiccup ("Couldn't load a card just
+          // now") while every other seed quietly recovered.
+          const SEED_TRIES = 3;
           let cards: Card[] = [];
           for (let attempt = 0; attempt < SEED_TRIES; attempt++) {
+            // Give a throttled upstream a moment before asking again; retrying
+            // instantly is the most likely way to be refused a second time.
+            if (attempt > 0) {
+              await new Promise((r) => setTimeout(r, 400 * attempt));
+              if (load.cancelled) return;
+            }
             const res = await fetch(
               discoverUrl(realmRef.current, {
                 bucket: bucketParam,
@@ -1520,11 +1528,7 @@ function DriftFeed() {
     const profile = artistProfileRef.current;
     const pinnedLabel =
       pinned?.kind === "artist" && profile
-        ? artistRingLabel(
-            profile,
-            artistRingRef.current,
-            articEraById(profile.era)?.label,
-          )
+        ? artistRingLabel(profile, artistRingRef.current)
         : (pinned?.label ?? "");
     const picks =
       pinned && pinnedBucket
@@ -1678,7 +1682,7 @@ function DriftFeed() {
       const next = nextArtistRing(profile, artistRingRef.current);
       if (next === null) return; // ladder exhausted: the caller falls back
       artistRingRef.current = next;
-      setArtistRing(next);
+      setMetArtistRing(next);
       const wider = await fetchDiscoverBatch();
       if (wider.length > 0) {
         randomBufferRef.current.push(...wider);
@@ -1894,7 +1898,7 @@ function DriftFeed() {
     }
     if (released.kind === "artist") {
       artistRingRef.current = 0;
-      setArtistRing(0);
+      setMetArtistRing(0);
       artistOffsetRef.current = 0;
     }
     // Buffered cards were chosen under the promise just released, so drop the

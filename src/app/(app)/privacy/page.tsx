@@ -457,7 +457,7 @@ export default function PrivacyPage() {
         <P>
           The cards themselves are made from openly licensed human knowledge:
           Wikipedia articles, under <LicenseLink license={CC_BY_SA_4} />, and
-          public-domain artworks from the Art Institute of Chicago, under{" "}
+          public-domain artworks from The Metropolitan Museum of Art, under{" "}
           <LicenseLink license={CC0_1} />. Every card links to the page it came
           from, whose history credits the people who wrote it, and every image
           carries its own creator and licence. Drift only reshapes that content

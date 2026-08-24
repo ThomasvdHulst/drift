@@ -10,14 +10,19 @@ import { CURRENT_SECTIONS } from "@/lib/current";
 import { CC_BY_SA_4 } from "@/lib/licenses";
 import { focusToParams, type Focus } from "@/lib/focus";
 import { listRealms, getRealm } from "@/lib/realms";
+import {
+  metFormById,
+  metEraById,
+  describeSlice,
+  ERA_ALL,
+} from "@/lib/realms/met.forms";
 import type { RealmId, SeedTile } from "@/lib/realms/types";
 import { RealmTabs } from "@/components/RealmTabs";
 import { OrbitSearch } from "@/components/OrbitSearch";
 import { TileGrid } from "@/components/TileGrid";
-import { TileDisclosure } from "@/components/TileDisclosure";
 import { FormEraPicker } from "@/components/FormEraPicker";
 import { ArtistSearch, type ArtistSuggestion } from "@/components/ArtistSearch";
-import { articFormById, articEraById, describeSlice, ERA_ALL } from "@/lib/realms/artic.forms";
+import { TileDisclosure } from "@/components/TileDisclosure";
 import { useAuth } from "@/components/AuthProvider";
 import { socialEnabled } from "@/lib/social/enabled";
 import { useTour } from "@/components/tour/TourProvider";
@@ -163,13 +168,13 @@ export default function Home() {
     });
   }
 
-  // Start a Gallery slice drift (Phase 24): one art form, optionally narrowed to
-  // one period. Unlike the three above this is not an Encyclopedia focus, so it
-  // carries its own realm.
+  // Start a Gallery slice drift: one art form, optionally narrowed to one
+  // period. Unlike the Encyclopedia focuses above this is not an Encyclopedia
+  // focus, so it carries its own realm.
   function openSlice(formId: string, eraId: string) {
-    const form = articFormById(formId);
+    const form = metFormById(formId);
     if (!form) return;
-    const era = eraId === ERA_ALL ? null : (articEraById(eraId) ?? null);
+    const era = eraId === ERA_ALL ? null : (metEraById(eraId) ?? null);
     startFocusedDrift(
       {
         kind: "form",
@@ -181,13 +186,14 @@ export default function Home() {
     );
   }
 
-  // Start an artist drift (Phase 24): wander this artist's work, widening into
-  // their movement and period once it runs out.
+  // Start an artist drift: wander this artist's own work, widening into their
+  // department and period once it runs out. The Met has no artist ids, so the
+  // name is the handle (see met.artist.ts).
   function openArtist(artist: ArtistSuggestion) {
     startFocusedDrift(
       {
         kind: "artist",
-        artistId: String(artist.id),
+        artistName: artist.name,
         label: artist.name,
         works: artist.works,
       },
@@ -343,26 +349,6 @@ export default function Home() {
               . Drift reads only which articles are linked, never the reporting.
             </p>
           </>
-        ) : active === "gallery" ? (
-          /* Directed drift for the Gallery (Phase 24), mirroring the two
-             Encyclopedia entry points above: search an artist, or confine the
-             session to an art form and period. The ten themed "Or start
-             somewhere" tiles were retired here — they only picked a *starting
-             point* and then let the drift wander off, which these two both do
-             better and more legibly. The buckets themselves still power
-             "Surprise me in Gallery" (see realms/index.ts pickDiscover). */
-          <>
-            <div
-              data-tour="artist-search"
-              className="mt-9 flex w-full flex-col items-center gap-2"
-            >
-              <p className="text-xs font-medium uppercase tracking-widest text-ink-soft">
-                Or drift an artist
-              </p>
-              <ArtistSearch onPick={openArtist} />
-            </div>
-            <FormEraPicker onStart={openSlice} />
-          </>
         ) : (
           <>
             <h2 className="mb-4 mt-10 text-center text-xs font-medium uppercase tracking-widest text-ink-soft">
@@ -376,6 +362,24 @@ export default function Home() {
                 if (tile) openSeed(tile);
               }}
             />
+            {/* The Gallery has two more ways in, both of which CONFINE the whole
+                session rather than just choosing where it opens: an artist, or a
+                form and a period. The rooms above pick a starting point; these
+                pick a room to stay in. */}
+            {active === "gallery" && (
+              <>
+                <div
+                  data-tour="artist-search"
+                  className="mt-9 flex w-full flex-col items-center gap-2"
+                >
+                  <p className="text-xs font-medium uppercase tracking-widest text-ink-soft">
+                    Or drift an artist
+                  </p>
+                  <ArtistSearch onPick={openArtist} />
+                </div>
+                <FormEraPicker onStart={openSlice} />
+              </>
+            )}
           </>
         )}
       </section>

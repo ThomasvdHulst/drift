@@ -121,7 +121,7 @@ export function PublicFooter() {
                holds the marks. */}
         <p className="max-w-md text-xs leading-relaxed text-ink-soft">
           Content from Wikipedia, under <LicenseLink license={CC_BY_SA_4} />, and
-          public domain artworks from The Art Institute of Chicago, under{" "}
+          public domain artworks from The Metropolitan Museum of Art, under{" "}
           <LicenseLink license={CC0_1} />. Drift only reshapes it. It never
           invents facts. Illustrations on this site are{" "}
           <Link
@@ -134,7 +134,7 @@ export function PublicFooter() {
         </p>
         <p className="max-w-md text-xs leading-relaxed text-ink-soft">
           An independent project, not affiliated with, endorsed by or sponsored
-          by the Wikimedia Foundation or The Art Institute of Chicago. ©{" "}
+          by the Wikimedia Foundation or The Metropolitan Museum of Art. ©{" "}
           {year} Drift.
         </p>
       </div>

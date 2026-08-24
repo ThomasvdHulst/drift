@@ -172,8 +172,11 @@ export default async function Image({
           </div>
         )}
 
-        {/* The credit, burned in. Same line the PNG export carries, for the same
-            reason: this file travels away from any page that could carry it. */}
+        {/* The credit, burned in, for the same reason the text export carries
+            one: this file travels away from any page that could carry it.
+            A shared trail can hold cards from either realm, and this card is
+            fixed-width, so it names both sources rather than trying to work out
+            which are present. */}
         <div
           style={{
             display: "flex",
@@ -184,7 +187,7 @@ export default async function Image({
           }}
         >
           <div style={{ display: "flex" }}>
-            Titles from Wikipedia · CC BY-SA 4.0
+            Titles from Wikipedia (CC BY-SA 4.0) and The Met (CC0 1.0)
           </div>
           <div style={{ display: "flex" }}>usedrift.org</div>
         </div>

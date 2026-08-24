@@ -5,11 +5,13 @@ import type { ArrivedVia, Card, Thread } from "@/lib/types";
 import type { Reaction } from "@/lib/interest";
 import type { RealmId } from "@/lib/realms/types";
 import { summaryUrl, getRealm } from "@/lib/realms";
+import { isArtSource } from "@/lib/card";
 import { proximityWord } from "@/lib/orbit";
 import { freshnessWord } from "@/lib/current";
 import { countWord } from "@/lib/text";
 import {
   licenseFor,
+  CC_BY_SA_4,
   MODIFICATION_CARD,
   MODIFICATION_FULL,
 } from "@/lib/licenses";
@@ -287,9 +289,17 @@ function ModeChip({
 }
 
 function ImagePanel({ card, onZoom }: { card: Card; onZoom?: () => void }) {
-  // Blur-up: a tiny base64 placeholder (art: AIC `lqip`) sits behind the real
-  // image and fades out once it loads — no layout shift, a calm reveal.
+  // Progressive reveal: something stands in behind the full-size image and fades
+  // out once it loads — no layout shift, a calm reveal. Two shapes of stand-in:
+  // `blurDataUrl` is a tiny base64 blur (Wikipedia), `previewUrl` is a real small
+  // image (the Met, which publishes no blur placeholder). A real preview is the
+  // better of the two and wins where both exist.
   const [loaded, setLoaded] = useState(false);
+  // A picture that FAILS to load must fall back to the calm monogram, not to the
+  // browser's broken-image chrome with the alt text spilling out of it. Learned
+  // the hard way: when the Art Institute's host began refusing every request, the
+  // Gallery did not degrade, it just looked broken.
+  const [failed, setFailed] = useState(false);
   const alt = card.imageAlt || card.displayTitle;
   // Papers have no image: render a generated, field-themed cover instead (Phase 17).
   if (card.source === "arxiv" && card.cover) {
@@ -309,7 +319,7 @@ function ImagePanel({ card, onZoom }: { card: Card; onZoom?: () => void }) {
     !!card.imageUrl &&
     !mayDisplayImage(card.imageCredit);
 
-  if (!card.imageUrl || wikiImageBlocked) {
+  if (!card.imageUrl || wikiImageBlocked || failed) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-accent/10">
         {/* Decorative monogram standing in for a missing image. The card title
@@ -322,26 +332,41 @@ function ImagePanel({ card, onZoom }: { card: Card; onZoom?: () => void }) {
     );
   }
   const blur = card.blurDataUrl;
+  const preview = card.previewUrl;
   // Art gets shown whole (never cropped) on a soft ground — a gallery wall, not a
   // full-bleed hero. Everything else fills the panel.
-  const isArt = card.source === "artic";
+  const isArt = isArtSource(card.source);
   if (isArt) {
     const artInner = (
       <>
-        {blur && (
+        {preview ? (
+          // A real small image, laid out exactly like the full-size one so the
+          // swap is a sharpening rather than a jump. Not blurred: it is the
+          // picture, just smaller.
           <img
-            src={blur}
+            src={preview}
             alt=""
             aria-hidden="true"
-            className={`pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover blur-2xl transition-opacity duration-700 ${loaded ? "opacity-0" : "opacity-60"}`}
+            className={`pointer-events-none absolute inset-0 m-auto max-h-full max-w-full object-contain p-4 transition-opacity duration-700 sm:p-6 ${loaded ? "opacity-0" : "opacity-100"}`}
             draggable={false}
           />
+        ) : (
+          blur && (
+            <img
+              src={blur}
+              alt=""
+              aria-hidden="true"
+              className={`pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover blur-2xl transition-opacity duration-700 ${loaded ? "opacity-0" : "opacity-60"}`}
+              draggable={false}
+            />
+          )
         )}
         <img
           src={card.imageUrl}
           alt={alt}
           onLoad={() => setLoaded(true)}
-          className="relative max-h-full max-w-full object-contain shadow-md"
+          onError={() => setFailed(true)}
+          className={`relative max-h-full max-w-full object-contain shadow-md transition-opacity duration-700 ${loaded ? "opacity-100" : "opacity-0"}`}
           draggable={false}
         />
       </>
@@ -396,6 +421,7 @@ function ImagePanel({ card, onZoom }: { card: Card; onZoom?: () => void }) {
         src={card.imageUrl}
         alt={alt}
         onLoad={() => setLoaded(true)}
+        onError={() => setFailed(true)}
         className="relative h-full w-full object-cover"
         draggable={false}
       />
@@ -593,11 +619,16 @@ function ThreadsSection({
 
 // The "from the source" link label, per realm's content source.
 function sourceLinkLabel(source?: string): string {
-  // The museum's full name, not a short form: AIC REQUESTS the caption "Artist.
-  // Title, Date. The Art Institute of Chicago." The card already carries the
-  // artist, title and date (title + description), so naming the institution in
-  // full here completes it (compliance audit Mi-1). CC0 imposes no attribution
-  // condition, so this is courtesy rather than obligation.
+  // The museum's full name, not a short form. CC0 imposes no attribution
+  // condition and The Met calls attribution "encouraged but not legally
+  // mandatory", so this is courtesy rather than obligation — but it is also the
+  // half of the museum's guidance that IS binding: its terms forbid implying
+  // that the museum endorses us, and naming it plainly as the source of the work
+  // (never as a partner) is how the card stays on the right side of that.
+  // The card already carries the artist, title and date, so the institution's
+  // name completes the caption (compliance audit Mi-1).
+  if (source === "met") return "The Metropolitan Museum of Art ↗";
+  // Art cards saved before the Gallery moved museums (Phase 31).
   if (source === "artic") return "The Art Institute of Chicago ↗";
   if (source === "gutenberg") return "Read the full text ↗";
   if (source === "arxiv") return "Read the full paper ↗";
@@ -685,7 +716,7 @@ export function CardView({
   const [showDetails, setShowDetails] = useState(false);
   // Deep-zoom lightbox (M-G2): only art with a hi-res `zoomUrl` is zoomable.
   const [zoomOpen, setZoomOpen] = useState(false);
-  const canZoom = card.source === "artic" && !!card.zoomUrl;
+  const canZoom = isArtSource(card.source) && !!card.zoomUrl;
   const onZoom = canZoom ? () => setZoomOpen(true) : undefined;
   // The licence this card's text is under, named and linked beside the source
   // link below (see lib/licenses.ts for the two separate obligations).
@@ -800,7 +831,7 @@ export function CardView({
           flow ? "md:self-stretch md:min-h-[26rem]" : "md:h-full"
         }`}
       >
-        <ImagePanel card={card} onZoom={onZoom} />
+        <ImagePanel key={card.imageUrl ?? card.pageTitle} card={card} onZoom={onZoom} />
       </div>
 
       {/* Reading side: one scroll region + a pinned threads bar. The whole
@@ -847,7 +878,7 @@ export function CardView({
               flow ? "h-52" : "h-[34dvh]"
             }`}
           >
-            <ImagePanel card={card} onZoom={onZoom} />
+            <ImagePanel key={card.imageUrl ?? card.pageTitle} card={card} onZoom={onZoom} />
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-paper-raised/70 to-transparent" />
           </div>
 
@@ -883,6 +914,16 @@ export function CardView({
                 other realm, and any page whose HTML did not parse), or the
                 collapsed card's hook. The paragraph markup is identical in all
                 three, so an article with no tables reads exactly as it did. */}
+            {/* When the expanded body is not this card's own work, say so BEFORE
+                it rather than only in a credit underneath. An art card's body is
+                a biography of the artist from Wikipedia: a different work, a
+                different author and a different licence from the CC0 artwork
+                above it, and the reader should never have to work that out. */}
+            {open && card.bodyFrom && (longBlocks || longText) && (
+              <p className="text-xs font-medium uppercase tracking-widest text-ink-soft">
+                {card.bodyFrom.label}
+              </p>
+            )}
             {open && longBlocks
               ? longBlocks.map((block, i) =>
                   block.kind === "table" ? (
@@ -991,13 +1032,20 @@ export function CardView({
             data-tour="card-readmore"
             className="flex flex-wrap items-center gap-4"
           >
-            <button
-              type="button"
-              onClick={toggleReadMore}
-              className="text-sm font-medium text-accent-strong underline decoration-accent/40 underline-offset-4 transition hover:decoration-accent"
-            >
-              {open ? "Show less" : "Read more"}
-            </button>
+            {/* Only offered when there is something to open. `hasBody` is absent
+                on every Wikipedia and Papers card and on everything saved before
+                it existed, so those are unaffected; an art card sets it to false
+                when the museum gives us no prose and no artist article, and the
+                control then does not appear at all rather than doing nothing. */}
+            {card.hasBody !== false && (
+              <button
+                type="button"
+                onClick={toggleReadMore}
+                className="text-sm font-medium text-accent-strong underline decoration-accent/40 underline-offset-4 transition hover:decoration-accent"
+              >
+                {open ? "Show less" : "Read more"}
+              </button>
+            )}
             <a
               href={card.sourceUrl}
               target="_blank"
@@ -1032,6 +1080,42 @@ export function CardView({
                   {license.label} ↗
                 </a>{" "}
                 · {open ? MODIFICATION_FULL : MODIFICATION_CARD}
+              </span>
+            )}
+            {/* A SECOND, separate notice, for a body that came from somewhere
+                other than this card's own source.
+                
+                An art card is CC0 from the museum, but its expanded body is an
+                artist's biography from Wikipedia: CC BY-SA 4.0, different
+                authors, and its own §3(a) obligations to name the source, state
+                and link the licence, and indicate modification. Folding that into
+                the CC0 line above would assert the wrong licence over someone
+                else's text, which is exactly the error compliance audit B-4 found
+                for images. So it gets its own line, and only while the body it
+                describes is actually on screen. */}
+            {open && card.bodyFrom && (longBlocks || longText) && (
+              <span className="text-xs text-ink-soft">
+                {card.bodyFrom.label} from{" "}
+                <a
+                  href={`https://en.wikipedia.org/wiki/${encodeURIComponent(
+                    card.bodyFrom.title.replace(/ /g, "_"),
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium underline decoration-ink/30 underline-offset-4 transition hover:text-accent-strong hover:decoration-accent"
+                >
+                  {card.bodyFrom.title} ↗
+                </a>{" "}
+                ·{" "}
+                <a
+                  href={CC_BY_SA_4.url}
+                  target="_blank"
+                  rel="license noopener noreferrer"
+                  className="font-medium underline decoration-ink/30 underline-offset-4 transition hover:text-accent-strong hover:decoration-accent"
+                >
+                  {CC_BY_SA_4.label} ↗
+                </a>{" "}
+                · {MODIFICATION_CARD}
               </span>
             )}
           </div>
@@ -1130,6 +1214,7 @@ export function CardView({
           src={card.zoomUrl}
           alt={card.imageAlt || card.displayTitle}
           blurDataUrl={card.blurDataUrl}
+          previewUrl={card.previewUrl}
           onClose={() => setZoomOpen(false)}
         />
       )}

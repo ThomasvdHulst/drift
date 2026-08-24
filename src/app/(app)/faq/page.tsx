@@ -109,7 +109,7 @@ export default function FaqPage() {
 
       <Section title="Does it work offline?">
         <P>
-          Not really. Cards are fetched live from Wikipedia or the Art Institute,
+          Not really. Cards are fetched live from Wikipedia or the museum,
           so drifting needs a connection. Trails you have already saved are
           stored on your device and stay readable.
         </P>
@@ -117,7 +117,7 @@ export default function FaqPage() {
 
       <Section title="Where does the content come from? Can I trust it?">
         <P>
-          Wikipedia and the Art Institute of Chicago. Drift does not generate
+          Wikipedia and The Metropolitan Museum of Art. Drift does not generate
           text on a card, so the accuracy is Wikipedia&apos;s accuracy: good for
           orientation, worth checking for anything that matters. Every card links
           to its source. Detail on <A href="/sources">sources</A>.

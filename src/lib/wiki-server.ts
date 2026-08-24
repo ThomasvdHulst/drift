@@ -106,6 +106,60 @@ export function wikiQuery(
  * is the whole point of the fail-closed rule, so a transient upstream error must
  * degrade to "no picture", never to "picture with no credit".
  */
+/**
+ * Wikidata ids → the English Wikipedia article each one is about.
+ *
+ * ONE request for a whole batch, not one per card: `wbgetentities` takes up to 50
+ * ids at a time, so a 20-card Gallery batch costs a single extra call. Same shape
+ * as `fetchImageCredits` below, and deliberately on the same gate: API:Etiquette
+ * asks for serial requests, and Wikidata is Wikimedia's estate too.
+ *
+ * A Q-id with no English article simply gets no entry, which the caller reads as
+ * "this card has nothing to expand into" rather than as an error.
+ *
+ * Note the User-Agent is not optional here. Wikimedia refuses default library
+ * user agents outright with a 403 — measured while building this, on a call that
+ * looked fine locally.
+ */
+export async function wikidataEnwikiTitles(
+  qids: string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const unique = [...new Set(qids.filter(Boolean))];
+  if (unique.length === 0) return out;
+
+  const ua = wikiUserAgent();
+  for (let i = 0; i < unique.length; i += 50) {
+    const chunk = unique.slice(i, i + 50);
+    const url =
+      `https://www.wikidata.org/w/api.php?${new URLSearchParams({
+        action: "wbgetentities",
+        ids: chunk.join("|"),
+        props: "sitelinks",
+        // Only the English sitelink. The unfiltered response carries a sitelink
+        // for every wiki in every language and is enormous.
+        sitefilter: "enwiki",
+        format: "json",
+        formatversion: "2",
+      }).toString()}`;
+    try {
+      const raw = (await fetchJson(url, {
+        headers: { "Api-User-Agent": ua, "User-Agent": ua, ...WIKI_ENCODING },
+        gate: wikiGate,
+      })) as {
+        entities?: Record<string, { sitelinks?: { enwiki?: { title?: string } } }>;
+      };
+      for (const [qid, entity] of Object.entries(raw?.entities ?? {})) {
+        const title = entity?.sitelinks?.enwiki?.title;
+        if (typeof title === "string" && title.trim()) out.set(qid, title.trim());
+      }
+    } catch {
+      /* leave this chunk unresolved; those cards simply offer no body */
+    }
+  }
+  return out;
+}
+
 export async function fetchImageCredits(
   fileTitles: string[],
 ): Promise<Map<string, ImageCredit>> {
