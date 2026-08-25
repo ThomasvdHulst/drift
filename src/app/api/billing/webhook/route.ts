@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { NO_STORE } from "@/lib/cache-headers";
 import { adminClient, stripeClient } from "@/lib/billing/server";
 import { decide } from "@/lib/billing/events";
-import { amountLooksRight, splitFromStripe } from "@/lib/billing/price";
+import { amountLooksRight, describeVat, splitFromStripe } from "@/lib/billing/price";
 import { supporterReceiptEmail } from "@/lib/email/messages";
 import { sendViaResend } from "@/lib/email/send";
 
@@ -113,18 +113,33 @@ export async function POST(request: Request) {
     // AFTER the grant has actually landed. Best effort, like every other send in
     // the app — a mail provider having a bad afternoon must not turn into Stripe
     // retrying a grant that already succeeded.
+    // ⚠️ An EU sale that carried no tax is a MISCONFIGURATION, not a fact about
+    // the buyer: Stripe Tax is not activated or has no registration, and the
+    // seller still owes the BTW inside that €7. It cannot be fixed from here and
+    // it must not be guessed at on the receipt, so it is shouted into the log.
+    const split = splitFromStripe(decision.amountTotal, decision.amountTax);
+    const vat = describeVat(split.vatCents, split.ratePct, decision.country);
+    if (vat.kind === "missing") {
+      console.warn(
+        `[billing/webhook] NO TAX on session ${decision.sessionId} for country ` +
+          `${decision.country ?? "unknown"}. If that is an EU buyer, Stripe Tax is not ` +
+          `set up (dashboard → Tax → activate + add the NL registration) and the BTW ` +
+          `inside this payment is still owed. See docs/supporter.md §3.3.`,
+      );
+    }
+
     if (decision.email) {
       // From Stripe's OWN figures, never re-derived: a buyer outside the EU
       // pays no Dutch VAT, and a receipt stating a tax they were not charged is
       // a wrong tax document rather than a cosmetic slip.
-      const b = splitFromStripe(decision.amountTotal, decision.amountTax);
       const receipt = supporterReceiptEmail({
-        grossCents: b.grossCents,
-        vatCents: b.vatCents,
-        netCents: b.netCents,
-        ratePct: b.ratePct,
+        grossCents: split.grossCents,
+        vatCents: split.vatCents,
+        netCents: split.netCents,
+        ratePct: split.ratePct,
         paidAt: new Date(),
         reference: decision.sessionId,
+        ...(decision.country ? { country: decision.country } : {}),
       });
       await sendViaResend({
         to: decision.email,

@@ -7,7 +7,7 @@
 import { renderEmail, EMAIL_SITE_URL } from "./render";
 import { notificationSubject } from "../contact";
 import { imprint } from "../imprint";
-import { formatEur } from "../billing/price";
+import { describeVat, formatEur } from "../billing/price";
 
 export interface EmailMessage {
   subject: string;
@@ -270,6 +270,9 @@ export interface SupporterReceipt {
   paidAt: Date;
   /** Stripe's session id, so a question about this payment can be traced. */
   reference: string;
+  /** The billing country Stripe collected, when it did. Decides whether a zero
+   *  BTW line may claim "supplied outside the EU" or must stay silent. */
+  country?: string;
 }
 
 export function supporterReceiptEmail(r: SupporterReceipt): EmailMessage {
@@ -280,9 +283,7 @@ export function supporterReceiptEmail(r: SupporterReceipt): EmailMessage {
     `Paid on ${when}`,
     ``,
     `Total          ${formatEur(r.grossCents)}`,
-    r.vatCents > 0
-      ? `Of which BTW   ${formatEur(r.vatCents)} (${r.ratePct}%)`
-      : `BTW            none (supplied outside the EU)`,
+    describeVat(r.vatCents, r.ratePct, r.country).line,
     `Excluding BTW  ${formatEur(r.netCents)}`,
     ``,
     `Reference      ${r.reference}`,

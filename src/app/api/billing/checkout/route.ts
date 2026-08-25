@@ -74,9 +74,28 @@ export async function POST(request: Request) {
       // It needs an address to do that, hence the collection below.
       automatic_tax: { enabled: true },
       billing_address_collection: "required",
-      // Payment methods (iDEAL, cards) are chosen in the Stripe dashboard rather
-      // than pinned here, so enabling one later is a settings change and not a
-      // deploy.
+      // ⚠️ MANAGED PAYMENTS OFF, AND THIS IS THE LINE THAT PUTS iDEAL BACK.
+      //
+      // Stripe enables "Managed Payments" by default on new accounts and lets it
+      // choose the payment methods. On this account it chose `card` + `bancontact`
+      // and silently dropped **iDEAL**, which is over half of all Dutch online
+      // payments and the main reason this integration exists. Measured on the
+      // real account: a session created any other way (with an NL customer, a BE
+      // customer, no customer, with and without automatic tax) came back
+      // `["card","bancontact"]` every time, while the account's own capabilities
+      // and its default payment method configuration both had iDEAL on. It was
+      // not a setting anyone had got wrong.
+      //
+      // Turning it off here falls back to the dashboard's payment method
+      // configuration, which is the behaviour the rest of this route assumes:
+      // the list stays DYNAMIC and driven by the dashboard (currently card,
+      // iDEAL, Bancontact, EPS, Link, Amazon Pay, and the wallets), so enabling
+      // one later is still a settings change rather than a deploy. Nothing is
+      // pinned here on purpose; pinning would freeze the list into this file.
+      //
+      // It is set per request rather than left to the account-wide toggle so it
+      // cannot be undone by a dashboard click, or by Stripe changing a default.
+      managed_payments: { enabled: false },
       locale: "auto",
       success_url: `${origin}/account?supported=1`,
       cancel_url: `${origin}/supporter?cancelled=1`,

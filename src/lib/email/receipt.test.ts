@@ -128,3 +128,14 @@ describe("the withdrawal acknowledgement", () => {
     expect(m.subject).not.toMatch(/[—–]/);
   });
 });
+
+describe("a zero tax on an EU sale is not explained away", () => {
+  // The failure mode found on the real account: Stripe Tax switched on in the
+  // API but never activated in the dashboard, so amount_tax was 0 for everyone.
+  const m = receipt({ vatCents: 0, netCents: 700, ratePct: 0, country: "NL" });
+
+  it("does not tell a Dutch buyer they were supplied outside the EU", () => {
+    expect(m.html).not.toMatch(/outside the EU/);
+    expect(m.html).toMatch(/not itemised/);
+  });
+});

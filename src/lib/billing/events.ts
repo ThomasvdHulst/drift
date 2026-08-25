@@ -21,7 +21,7 @@ interface CheckoutSessionLike {
   client_reference_id?: unknown;
   metadata?: { user_id?: unknown } | null;
   customer?: unknown;
-  customer_details?: { email?: unknown } | null;
+  customer_details?: { email?: unknown; address?: { country?: unknown } | null } | null;
   customer_email?: unknown;
   payment_intent?: unknown;
   amount_total?: unknown;
@@ -53,6 +53,8 @@ export type BillingDecision =
       amountTax?: number;
       currency?: string;
       email?: string;
+      /** The billing country Stripe collected. Decides what a ZERO tax means. */
+      country?: string;
     }
   | { kind: "revoke"; paymentIntent: string }
   | { kind: "ignore"; why: string };
@@ -124,6 +126,7 @@ export function decide(event: StripeEventLike): BillingDecision {
           : undefined,
       currency: str(s.currency),
       email: str(s.customer_details?.email) ?? str(s.customer_email),
+      country: str(s.customer_details?.address?.country),
     };
   }
 

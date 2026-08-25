@@ -12,7 +12,7 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > (**The Metropolitan Museum of Art**, CC0 — moved there in Phase 31 after the Art Institute's image
 > host went behind a blanket Cloudflare block).
 >
-> **Gates:** 1,168 unit tests green, `npm run build` and `npm run lint` clean, `npm run audit:contrast`
+> **Gates:** 1,174 unit tests green, `npm run build` and `npm run lint` clean, `npm run audit:contrast`
 > PASS (5,652 text nodes, 31 views x 2 themes; pass `BASE=http://localhost:3000` or it measures
 > nothing and still says PASS). Backend: `npm run verify:supabase`, `verify:social`, `verify:share`, `verify:billing`.
 > Update these numbers when they change.
@@ -4562,6 +4562,26 @@ permanent fuel gauge, and nothing dimmed or teased behind the message.
       in `lib/billing/withdrawal.ts` and are unit tested: only the caller's own purchase, in full,
       once, inside 14 days, and only where there is a payment to refund against. `/contact` stays for
       what is left over (past the window, or a payment we cannot trace).
+- [x] **M7 — two things Stripe was quietly doing** *(25 August, from the owner asking where iDEAL
+      had gone)*.
+      **(a) Managed Payments was dropping iDEAL.** Stripe enables it by default on new accounts and
+      lets it choose the payment methods; on this account it chose `card` + `bancontact` and left out
+      **iDEAL**, which is over half of Dutch online payments and the reason the integration exists.
+      Proved it was not our code or a missed toggle by creating sessions every other way against the
+      live account (NL customer, BE customer, no customer, with and without automatic tax): all came
+      back `["card","bancontact"]`, while the account capabilities AND the default payment method
+      configuration both had iDEAL on, and a PaymentIntent with `automatic_payment_methods` happily
+      listed it. The route now sends `managed_payments: { enabled: false }`, which falls back to the
+      dashboard configuration and keeps the list dynamic; nothing is pinned. Set per request so a
+      dashboard click cannot undo it. Verified by rendering the real Stripe page: iDEAL | Wero first.
+      **(b) Stripe Tax was never activated,** which the same screenshot showed as "Belasting € 0,00".
+      Zero registrations means it calculates zero tax for everybody, silently, while a €7.00 sale to
+      a Dutch consumer still contains €1.21 of BTW the seller owes. Worse, `splitFromStripe` would
+      then hand the receipt a zero, and the receipt said "BTW none (supplied outside the EU)" — a
+      **wrong tax document**, sent quietly, to a Dutch buyer. `describeVat` now refuses to explain a
+      zero away for an EU country (it says "not itemised" instead), the webhook logs `NO TAX on
+      session …` when it happens, and `docs/supporter.md` §3.3 is rewritten around the trap. Fixing
+      the account is the owner's, and it is on the §6 list.
 - [x] **M5 — docs and verification.** `docs/supporter.md` is the owner's walkthrough end to end;
       `npm run verify:billing`; `/supporter` added to the contrast audit's route list. What is left
       is three things only the owner can do (that file's §6): publish the btw-id, do the Stripe

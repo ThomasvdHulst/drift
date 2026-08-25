@@ -139,19 +139,46 @@ Copy the **price id** (`price_…`, not the product id). That is `STRIPE_PRICE_I
 > ever change the price, change both, or the receipt becomes a wrong tax document. The webhook logs
 > a loud warning when a payment does not match, which is how you find out you forgot.
 
-### 3.3 Switch on Stripe Tax
+### 3.3 Switch on Stripe Tax  ⚠️ this one is not optional
 
-**Settings → Tax.** Add your Dutch registration and set the origin address to the one on `/legal`.
+**Settings → Tax.** Two separate things, and doing only the first is the trap:
 
-This costs about 0.5% per transaction, roughly 3.5 cents on €7, and it is worth every cent: it works
-out the right VAT per country automatically, which is what stops a buyer outside the EU being
-charged Dutch VAT they do not owe. It also produces the figures for your quarterly BTW return.
+1. **Activate Stripe Tax** and set the origin address to the one on `/legal`.
+2. **Add your Dutch registration** (Registrations → Add registration → Netherlands).
+
+It costs about 0.5% per transaction, roughly 3.5 cents on €7. It works out the right VAT per
+country, which is what stops a buyer outside the EU being charged Dutch VAT they do not owe, and it
+produces the figures for your quarterly BTW return.
+
+> **Why this is the dangerous step.** With no registration, Stripe Tax calculates **zero tax on
+> every sale**, silently. Checkout shows "Belasting € 0,00", `amount_tax` comes back 0, and nothing
+> errors. But a €7.00 sale to a Dutch consumer still contains €1.21 of BTW that you owe the
+> Belastingdienst, so you would be paying it out of the €7 without knowing.
+>
+> Two things now guard against it. The receipt refuses to write "BTW none (supplied outside the
+> EU)" for a buyer inside the EU, because that would be a wrong tax document; it says "not
+> itemised" instead. And the server log shouts `NO TAX on session …` every time it happens. If you
+> see that line, come back here.
+
+**Check it before going live.** In the Stripe dashboard the Tax page should say active with one
+registration for the Netherlands, and a test checkout should show €1.21 of BTW inside the €7.00
+once a Dutch address is entered.
 
 ### 3.4 Turn on iDEAL
 
-**Settings → Payment methods.** Enable **iDEAL** and **Cards**. Nothing in the code pins the payment
-methods, so this is a settings change rather than a deploy. iDEAL only appears for buyers in the
-Netherlands paying in euros, which is most of yours.
+**Settings → Payment methods.** Enable **iDEAL | Wero** and **Cards**. Nothing in the code pins the
+list, so adding another later is a settings change rather than a deploy.
+
+> ⚠️ **If iDEAL is enabled and still does not appear at checkout, it is not your settings.** Stripe
+> switches **Managed Payments** on by default for new accounts and lets it choose which methods to
+> show. On this account it chose card and Bancontact and dropped iDEAL, the single most used payment
+> method in the Netherlands, while the account capabilities and the payment method configuration
+> both had iDEAL on.
+>
+> The checkout route therefore sends `managed_payments: { enabled: false }` on every session, which
+> falls back to your dashboard configuration and brings iDEAL back. It is set per request rather
+> than as an account toggle so a dashboard click cannot undo it. If you ever want Managed Payments,
+> that one line in `src/app/api/billing/checkout/route.ts` is where to start.
 
 ### 3.5 The webhook
 
@@ -262,6 +289,9 @@ update public.entitlements set revoked_at = now() where user_id = '<their-user-i
 | The refund button is not offered | Check why in `entitlements`: a `beta` or `manual` grant has nothing to refund, a row with no `stripe_payment_intent` cannot be refunded automatically, and past fourteen days it points at `/contact` instead. Each case says which it is on the page. |
 | A refund succeeded but the unlock stayed | The route revokes directly and does not wait for the webhook, so this should not happen. If it does, the server log has `refunded but could not revoke` and the fix is one `update` (see 4b). |
 | A reader refunded and wants to buy again | They can, straight away. The webhook and the withdraw route both leave `revoked_at` set, and a new purchase clears it. |
+| Checkout shows "Belasting € 0,00" | Stripe Tax is not activated, or has no Netherlands registration. §3.3. **Fix it before taking real money**: you owe that BTW either way. |
+| `NO TAX on session …` in the server log | Same cause. It means a real payment came through with no tax itemised on it. |
+| iDEAL is enabled but not offered | Managed Payments is overriding it. The route already disables that per request (§3.4); if it comes back, check that line survived. |
 
 ---
 
@@ -283,12 +313,18 @@ receipt automatically. **Nothing will fail if you forget**, which is exactly why
 unset simply omits the line, and no test can tell the difference between "not selling yet" and
 "selling and not saying so".
 
-### 6.2 Do the Stripe setup
+### 6.2 Activate Stripe Tax and add the Netherlands registration  ⚠️
 
-§3 above, top to bottom, ending with the seven-step test-mode run. Nothing takes real money until
+§3.3. This is the one step in the whole file with a cost attached to forgetting it: with no
+registration, every sale records zero BTW while you still owe it. Checkout currently shows
+"Belasting € 0,00", which is how it was spotted.
+
+### 6.3 Finish the rest of the Stripe setup
+
+§3 above, top to bottom, ending with the eight-step test-mode run. Nothing takes real money until
 you switch to live keys.
 
-### 6.3 Upgrade to Vercel Pro
+### 6.4 Upgrade to Vercel Pro
 
 §3.8. The day checkout goes live on the real site, Hobby is no longer licensed for it.
 

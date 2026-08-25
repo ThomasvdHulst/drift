@@ -109,3 +109,57 @@ export function rateFromAmounts(netCents: number, vatCents: number): number {
   if (vatCents <= 0 || netCents <= 0) return 0;
   return Math.round((vatCents / netCents) * 100);
 }
+
+// ---------------------------------------------------------------------------
+// Describing the tax on a receipt, without asserting something we do not know.
+//
+// ⚠️ WHY THIS EXISTS. Zero tax on a payment has two completely different
+// meanings. For a buyer outside the EU it is correct and worth explaining. For a
+// buyer INSIDE the EU it means Stripe Tax is not activated or has no
+// registration, and the €7.00 still includes 21% BTW that the seller owes the
+// Belastingdienst whether Stripe worked it out or not.
+//
+// Found on the real account: Stripe Tax was switched on in the API call but
+// never activated in the dashboard, so `total_details.amount_tax` came back 0
+// for everybody. A receipt that reads "BTW none (supplied outside the EU)" to a
+// Dutch buyer is a wrong tax document, and it would have been sent quietly.
+// ---------------------------------------------------------------------------
+
+/** EU member states, for deciding what a zero-tax line MEANS. */
+const EU = new Set([
+  "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU",
+  "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE",
+]);
+
+export function isEuCountry(code: string | undefined | null): boolean {
+  return typeof code === "string" && EU.has(code.trim().toUpperCase());
+}
+
+export type VatDescription =
+  /** Tax was charged and can be stated plainly. */
+  | { kind: "charged"; line: string }
+  /** No EU tax, correctly, because the buyer is outside it. */
+  | { kind: "outside-eu"; line: string }
+  /** No tax on an EU sale. Almost certainly a misconfiguration. */
+  | { kind: "missing"; line: string };
+
+/**
+ * The BTW line for a receipt, and a flag saying whether it should worry anyone.
+ *
+ * The "missing" wording deliberately states only what is true (nothing was
+ * itemised) and does not claim a reason, because the honest reason is that
+ * something is wrong at our end and the reader is not the person who can fix it.
+ */
+export function describeVat(
+  vatCents: number,
+  ratePct: number,
+  country: string | undefined | null,
+): VatDescription {
+  if (vatCents > 0) {
+    return { kind: "charged", line: `Of which BTW   ${formatEur(vatCents)} (${ratePct}%)` };
+  }
+  if (country && !isEuCountry(country)) {
+    return { kind: "outside-eu", line: `BTW            none (supplied outside the EU)` };
+  }
+  return { kind: "missing", line: `BTW            not itemised` };
+}

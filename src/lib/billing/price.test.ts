@@ -5,6 +5,8 @@ import {
   amountLooksRight,
   splitFromStripe,
   rateFromAmounts,
+  describeVat,
+  isEuCountry,
   PRICE_CENTS,
   VAT_RATE_BPS,
 } from "./price";
@@ -111,5 +113,40 @@ describe("splitFromStripe", () => {
     expect(rateFromAmounts(579, 121)).toBe(21);
     expect(rateFromAmounts(579, 0)).toBe(0);
     expect(rateFromAmounts(0, 0)).toBe(0);
+  });
+});
+
+describe("describeVat — what a zero tax line is allowed to claim", () => {
+  it("states the tax plainly when there was one", () => {
+    const d = describeVat(121, 21, "NL");
+    expect(d.kind).toBe("charged");
+    expect(d.line).toContain("€1.21");
+    expect(d.line).toContain("21%");
+  });
+
+  it("explains a zero for a buyer outside the EU, which is correct", () => {
+    expect(describeVat(0, 0, "US").kind).toBe("outside-eu");
+    expect(describeVat(0, 0, "GB").line).toMatch(/outside the EU/);
+  });
+
+  it("REFUSES to claim 'outside the EU' for an EU buyer with no tax", () => {
+    // This is the case that was quietly wrong: Stripe Tax unactivated means
+    // amount_tax is 0 for everybody, and a Dutch buyer would have been told
+    // their purchase was supplied outside the EU. The seller still owes that
+    // BTW, so the receipt must not explain it away.
+    const d = describeVat(0, 0, "NL");
+    expect(d.kind).toBe("missing");
+    expect(d.line).not.toMatch(/outside the EU/);
+    expect(d.line).toMatch(/not itemised/);
+  });
+
+  it("treats an unknown country as suspect rather than as foreign", () => {
+    expect(describeVat(0, 0, undefined).kind).toBe("missing");
+    expect(describeVat(0, 0, "").kind).toBe("missing");
+  });
+
+  it("knows the EU membership it needs to", () => {
+    for (const c of ["NL", "nl", "DE", "IE", "FR", "PT"]) expect(isEuCountry(c)).toBe(true);
+    for (const c of ["GB", "US", "CH", "NO", "AU", undefined, null]) expect(isEuCountry(c)).toBe(false);
   });
 });
