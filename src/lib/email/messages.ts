@@ -6,6 +6,8 @@
 
 import { renderEmail, EMAIL_SITE_URL } from "./render";
 import { notificationSubject } from "../contact";
+import { imprint } from "../imprint";
+import { formatEur } from "../billing/price";
 
 export interface EmailMessage {
   subject: string;
@@ -237,5 +239,73 @@ export function noticeNotificationEmail(c: ContactDetails): EmailMessage {
       "",
       todo,
     ].join("\n"),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The supporter receipt (Phase 32).
+//
+// This is the one email in the app with legal weight. A distance contract with a
+// consumer has to be confirmed on a "durable medium" within a reasonable time,
+// and that confirmation has to carry the trader's identity, the total price with
+// the tax inside it named, and the right of withdrawal with how to use it
+// (art. 6:230v BW, implementing the Consumer Rights Directive).
+//
+// Drift does NOT exclude the 14 day withdrawal right, which most sellers of
+// digital goods do. Excluding it needs an express consent plus a separate
+// acknowledgement that the right is being given up, gathered as two deliberate
+// acts, and getting that subtly wrong leaves the reader with a 12 month
+// withdrawal period instead of 14 days. Honouring it costs an occasional €7 and
+// deletes the entire mechanism, so the copy below simply tells people they can
+// change their mind.
+// ---------------------------------------------------------------------------
+
+export interface SupporterReceipt {
+  /** Total paid, in cents. */
+  grossCents: number;
+  vatCents: number;
+  netCents: number;
+  ratePct: number;
+  /** When it was paid. */
+  paidAt: Date;
+  /** Stripe's session id, so a question about this payment can be traced. */
+  reference: string;
+}
+
+export function supporterReceiptEmail(r: SupporterReceipt): EmailMessage {
+  const who = imprint();
+  const when = r.paidAt.toISOString().slice(0, 10);
+  const lines = [
+    `Drift supporter unlock (one time)`,
+    `Paid on ${when}`,
+    ``,
+    `Total          ${formatEur(r.grossCents)}`,
+    r.vatCents > 0
+      ? `Of which BTW   ${formatEur(r.vatCents)} (${r.ratePct}%)`
+      : `BTW            none (supplied outside the EU)`,
+    `Excluding BTW  ${formatEur(r.netCents)}`,
+    ``,
+    `Reference      ${r.reference}`,
+    ``,
+    `${who.legalName}, trading as ${who.tradeName}`,
+    who.address.join(", "),
+    `KVK ${who.kvk}${who.vat ? ` · BTW-id ${who.vat}` : ""}`,
+    who.email,
+  ].join("\n");
+
+  return {
+    subject: "Your Drift supporter unlock",
+    html: renderEmail({
+      preheader: "Thank you. Your daily reading limit is lifted.",
+      heading: "Thank you for supporting Drift",
+      body: [
+        "Your supporter unlock is active. The daily reading limit no longer applies to your account, and everything added to the unlock later is included at no extra cost.",
+        "Drift is one person's project. It has no advertising, no tracking and nothing in the feed but cards, and what you paid is what keeps it that way.",
+      ],
+      quote: { label: "Receipt", text: lines },
+      cta: { label: "Go and wander", url: `${EMAIL_SITE_URL}/drift` },
+      note: "You can change your mind within 14 days and get your money back, for any reason or none. Just reply to this email or use the withdrawal form on your account page. Keep this email as your receipt.",
+    }),
+    text: `Thank you for supporting Drift.\n\n${lines}\n\nYou can change your mind within 14 days and get your money back, for any reason or none.`,
   };
 }

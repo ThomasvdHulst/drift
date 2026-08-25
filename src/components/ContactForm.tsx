@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Script from "next/script";
+import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import {
   CONTACT_TOPICS,
@@ -54,7 +55,14 @@ export function ContactForm() {
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [topic, setTopic] = useState<string>(CONTACT_TOPICS[0].id);
+  // Preselected from `?topic=` when the reader arrived from a link that already
+  // knows why they are writing (the refund link on the account page). Only an id
+  // that really exists is accepted, so the query string cannot put the form into
+  // a state the server would then reject.
+  const requestedTopic = useSearchParams().get("topic");
+  const [topic, setTopic] = useState<string>(
+    CONTACT_TOPICS.find((t) => t.id === requestedTopic)?.id ?? CONTACT_TOPICS[0].id,
+  );
   const [message, setMessage] = useState("");
   const [location, setLocation] = useState("");
   const [goodFaith, setGoodFaith] = useState(false);

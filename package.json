@@ -12,6 +12,7 @@
     "verify:supabase": "node --env-file=.env scripts/verify-supabase.mjs",
     "verify:social": "node --env-file=.env scripts/verify-social.mjs",
     "verify:share": "node --env-file=.env scripts/verify-publicshare.mjs",
+    "verify:billing": "node --env-file=.env scripts/verify-billing.mjs",
     "audit:contrast": "node scripts/audit-contrast.mjs"
   },
   "dependencies": {
@@ -24,7 +25,8 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-zoom-pan-pinch": "^4.0.3",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "stripe": "^22.5.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

@@ -24,14 +24,27 @@
 // wants the controller's identity and contact details, which is the same fact.
 //
 // ⚠️ VAT. Sub (f) is conditional: it applies "voor zover" a VAT-liable activity
-// is carried on. Drift takes no payment, shows no advertising and earns nothing,
-// so it is not currently such an activity and no VAT number is published. That
-// changes the day advertising runs, which is a VAT-relevant economic activity.
-// Rather than publish a placeholder, the field is absent and the owner's list
-// carries the task. See docs/owner-actions.md.
+// is carried on. That used to be "not yet": Drift took no payment, showed no
+// advertising and earned nothing.
+//
+// PHASE 32 CHANGED IT. Selling the supporter unlock is exactly such an activity,
+// so the number must now be published. It is read from `NEXT_PUBLIC_VAT_ID`
+// rather than written in here, for the same reason `contactAddress()` is: it is
+// a real-world identifier the owner holds and the repository is public. Absent
+// ⇒ the field simply does not render, which is the correct state right up until
+// the first euro and the wrong one after it.
+//
+// ⚠️ SET IT BEFORE TAKING A REAL PAYMENT. `npm run verify:billing` cannot check
+// this and neither can a type. docs/supporter.md carries the task.
 // ---------------------------------------------------------------------------
 
 import { contactAddress } from "./site";
+
+/** The Dutch VAT identification number, once one is being used. Read as a static
+ *  member access so Next inlines it for the browser bundle. */
+function vatId(): string | undefined {
+  return (process.env.NEXT_PUBLIC_VAT_ID ?? "").trim() || undefined;
+}
 
 export interface ImprintDetails {
   /** The legal person. For a sole trader that is the natural person, not the
@@ -61,5 +74,6 @@ export function imprint(): ImprintDetails {
     address: ["Uilenstede 138", "1183 AN Amstelveen", "Netherlands"],
     kvk: "90992318",
     email: contactAddress(),
+    ...(vatId() ? { vat: vatId() } : {}),
   };
 }

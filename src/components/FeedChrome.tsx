@@ -92,6 +92,7 @@ export function FeedTopBar({
   pos,
   branchAt,
   stops,
+  stopsLeft,
   realm,
   otherRealm,
   onCrossRealm,
@@ -105,6 +106,11 @@ export function FeedTopBar({
   pos: number;
   branchAt?: Set<number>;
   stops: number;
+  /** Stops left in today's allowance, and ONLY when few enough to be worth
+   *  saying (lib/limits.ts `shouldWarn`). Absent the rest of the time: a
+   *  permanent gauge would be scarcity furniture, which is the opposite of what
+   *  this app is for. */
+  stopsLeft?: number;
   realm: { label: string; glyph: string };
   // The realm you can cross INTO (Phase 15) + the handler; the quiet control is a
   // discoverable + desktop-friendly complement to the horizontal swipe.
@@ -167,6 +173,11 @@ export function FeedTopBar({
         )}
         <span className="shrink-0 whitespace-nowrap text-sm tabular-nums text-ink-soft">
           {stops} {stops === 1 ? "stop" : "stops"}
+          {stopsLeft !== undefined && (
+            // Said next to the count it belongs to, rather than as a banner of
+            // its own: it is information, not an interruption.
+            <span className="hidden sm:inline"> &middot; {stopsLeft} left today</span>
+          )}
         </span>
         <button
           type="button"

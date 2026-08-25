@@ -5,16 +5,16 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 **tested with success**. Keep the "Current status" line accurate. Full product detail is in
 `drift-spec.md`; working rules are in `CLAUDE.md`.
 
-> ## Current status: 2026-08-24
+> ## Current status: 2026-08-25
 >
 > **Drift is live** at <https://www.usedrift.org> (Vercel + Supabase) as an installable PWA, in a
 > small friends-and-family beta. Two realms ship: **Encyclopedia** (Wikipedia) and **Gallery**
 > (**The Metropolitan Museum of Art**, CC0 — moved there in Phase 31 after the Art Institute's image
 > host went behind a blanket Cloudflare block).
 >
-> **Gates:** 1,064 unit tests green, `npm run build` and `npm run lint` clean, `npm run audit:contrast`
-> PASS (3,643 text nodes, 30 views x 2 themes; pass `BASE=http://localhost:3000` or it measures
-> nothing and still says PASS). Backend: `npm run verify:supabase`, `verify:social`, `verify:share`.
+> **Gates:** 1,150 unit tests green, `npm run build` and `npm run lint` clean, `npm run audit:contrast`
+> PASS (5,652 text nodes, 31 views x 2 themes; pass `BASE=http://localhost:3000` or it measures
+> nothing and still says PASS). Backend: `npm run verify:supabase`, `verify:social`, `verify:share`, `verify:billing`.
 > Update these numbers when they change.
 >
 > ### The compliance audit is fully implemented and closed out
@@ -4426,11 +4426,16 @@ article for **34%** of usable works (9 of 10 in European Paintings). So:
   room stays readable while the museum is throttling us. The EU copyright test is deliberately not
   baked: it widens every 1 January. It saves after every room, so an interrupted run keeps what it
   finished.
-  ⚠️ **The FORM COUNTS are baked; the ROOM POOLS are not yet.** A day of building this phase left
-  The Met throttling every search we made, and the pool pass could not complete. Nothing is broken
-  by that: `poolFor` falls back to a live search for any room with no baked pool, which is exactly
-  how the Gallery ran all through this phase. Re-run `node scripts/probe-met-pools.mjs --rooms`
-  on a quiet day to bank the resilience.
+  ✅ **Both passes are now baked** (room pass run 24 August 2026): 14 rooms, 3,209 ids, 250 apiece
+  except where the collection genuinely runs out of open-access work carrying an image (Africa &
+  Oceania 220, Dress & Costume 121, Photographs 118). `poolFor` answers from the file, so a cold
+  room no longer makes the largest and most throttle-prone call we have.
+  ⚠️ **Dress & Costume still reads thin, and the pool is not the reason.** Sampled at three offsets
+  it serves 3 to 7 cards per batch of 20, because the EU term test drops roughly three quarters of
+  the room: 20th-century fashion, designers who died recently or carry no dates at all. Baking
+  improved it (every id is at least public domain in the US now) but cannot fix it, since the EU
+  test must stay live. If that room should read fuller, the honest lever is a per-room over-fetch,
+  not a looser filter.
 - The last Art Institute modules are gone.
 
 ### Three findings worth not re-learning
@@ -4494,3 +4499,117 @@ developing says nothing about production.
 **Gates.** `npm run build` clean, `npm run lint` clean (1 pre-existing warning), **1,069 unit tests
 across 64 files green**, `npm run audit:contrast` PASS on **3,634 text nodes across 30 views x 2
 themes**, and the flows exercised against the live API and in a real browser.
+
+---
+
+## Phase 32: the supporter unlock ✅ *(2026-08-25 — code complete; Stripe setup is the owner's)*
+
+**Why.** AdSense refused the site a second time, and the honest read is that the format is wrong:
+Drift is an app wearing a website. `docs/owner-actions.md` §2 had already worked out that ads were
+a cost centre in the costume of a revenue stream. Replacing them: a **one-time €7 supporter
+unlock**, sold as keeping the project alive, which lifts a daily reading allowance and includes
+whatever is added to it later. No subscription, no advertising, nothing in the feed but cards.
+
+**The framing is the hard part, and it is a §2 constraint rather than a marketing choice.** "Pay to
+scroll more" is the slot machine's offer with the serial numbers filed off, and this app exists to
+argue against exactly that. So the two halves are justified separately and the copy never merges
+them: the allowance exists because **a day's reading should end** (§2.3, the reward at the exit),
+and the purchase exists because **the project costs money to run**. What is deliberately absent is
+as important as what is there: no countdown to midnight, no streak, no "come back tomorrow", no
+permanent fuel gauge, and nothing dimmed or teased behind the message.
+
+### Decisions taken with the owner before any code
+
+| | |
+|---|---|
+| Offer | One-time supporter unlock, **€7 including 21% NL BTW**. Later additions to the unlock are included at no extra cost — a promise of **inclusion**, never of features that do not exist yet. |
+| Rail | **Stripe direct** (iDEAL + cards). KvK 90992318 already exists, which is what Stripe wants. The trade against a merchant of record: about 5% instead of 14%, in exchange for owning VAT, receipts and the withdrawal right. |
+| Withdrawal | **No waiver.** Instant access, full 14 days to change your mind, refunded no questions asked. Deletes the whole double-consent subsystem, and the odd refund at €7 is noise. |
+| Unit | **Stops**, the number the reader already sees. |
+| Allowance | One env var. **Unset = count but never stop**, which is the measure-first period. |
+| Grandfathering | Every account existing when the migration runs, free and permanent. |
+| Go live | Live, with Vercel Pro (Hobby forbids a billing integration). Break-even ≈ 40 buyers a year. |
+
+- [x] **M1 — the meter, counting silently.** `0005_phase32_supporter.sql` (two tables, two
+      functions), `lib/limits.ts` (pure), `lib/billing/meter.ts` (the I/O half), wired into the feed.
+- [x] **M2 — the day's end.** Guards at the four navigation entry points, the `reason="limit"`
+      variant of the trail-map overlay, `components/DayDone.tsx` for a spent day on arrival, and the
+      quiet "N left today" line.
+- [x] **M3 — Stripe.** `lib/billing/price.ts` + `events.ts` (pure, tested), `server.ts`, the checkout
+      and webhook routes, `/supporter` (public, and it doubles as the art. 6:230m BW pre-contractual
+      information), the account section, the receipt email, `verify:billing`. The **withdrawal
+      function** moved forward from M4 rather than ship a refund link that went nowhere: `/contact`
+      gained a "Withdraw from my purchase" topic, preselected by `?topic=`, one click from the
+      account page.
+- [x] **M4 — the consumer and legal surface.** A sweep for every place the app claimed to be free,
+      which found three beyond the one already known: `/terms` (two clauses), the **FAQ** ("Is Drift
+      free?" answered "Yes. There is no paid tier"), and the **landing hero** ("Free ·"). `/terms`
+      gained a `supporter` section quoting the price **interpolated from `lib/billing/price.ts`**, so
+      the document cannot drift from the checkout. `/privacy` gained two data rows and Stripe as a
+      sixth recipient; `docs/processing-record.md` went to version 3 with rows 10 and 11. The btw-id
+      is now configuration (`NEXT_PUBLIC_VAT_ID`), not a literal, because this repository is public.
+      **No DSA Art. 14(2) notice was sent**: the owner confirmed every account at that point was a
+      test account, so there was nobody to notify. Recorded in `docs/supporter.md` §7, because it
+      does not carry forward.
+- [x] **M5 — docs and verification.** `docs/supporter.md` is the owner's walkthrough end to end;
+      `npm run verify:billing`; `/supporter` added to the contrast audit's route list. What is left
+      is three things only the owner can do (that file's §6): publish the btw-id, do the Stripe
+      setup, upgrade to Vercel Pro.
+
+### Four things worth not re-learning
+
+1. ⚠️ **Neither new table has a write policy, and that is the entire security model.** Drift talks
+   to Supabase straight from the browser (the sanctioned §4 exception), so the obvious design —
+   a table plus "you may update your own row" — hands every reader a console one-liner that zeroes
+   their counter and grants themselves an entitlement. Both tables grant SELECT on own rows and
+   nothing else; every write goes through a `security definer` function that takes **no arguments**
+   and can only add one. There is no amount to inflate and no date to choose.
+2. ⚠️ **A stop enters a trail in TWO places, not one.** `pushStep` handles every onward move, but
+   the **seed sets `history` directly** and never goes through it. Counting only at `pushStep`
+   would have made the first card of every session free, silently. Both call `recordStop`, and the
+   browser test pins that a limit of 3 yields exactly 3 cards.
+3. ⚠️ **The meter must never invent `supporter: false`.** `record_stop` returns a count but no
+   entitlement, so reconciling a count into an unknown state would have to guess — and guessing
+   false is the one guess that locks a **paying** reader out: status fetch lost at mount, write
+   succeeds, count already past the limit, day closed. It re-asks instead. Found in review, pinned
+   by a regression test, and it is the worst thing this feature could have done.
+
+**Verified.** Driven in a real browser against the live backend with the migration deliberately
+**not** applied, which is the fail-open case: the RPCs 404 and reading is completely unaffected. Then
+with the meter primed, at a limit of 3: seed + two advances = exactly 3 stops, "2 left today" then
+"1 left today" then silence, and the fourth move closes into the trail map. A spent day on arrival
+renders `DayDone` and never mounts the feed. `npm run audit:contrast` PASS (5,442 nodes, 30 views x
+2 themes), plus a targeted measurement of the two new surfaces, which the route list cannot reach:
+100 nodes, both themes, PASS.
+
+4. ⚠️ **A migration that "ran fine" had never counted anything.** `record_stop()` shipped with
+   `on conflict (user_id, day)`, which fails at runtime with `column reference "day" is ambiguous`:
+   PL/pgSQL resolves `day` to the function's own OUT parameter before the column. Every symptom
+   pointed away from it, because the meter FAILS OPEN by design: the app was healthy, the browser
+   test passed, `usage_daily` was simply always empty. `scripts/verify-billing.mjs` found it on its
+   first run. The lesson is not about Postgres: a component whose failure mode is "carry on
+   silently" cannot be verified by watching the app behave. It needs a test that asserts the write
+   actually happened. The same script's three "a reader cannot rewrite this" checks were **vacuous**
+   for the same reason until the fix landed, because there was no row to rewrite.
+
+**M3 verified without a Stripe account**, by signing synthetic webhook events with the same HMAC
+scheme Stripe uses (`scripts/` has no home for a one-off, so this lived in the scratchpad). That
+exercised the real route end to end against the live database: a forged signature, one from the
+wrong secret and a replayed one all refused with 400 and nothing written; a properly signed paid
+session granted; the same event twice left exactly one row; an unpaid session and an unrelated event
+ignored; a **partial** refund kept the unlock and a **full** one revoked it; and buying again after a
+refund cleared the revoke. A receipt send that failed (Resend refuses `example.com`) did not stop the
+grant, which is the best-effort contract working. The UI was then driven in a browser across all four
+states: signed out, signed in without the unlock, Stripe refusing (a plain sentence, no stack trace),
+and holding the unlock. `audit:contrast` covers `/supporter` in both themes from now on.
+
+**M4 found more than the clause we knew about.** A sweep for claims that Drift is free turned up the
+FAQ answering "Is Drift free?" with "Yes. There is no paid tier and nothing held back behind one",
+and the landing hero's "Free ·". Both would have gone live saying something untrue. `/legal` had the
+same shape of problem in reverse and it was caught only by rendering the page: a prose section
+explained that **no** VAT number is published because Drift earns nothing, sitting directly under the
+row that now prints the number. The prose branches on the number now, so the two cannot disagree.
+
+**Still needs the owner** (`docs/supporter.md` §6): publish the btw-id (`NEXT_PUBLIC_VAT_ID`, and
+nothing fails if it is forgotten, which is why it is first on that list), do the Stripe setup, and
+upgrade to Vercel Pro before checkout goes live.

@@ -70,3 +70,28 @@ describe("contactAddress", () => {
     expect(contactAddress()).toBe("contact@usedrift.org");
   });
 });
+
+describe("the VAT identification number (Phase 32)", () => {
+  // Art. 3:15d(1)(f) BW: publish it "insofar as" a VAT-liable activity is
+  // carried on. Selling the supporter unlock is one, so the day the first euro
+  // arrives this has to be set. It is configuration rather than a literal
+  // because the repository is public and the number is a real identifier.
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_VAT_ID;
+  });
+
+  it("is absent when unset, rather than rendering a placeholder", () => {
+    delete process.env.NEXT_PUBLIC_VAT_ID;
+    expect(imprint().vat).toBeUndefined();
+  });
+
+  it("is published once configured", () => {
+    process.env.NEXT_PUBLIC_VAT_ID = "NL123456789B01";
+    expect(imprint().vat).toBe("NL123456789B01");
+  });
+
+  it("treats whitespace as unset", () => {
+    process.env.NEXT_PUBLIC_VAT_ID = "   ";
+    expect(imprint().vat).toBeUndefined();
+  });
+});

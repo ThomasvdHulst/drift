@@ -28,9 +28,17 @@ export default function FaqPage() {
     >
       <Section title="Is Drift free?">
         <P>
-          Yes. There is no paid tier and nothing held back behind one. It is a
-          personal project rather than a business, and it costs little enough to
-          run that keeping it free is straightforward.
+          Yes, to read. Every day, with no advertising and no tracking. Free
+          reading has a daily allowance, because a day of reading is meant to
+          end: when it runs out the session closes into your trail map and the
+          feed opens again the next day.
+        </P>
+        <P>
+          There is one thing you can buy, and only one. A single payment lifts
+          that allowance and helps keep the project running. It is not a
+          subscription, nothing renews, and no content is held back behind it:
+          supporters and everybody else read exactly the same Drift.{" "}
+          <A href="/supporter">What that involves</A>.
         </P>
       </Section>
 

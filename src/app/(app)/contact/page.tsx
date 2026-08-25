@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { ContactForm } from "@/components/ContactForm";
 import { PublicFooter } from "@/components/PublicFooter";
 import { contactAddress } from "@/lib/site";
@@ -34,7 +35,11 @@ export default function ContactPage() {
         </header>
 
         <div className="mt-8">
-          <ContactForm />
+          {/* `useSearchParams` (the ?topic= preselect) needs a boundary above it
+              on a statically prerendered page. */}
+          <Suspense fallback={null}>
+            <ContactForm />
+          </Suspense>
         </div>
 
         {/* DSA Articles 11 and 12: a single point of contact for Member State

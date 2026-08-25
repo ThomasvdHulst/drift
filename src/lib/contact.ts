@@ -18,6 +18,15 @@ export const CONTACT_TOPICS = [
   { id: "bug", label: "Something is broken" },
   { id: "idea", label: "An idea" },
   { id: "account", label: "Help with my account" },
+  // The withdrawal function (Phase 32). Since 19 June 2026 a consumer must be
+  // able to declare withdrawal from a distance contract through a function that
+  // is available continuously during the period, not by finding an address and
+  // composing a letter. Drift does not exclude the 14 day right, so it needs
+  // one, and this form already does everything such a function has to: it is
+  // permanently reachable, it takes the declaration, and it sends the sender a
+  // receipt on a durable medium. A separate page would be one more thing to
+  // find, which is what the rule is written against.
+  { id: "withdrawal", label: "Withdraw from my purchase (refund)" },
   { id: "other", label: "Something else" },
   { id: "report", label: "Report illegal content" },
 ] as const;

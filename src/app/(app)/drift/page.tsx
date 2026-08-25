@@ -101,6 +101,20 @@ import { ShareSheet } from "@/components/ShareSheet";
 import { cardToSharePayload } from "@/lib/social/share";
 import { AdCard } from "@/components/AdCard";
 import { adsConfig, shouldShowAd } from "@/lib/ads";
+import {
+  primeMeter,
+  recordStop,
+  refreshStatus,
+  subscribeMeter,
+} from "@/lib/billing/meter";
+import {
+  dailyLimit,
+  limitReached,
+  shouldWarn,
+  stopsRemaining,
+  type MeterState,
+} from "@/lib/limits";
+import { DayDone } from "@/components/DayDone";
 
 type Dir = "drift" | "thread" | "back" | "cross";
 
@@ -164,6 +178,16 @@ const spring = { type: "spring", stiffness: 260, damping: 30 } as const;
 // After this many stops, offer a gentle, dismissible nudge toward the trail map
 // (spec §2.4 "gentle awareness, not guilt"). Never blocks, never guilts.
 const NUDGE_AT = 25;
+
+// The free daily allowance (Phase 32), read once from the statically-inlined
+// NEXT_PUBLIC_ var. `null` means no limit at all, which is both the default and
+// the measure-first state: every stop is still counted, nobody is ever stopped.
+//
+// Note how this relates to NUDGE_AT above and does NOT replace it. The nudge is
+// an invitation at 25 stops that can be waved away; the allowance is where the
+// day actually closes. If a limit is ever set below the nudge the two would
+// collide, which is a reason to keep it comfortably above 25.
+const FREE_DAILY_STOPS = dailyLimit();
 
 // Ads config (Phase 21) — read once from statically-inlined NEXT_PUBLIC_* env.
 // OFF by default: when disabled nothing below runs (no ad card, no counter effect).
@@ -259,6 +283,20 @@ function DriftFeed() {
   // end screen opens — reading the ref here rather than during render.
   const [endExisting, setEndExisting] = useState<SessionTrail | null>(null);
   const [advancing, setAdvancing] = useState(false);
+  // Where this reader stands against the daily allowance (Phase 32). `null` means
+  // "we could not look" — signed out, no backend, or the request failed — and the
+  // feed treats that exactly like an unmetered reader. The meter FAILS OPEN.
+  const [meter, setMeter] = useState<MeterState | null>(null);
+  // Why the session ended: the reader chose to (the normal case), or the day's
+  // allowance ran out. Only the wording and the offered continuations differ.
+  const [endReason, setEndReason] = useState<"user" | "limit">("user");
+  // Opened the feed with the day already spent, so there is no session and no
+  // trail to show. Distinct from `ended`, which always has a trail behind it.
+  const [dayDone, setDayDone] = useState(false);
+  // Who is reading, reachable from the session-load effect without making the
+  // user object one of its dependencies (that effect restarts a session, and it
+  // must key off the URL alone). Same trick as `realmRef` below.
+  const userIdRef = useRef<string | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Per-cardId thumbs up/down (drives the button state on each card). The interest weights
@@ -403,6 +441,7 @@ function DriftFeed() {
   // realm without a stale-closure race.
   const realm: RealmId = current ? realmOfSource(current.card.source) : initialRealm;
   realmRef.current = realm;
+  userIdRef.current = user?.id ?? null;
   const realmMeta = getRealm(realm);
   // The realm a horizontal swipe / the top-bar control crosses INTO (two realms).
   const otherRealmMeta = getRealm(realm === "gallery" ? "encyclopedia" : "gallery");
@@ -519,6 +558,16 @@ function DriftFeed() {
   // So the guard below un-cancels instead of walking away. A cleanup with no
   // successor is still a real teardown (leaving /drift mid-load), and that one
   // still cancels — no stray fetches, no `persistSeen` for a card nobody saw.
+  // The daily meter (Phase 32): ask once where the reader stands, then follow the
+  // module's own updates (recordStop reconciles with the server's count, which is
+  // the one that has seen every device). Subscribe BEFORE the fetch so the first
+  // answer cannot land in the gap.
+  useEffect(() => {
+    const unsubscribe = subscribeMeter(setMeter);
+    void refreshStatus();
+    return unsubscribe;
+  }, []);
+
   const loadRef = useRef<{ cancelled: boolean }>({ cancelled: false });
   useEffect(() => {
     if (appliedKeyRef.current === paramKey) {
@@ -527,6 +576,23 @@ function DriftFeed() {
     }
     const restarting = appliedKeyRef.current !== null;
     appliedKeyRef.current = paramKey;
+
+    // The day's allowance, decided BEFORE a seed is fetched (Phase 32).
+    //
+    // `primeMeter` reads this device's mirror synchronously, which is the whole
+    // reason it exists: waiting for the round trip would hand a spent reader one
+    // more card every time they opened the feed, and since a fresh session is a
+    // page navigation away that would be farmable a card at a time. Unknown means
+    // carry on — the meter fails open.
+    const uid = userIdRef.current;
+    const primed = uid ? primeMeter(uid) : null;
+    if (primed && limitReached(primed, FREE_DAILY_STOPS)) {
+      setDayDone(true);
+      setInitialLoading(false);
+      return;
+    }
+    setDayDone(false);
+
     const load = { cancelled: false };
     loadRef.current = load;
     (async () => {
@@ -844,6 +910,9 @@ function DriftFeed() {
         ]);
         setPos(0);
         setTip(0);
+        // The seed is a stop like any other, and this is the one that does not
+        // go through `pushStep` (which counts the rest). See the note there.
+        recordStop();
       } catch {
         if (!load.cancelled)
           setError(
@@ -938,8 +1007,21 @@ function DriftFeed() {
 
   // Finalize the current card's dwell (it's never "left") before the trail map,
   // so the duration includes the stop you ended on.
-  function endSession() {
+  /**
+   * Whether the day's allowance is spent.
+   *
+   * An unknown meter (signed out, no backend, the request failed) is NOT spent:
+   * the meter fails open, always (CLAUDE.md §4). `limitReached` already returns
+   * false when no limit is configured, so the measure-first state needs no case
+   * of its own here.
+   */
+  function dayIsSpent(): boolean {
+    return meter !== null && limitReached(meter, FREE_DAILY_STOPS);
+  }
+
+  function endSession(reason: "user" | "limit" = "user") {
     if (holdNav) return; // frozen while "looking around" in the tour
+    setEndReason(reason);
     const now = Date.now();
     accrueDwell(now);
     dwellRef.current = { index: dwellRef.current.index, at: now };
@@ -990,6 +1072,11 @@ function DriftFeed() {
   ) {
     seenRef.current.add(cardId(card));
     persistSeen([cardId(card)]); // fire-and-forget; serialized in storage
+    // The daily meter (Phase 32). ⚠️ This is only ONE of the two places a stop
+    // enters a trail: the SEED sets `history` directly and never comes through
+    // here, so it counts itself (see the seed branch above). Counting only here
+    // would quietly make the first card of every session free.
+    recordStop();
     // Tell the tour which real move just happened (drift onward / thread pull /
     // realm cross), so its forced steps advance on the genuine action.
     if (direction === "drift") tourSignal("drifted");
@@ -1085,6 +1172,13 @@ function DriftFeed() {
    *  saved trail and its buffers all survive. */
   async function openDoor(od: OpenDoor) {
     if (busyRef.current || holdNav) return;
+    // The day's allowance (Phase 32). Checked HERE, before anything is fetched,
+    // so a spent day costs the upstream sources nothing. The session closes into
+    // the trail map rather than into a wall: the reward belongs at the exit.
+    if (dayIsSpent()) {
+      endSession("limit");
+      return;
+    }
     const from = history[od.stepIndex];
     if (!from) return;
     await withBusy(async () => {
@@ -1298,6 +1392,13 @@ function DriftFeed() {
   // The real drift (focused orbit / liked-thread follow / independent random),
   // extracted so advance() can slip a calm ad in front of it every N drifts.
   async function doDrift() {
+    // The day's allowance (Phase 32). Checked HERE, before anything is fetched,
+    // so a spent day costs the upstream sources nothing. The session closes into
+    // the trail map rather than into a wall: the reward belongs at the exit.
+    if (dayIsSpent()) {
+      endSession("limit");
+      return;
+    }
     // A focus steers the passive drift only inside its OWN realm: carried through
     // a doorway into the other one it goes dormant (and the banner says so), so
     // what happens here is an ordinary drift in the realm you are actually in.
@@ -1384,6 +1485,13 @@ function DriftFeed() {
   // Either way the realm then follows the landed card.
   async function crossRealm() {
     if (ended || busyRef.current || !current || holdNav) return;
+    // The day's allowance (Phase 32). Checked HERE, before anything is fetched,
+    // so a spent day costs the upstream sources nothing. The session closes into
+    // the trail map rather than into a wall: the reward belongs at the exit.
+    if (dayIsSpent()) {
+      endSession("limit");
+      return;
+    }
     const fromRealm = realm;
     // Only Encyclopedia<->Gallery cross for now; Papers is self-contained.
     if (fromRealm !== "encyclopedia" && fromRealm !== "gallery") return;
@@ -1967,6 +2075,13 @@ function DriftFeed() {
 
   function onThread(thread: Thread) {
     if (ended || busyRef.current || !current || holdNav) return;
+    // The day's allowance (Phase 32). Checked HERE, before anything is fetched,
+    // so a spent day costs the upstream sources nothing. The session closes into
+    // the trail map rather than into a wall: the reward belongs at the exit.
+    if (dayIsSpent()) {
+      endSession("limit");
+      return;
+    }
     // A stop that already has a way out of it is being left a SECOND way, which
     // is a branch. Said now, on the move itself, rather than discovered on the
     // map afterwards (§2.1).
@@ -2150,6 +2265,17 @@ function DriftFeed() {
     if (last) resolveTouch(last.x, last.y, true);
   }
 
+  // Opened the feed with the day already spent: there is no session behind this,
+  // so there is no trail map to end into and nothing to save. A calm exit page
+  // instead, before any of the feed chrome mounts (Phase 32).
+  if (dayDone) {
+    return (
+      <div className="h-dvh overflow-y-auto bg-paper" data-realm={realm}>
+        <DayDone stops={meter?.stops ?? 0} />
+      </div>
+    );
+  }
+
   return (
     <div
       className="flex h-dvh flex-col overflow-hidden bg-paper"
@@ -2167,6 +2293,12 @@ function DriftFeed() {
         pos={pathPos}
         branchAt={branchAt}
         stops={history.length}
+        // Only when the day is nearly done; undefined the rest of the time.
+        stopsLeft={
+          meter && shouldWarn(meter, FREE_DAILY_STOPS)
+            ? (stopsRemaining(meter, FREE_DAILY_STOPS) ?? undefined)
+            : undefined
+        }
         realm={{ label: realmMeta.label, glyph: realmMeta.glyph }}
         otherRealm={
           crossEnabled
@@ -2180,7 +2312,7 @@ function DriftFeed() {
         onCrossRealm={crossEnabled ? crossRealm : undefined}
         endless={endless}
         onJump={jumpTo}
-        onEnd={endSession}
+        onEnd={() => endSession()}
       />
 
       {banner && current && (
@@ -2321,7 +2453,7 @@ function DriftFeed() {
                 ) : (
                   <button
                     type="button"
-                    onClick={endSession}
+                    onClick={() => endSession()}
                     className="rounded-full bg-accent px-3.5 py-1.5 text-sm font-semibold text-paper-raised transition hover:bg-accent-strong"
                   >
                     View trail
@@ -2364,6 +2496,7 @@ function DriftFeed() {
             }}
             onOpenDoor={openDoor}
             onClose={() => setEnded(false)}
+            reason={endReason}
           />
         )}
       </AnimatePresence>
@@ -2381,6 +2514,7 @@ function EndOverlay({
   onSaved,
   onOpenDoor,
   onClose,
+  reason = "user",
 }: {
   history: TrailStep[];
   realm: RealmId;
@@ -2390,6 +2524,10 @@ function EndOverlay({
    *  branch off the stop that offered it (Phase 29). */
   onOpenDoor: (door: OpenDoor) => void;
   onClose: () => void;
+  /** Why the session ended. "limit" is the day's allowance running out, which
+   *  changes the wording and takes the doors away — a door would carry on
+   *  reading, and there is no more reading today. */
+  reason?: "user" | "limit";
 }) {
   const { signal: tourSignal } = useTour();
   const stats = computeTrailStats(history);
@@ -2500,7 +2638,7 @@ function EndOverlay({
       >
         <div className="shrink-0 border-b border-line px-6 pb-4 pt-6 text-center">
           <p className="text-xs font-medium uppercase tracking-widest text-ink-soft">
-            Your trail
+            {reason === "limit" ? "That is a day\u2019s wandering" : "Your trail"}
           </p>
           <input
             value={name}
@@ -2514,6 +2652,27 @@ function EndOverlay({
             className="mt-1 w-full rounded-lg bg-transparent text-center font-serif text-2xl leading-tight text-ink transition focus:bg-paper focus-ring sm:text-3xl"
           />
           <p className="mt-1.5 text-sm text-ink-soft">{statLine}</p>
+          {reason === "limit" && (
+            <>
+              <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-ink/75">
+                Today&rsquo;s reading is done. Here is where it went. The feed
+                opens again tomorrow.
+              </p>
+              {/* Same wording rule as components/DayDone.tsx: the reason to pay
+                  is that the project costs money, and the lifted limit is named
+                  second as a consequence. Never "pay to keep reading". */}
+              <p className="mx-auto mt-2 max-w-sm text-xs leading-relaxed text-ink-soft">
+                Drift carries no advertising.{" "}
+                <Link
+                  href="/supporter"
+                  className="focus-ring rounded underline decoration-line underline-offset-2 transition hover:text-accent-strong"
+                >
+                  Supporting it
+                </Link>{" "}
+                keeps it running, and lifts this daily limit.
+              </p>
+            </>
+          )}
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
@@ -2529,7 +2688,9 @@ function EndOverlay({
             </div>
           )}
           <div className="mt-6 space-y-6 border-t border-line pt-5 empty:mt-0 empty:border-0 empty:pt-0">
-            <DoorsLeft steps={history} onOpen={onOpenDoor} />
+            {reason !== "limit" && (
+              <DoorsLeft steps={history} onOpen={onOpenDoor} />
+            )}
             <UnopenedPage steps={history} />
           </div>
         </div>
@@ -2557,7 +2718,11 @@ function EndOverlay({
             onClick={onClose}
             className="rounded-full border border-line bg-paper-raised px-4 py-2 text-sm font-medium text-ink transition hover:border-accent/50 hover:text-accent-strong"
           >
-            Keep drifting
+            {/* "Keep drifting" would be a lie once the day is spent: the button
+                still works (you can page back over what you read) but it cannot
+                do what it says. A control that promises something the feed is
+                not going to do is a bug here, not a wording quibble (§2). */}
+            {reason === "limit" ? "Look back over today" : "Keep drifting"}
           </button>
 
           {saved ? (

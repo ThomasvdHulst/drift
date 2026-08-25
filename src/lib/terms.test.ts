@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { TERMS, TERMS_EFFECTIVE, TERMS_INTRO } from "./terms";
 import { parseInline } from "./inline";
+import { breakdown, formatEur, PRICE_CENTS } from "./billing/price";
 import { PUBLIC_CONTENT_ROUTES, isPublicRoute } from "./site";
 
 /** Every string of prose in the document, flattened. */
@@ -148,5 +149,64 @@ describe("terms — the content DSA Article 14 and the audit require", () => {
     expect(all).toContain("at least 16 years old");
     expect(all).toContain("dutch law");
     expect(all).toMatch(/mandatory consumer rules|consumer/);
+  });
+});
+
+describe("terms — the supporter unlock (Phase 32)", () => {
+  const section = TERMS.find((s) => s.id === "supporter");
+  const text = (section?.blocks ?? [])
+    .flatMap((b) => ("bullets" in b ? b.bullets : [b.p]))
+    .join(" ");
+  const all = prose.join("\n");
+
+  it("exists at a stable anchor", () => {
+    expect(section).toBeDefined();
+  });
+
+  it("no longer claims there is nothing to buy", () => {
+    // The clause this replaced read "It is free. There is no subscription, no
+    // paid tier, and nothing you can buy." Leaving that in place while selling
+    // something would be the plainest kind of untrue.
+    expect(all.toLowerCase()).not.toContain("nothing you can buy");
+    expect(all.toLowerCase()).not.toContain("no paid tier");
+  });
+
+  it("quotes the price from the module that owns it, not a typed-in copy", () => {
+    // If the Stripe price and this document ever disagree, the document is
+    // wrong. Interpolating means only Stripe can drift, and the webhook logs
+    // that case loudly.
+    expect(text).toContain(formatEur(PRICE_CENTS));
+    expect(text).toContain(`${breakdown().ratePct}% BTW`);
+  });
+
+  it("states it is a one time payment, not a subscription", () => {
+    expect(text.toLowerCase()).toContain("one time payment");
+    expect(text.toLowerCase()).toMatch(/nothing renews/);
+  });
+
+  it("puts a floor under 'for as long as Drift is running'", () => {
+    // A one-off payment for indefinite access has to name a definite minimum,
+    // or it promises eternity from a hobby project.
+    expect(text.toLowerCase()).toContain("at least twelve months");
+  });
+
+  it("states the 14 day withdrawal right and does NOT ask anyone to waive it", () => {
+    expect(text).toMatch(/14 days/);
+    expect(text.toLowerCase()).toMatch(/whole amount back|money back/);
+  });
+
+  it("does not disclaim the statutory conformity rights it cannot disclaim", () => {
+    // The Digital Content Directive rights on a PAID supply survive any
+    // "provided as it is" clause, so the document has to say so rather than
+    // imply the opposite.
+    const warranty = TERMS.find((s) => s.id === "no-warranty");
+    const w = (warranty?.blocks ?? [])
+      .flatMap((b) => ("bullets" in b ? b.bullets : [b.p]))
+      .join(" ")
+      .toLowerCase();
+    expect(w).toContain("supporter unlock");
+    expect(w).toMatch(/cannot be signed away|unaffected/);
+    // And the blanket "Drift is free and is provided as it is" is gone.
+    expect(w).not.toContain("drift is free and is provided");
   });
 });

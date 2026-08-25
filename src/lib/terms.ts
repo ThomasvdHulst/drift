@@ -48,11 +48,20 @@
 // Article 15(2) still exempts a micro enterprise from transparency reporting.
 // ---------------------------------------------------------------------------
 
+import { breakdown, formatEur, PRICE_CENTS } from "./billing/price";
+
 /** The date these terms took effect. Shown on the page and in the Markdown.
  *  Bump it whenever a clause changes, not merely when a typo is fixed: readers
  *  use it to tell whether what they agreed to is what is on screen. Last moved
- *  for the share-links section (Phase 27). */
-export const TERMS_EFFECTIVE = "1 August 2026";
+ *  for the supporter unlock (Phase 32), which is the first time using Drift can
+ *  involve paying for something. */
+// The price is quoted in the document, so it is taken from the module that owns
+// it rather than typed out again. A terms page quoting a price the checkout does
+// not charge is the kind of small inconsistency that undoes a document like this.
+const PRICE = formatEur(PRICE_CENTS);
+const RATE = breakdown().ratePct;
+
+export const TERMS_EFFECTIVE = "25 August 2026";
 
 export type TermsBlock = { p: string } | { bullets: string[] };
 
@@ -99,7 +108,31 @@ export const TERMS: TermsSection[] = [
         p: "Drift is a reading app. It shows you cards built from openly licensed sources, and lets you steer where you go next by pulling the threads on each card. It saves the trail you made, and it can show you that trail as a map.",
       },
       {
-        p: "It is free. There is no subscription, no paid tier, and nothing you can buy. If that ever changes, it changes here first.",
+        p: "It is free to read, every day. Free reading has a daily allowance, and there is a one time payment that lifts it. That is the only thing you can buy and there is no subscription. It is described in full below, and on the [supporter page](/supporter).",
+      },
+    ],
+  },
+  {
+    id: "supporter",
+    heading: "The supporter unlock",
+    blocks: [
+      {
+        p: "Reading Drift is free every day. Free reading has a daily allowance, because a day of reading is meant to end: when it is spent, the session closes into your trail map and the feed opens again the next day.",
+      },
+      {
+        p: `You can lift that allowance with a **one time payment of ${PRICE} including ${RATE}% BTW**. Nothing renews, nothing recurs, and you will not be asked again. Everything added to the unlock later is included at no extra cost. Everything you need to know before buying is on the [supporter page](/supporter).`,
+      },
+      {
+        p: "**It lasts as long as Drift is running, and for at least twelve months** from the day you buy it. Drift is one person's project and it could one day stop. That is the honest limit of what a one time payment can promise, and it is written here rather than left for you to discover.",
+      },
+      {
+        p: "The unlock belongs to your account. Deleting your account ends it, does not entitle you to a refund, and does not carry over to a new account.",
+      },
+      {
+        p: "**You can change your mind within 14 days**, for any reason or none, and get the whole amount back. Ask from your [account page](/account), or write to the address on the [legal page](/legal). You are not asked to give up this right at checkout, which sellers of digital things are allowed to do and most of them do.",
+      },
+      {
+        p: "If the unlock does not do what it says here, your rights as a consumer apply in full: it has to match its description, and if it does not you can have it put right or have your money back. Nothing in these terms limits that.",
       },
     ],
   },
@@ -237,7 +270,10 @@ export const TERMS: TermsSection[] = [
     heading: "What is not promised",
     blocks: [
       {
-        p: "Drift is free and is provided as it is. There is no promise that it will be available, that it will keep working, that it is free of errors, or that anything you save will survive. It is a personal project run by one person on a hobby budget, and the export exists so that you never have to rely on it for anything you would miss.",
+        p: "Drift is provided as it is. There is no promise that it will be available, that it will keep working, that it is free of errors, or that anything you save will survive. It is a personal project run by one person on a hobby budget, and the export exists so that you never have to rely on it for anything you would miss.",
+      },
+      {
+        p: "That is said about the free service. If you have bought the supporter unlock you have paid for something, and the law gives you rights about it that cannot be signed away by a paragraph like this one. Those rights are unaffected.",
       },
       {
         p: "The content is not ours and is not checked by us. Wikipedia can be wrong, and a museum record can be incomplete. Drift reshapes what those sources say into cards and does not verify any of it. Do not treat a card as advice, medical, legal, financial or otherwise.",

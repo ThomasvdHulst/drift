@@ -37,6 +37,14 @@ const USER_REFERENCES = [
   // sitting in the recipient's inbox. Deleting the sender must remove it.
   ["shares", "sender_id"],
   ["shares", "recipient_id"],
+  // Phase 32. The entitlement is proof of a purchase, so deleting it with the
+  // account is a deliberate choice rather than an oversight: /terms says the
+  // unlock goes when the account does, and the FISCAL record lives in Stripe,
+  // which is where the seven-year bookkeeping obligation is actually met.
+  ["entitlements", "user_id"],
+  // A per-day record of how much somebody read is behavioural data, and it must
+  // not outlive them. (record_stop also prunes it to a rolling 30 days.)
+  ["usage_daily", "user_id"],
 ] as const;
 
 describe("account deletion propagates (Article 17)", () => {

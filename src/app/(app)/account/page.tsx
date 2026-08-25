@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { useTour } from "@/components/tour/TourProvider";
 import { AuthForm } from "@/components/AuthForm";
@@ -23,6 +24,9 @@ import {
   listSessions,
 } from "@/lib/storage";
 import { buildDataExport, dataExportFilename } from "@/lib/export-data";
+import { SupporterBuy } from "@/components/SupporterBuy";
+import { refreshStatus, subscribeMeter } from "@/lib/billing/meter";
+import { dailyLimit, type MeterState } from "@/lib/limits";
 
 // The account screen (Phase 9, extended Phase 13). Calm, on-brand handle setup +
 // sign-out when signed in, and the shared email+password AuthForm when signed
@@ -64,6 +68,9 @@ export default function AccountPage() {
       ) : user ? (
         <div className="space-y-4">
           <SignedIn email={user.email ?? "your account"} onSignOut={signOut} />
+          <Suspense fallback={null}>
+            <SupporterSection />
+          </Suspense>
           <ChangePassword />
           {socialEnabled() && <ProfileSection />}
           <DownloadData user={user} />
@@ -587,6 +594,108 @@ function SignedIn({
       >
         {busy ? "Signing out…" : "Sign out"}
       </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The supporter unlock, on the account page (Phase 32).
+//
+// Three jobs, and the third is a legal one:
+//   1. say plainly whether this account holds the unlock;
+//   2. offer it, once, without nagging (there is no dismissable banner, no
+//      badge, and it never appears in the feed);
+//   3. carry the WITHDRAWAL route. Since 19 June 2026 a consumer must be able to
+//      withdraw from a distance contract through a function that is available
+//      continuously during the period, not by hunting for an address. Drift does
+//      not exclude the 14 day right, so this has to be here and has to work.
+//
+// `?supported=1` is where Stripe returns a buyer. It is deliberately calm: no
+// confetti, no "welcome to the club". The purchase is a quiet thing.
+// ---------------------------------------------------------------------------
+function SupporterSection() {
+  const [meter, setMeter] = useState<MeterState | null>(null);
+  const limit = dailyLimit();
+  // Derived during render rather than pushed into state from an effect: the
+  // query string is already React state as far as the router is concerned, and
+  // copying it into a second source of truth is what causes cascading renders.
+  const justPaid = useSearchParams().get("supported") === "1";
+
+  useEffect(() => {
+    const unsubscribe = subscribeMeter(setMeter);
+    void refreshStatus();
+    return unsubscribe;
+  }, []);
+
+  // Stripe redirects here the instant the payment is taken, but the webhook that
+  // actually grants the unlock is a separate request from Stripe's servers and
+  // can land a moment later. So look again shortly, rather than showing a fresh
+  // supporter a page that says they are not one.
+  useEffect(() => {
+    if (!justPaid) return;
+    const t = window.setTimeout(() => void refreshStatus(), 2500);
+    return () => window.clearTimeout(t);
+  }, [justPaid]);
+
+  const supporter = meter?.supporter === true;
+
+  return (
+    <div className="rounded-2xl border border-line bg-paper-raised p-6">
+      <p className="text-xs font-medium uppercase tracking-wide text-ink-soft">
+        Supporting Drift
+      </p>
+
+      {justPaid && !supporter && (
+        <p className="mt-3 text-sm leading-relaxed text-ink/75">
+          Thank you. Stripe has your payment and the unlock lands within a few
+          seconds. If this still says otherwise in a minute, reload the page.
+        </p>
+      )}
+
+      {supporter ? (
+        <>
+          <p className="mt-1 font-serif text-xl text-ink">
+            You hold the supporter unlock
+          </p>
+          <p className="mt-2 text-sm leading-relaxed text-ink-soft">
+            Thank you. No daily reading limit applies to your account, and
+            anything added to the unlock later is included at no extra cost.
+          </p>
+          <p className="mt-4 text-xs leading-relaxed text-ink-soft">
+            Changed your mind? You have fourteen days from your purchase to
+            withdraw and get the full amount back, for any reason or none.{" "}
+            <Link
+              href="/contact?topic=withdrawal"
+              className="focus-ring rounded underline decoration-line underline-offset-2 transition hover:text-accent-strong"
+            >
+              Ask for a refund
+            </Link>
+            .
+          </p>
+        </>
+      ) : (
+        <>
+          <p className="mt-1 font-serif text-xl text-ink">
+            {limit === null
+              ? "Drift has no advertising and no tracking"
+              : `Free reading is capped at ${limit} stops a day`}
+          </p>
+          <p className="mt-2 text-sm leading-relaxed text-ink-soft">
+            One payment, no subscription. It lifts the daily reading limit and
+            keeps a small project running.{" "}
+            <Link
+              href="/supporter"
+              className="focus-ring rounded underline decoration-line underline-offset-2 transition hover:text-accent-strong"
+            >
+              What you would be buying
+            </Link>
+            .
+          </p>
+          <div className="mt-4">
+            <SupporterBuy compact />
+          </div>
+        </>
+      )}
     </div>
   );
 }

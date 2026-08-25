@@ -59,6 +59,10 @@ const ROUTES = [
   // The imprint. Mostly a definition list, which no other page uses.
   { path: "/legal" },
   { path: "/install" },
+  // The page that takes money (Phase 32). Signed out it shows the pitch, the
+  // price block and the pre-contractual "What you are buying" list, which is a
+  // definition-list shape and an accent-tinted panel that appear nowhere else.
+  { path: "/supporter" },
   { path: "/contact" },
   // The DSA Article 16 branch of the contact form: extra fields, a checkbox and
   // its label, and the anonymity note. None of it renders in the default mode,

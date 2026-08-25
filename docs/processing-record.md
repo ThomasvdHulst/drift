@@ -6,9 +6,11 @@ Netherlands. Registered with the Dutch Chamber of Commerce under number 90992318
 **Contact:** `contact@usedrift.org`, and <https://www.usedrift.org/contact>.
 **Data protection officer:** none appointed. Drift meets no Article 37(1) condition: it is not a
 public authority, monitoring is not a core activity, and it processes no special categories.
-**Version:** 2, 1 August 2026. Keep this current when a processing activity, a processor or a
-retention period changes. *Version 2 adds public share links (row 9) and records that they changed
-Drift's classification under the DSA; see §3.*
+**Version:** 3, 25 August 2026. Keep this current when a processing activity, a processor or a
+retention period changes. *Version 2 added public share links (row 9) and recorded that they changed
+Drift's classification under the DSA; see §3. Version 3 adds the supporter unlock: taking payment
+(row 10, with Stripe as a new processor and partial controller) and the daily reading count that the
+free allowance is applied from (row 11).*
 
 ---
 
@@ -48,6 +50,8 @@ notice is the one people relied on and this file is the one that is wrong.
 | 9 | **Public share links.** Let a user publish one card or trail at an unguessable address so someone with no account can read it. | Registered users who create a link, and anyone who opens one | The snapshotted card or trail (titles, extracts, source URLs). No email address, handle or name unless the user put one in a trail name. Nothing at all is recorded about the reader: no log, no counter, no identifier. | Art 6(1)(b) contract | Supabase, Vercel. **And, by design, any person the link is forwarded to.** | Until the user revokes the link or deletes their account. Revoking is a timestamp, so the row survives for the user's own record and export while returning nothing to a reader. |
 
 ---
+| 10 | **Selling the supporter unlock** (Phase 32). Take a one-time payment that lifts the daily reading allowance. | Registered users who buy it | Held by Drift: user id, that the unlock is held, when it was granted or revoked, and Stripe's customer / checkout / payment-intent references. Held by Stripe, never by Drift: card or bank details, billing address, billing country. Email address is passed to Stripe to identify the payment and send the receipt. | Art 6(1)(b) contract for the sale itself. Art 6(1)(c) for the payment record Stripe must keep under Dutch bookkeeping law (7 years) and for the VAT record. | Stripe Payments Europe, Ltd. (payment, tax determination, fraud checks), Supabase, Vercel, Resend (the receipt) | The entitlement row until the user deletes the account, which cascades. **Stripe's own record is Stripe's and outlives the account**: 7 years, which is the bookkeeping obligation the record exists to satisfy. |
+| 11 | **Applying the daily reading allowance.** Count how many cards a signed-in reader opened today, so the free allowance can be applied. | Registered users | User id, a date, and an integer count. **Not which cards**, no titles, no ordering, no timestamps beyond the date. | Art 6(1)(b) contract | Supabase, Vercel | **30 days, then deleted automatically** by `record_stop()` on the reader's first stop of a new day. Sooner if the account is deleted. Deliberately a rolling window rather than a history: a per-day record of how much somebody read is behavioural data with no purpose past the day it governs (Art 5(1)(c)). |
 
 ## 2. Processors and international transfers
 
@@ -61,6 +65,7 @@ outside the EEA identified with the safeguard relied on.
 | Plus Five Five, Inc. (Resend) | Transactional email delivery | United States | DPF adequacy where certified, otherwise SCCs in Resend's DPA |
 | Cloudflare, Inc. | Turnstile (when configured), email routing | United States | DPF adequacy where certified, otherwise SCCs in Cloudflare's standard terms |
 | Google | Advertising (not active); identity provider only where `NEXT_PUBLIC_OAUTH_PROVIDERS` is set | Ireland / United States | Ads Data Processing Terms; DPF adequacy where certified |
+| Stripe Payments Europe, Ltd. | Payment processing, tax determination, the receipt reference | Ireland (EU) | **No transfer to assess for the EU entity**: the contracting party is established in Ireland. Stripe's own onward transfers to its US affiliates run on SCCs in Stripe's DPA. Note Stripe is a **controller in its own right** for fraud prevention and its regulatory record keeping, not only a processor. |
 
 The adequacy decision relied on is the European Commission's decision of **10 July 2023** on the
 EU-US Data Privacy Framework. It remains valid: the General Court dismissed the challenge in
@@ -80,6 +85,7 @@ never a task**, which the earlier version of this file got wrong.
 | Supabase | ⚠️ To confirm | A DPA is published and surfaced under Organisation → Legal Documents. Whether the account has it incorporated or awaiting an action has not been checked. |
 | Cloudflare | ❌ Not in force | Cloudflare's DPA is **not** automatic: it takes effect "from the date on which Customer signed or the parties otherwise agreed to this DPA". Only needed if Turnstile is enabled, which it is not. |
 | Google | ❌ Not in force | The Ads Data Processing Terms are accepted inside the AdSense account. **[BEFORE ADS]** |
+| Stripe | ⚠️ To confirm | Stripe's DPA forms part of the Services Agreement accepted when the account is created, so it should be in force on sign-up. **Confirm when the account exists**, and save it dated alongside Vercel's and Resend's. |
 
 ### ⚠️ Still open
 
@@ -175,6 +181,7 @@ Review this record when any of the following happens, and at least once a year:
 
 - a new processor is added, or one is dropped;
 - advertising is enabled (row 8 becomes live, and a consent record under Article 7(1) starts);
+- the price, the payment provider or the retention of the reading count changes (rows 10 and 11);
 - the hosting regions change;
 - a new category of personal data is collected;
 - the operator stops being a sole individual.

@@ -80,6 +80,10 @@ export const PUBLIC_CONTENT_ROUTES = [
   "/legal",
   "/install",
   "/contact",
+  // Public on purpose (Phase 32): it carries the pre-contractual information a
+  // consumer is owed BEFORE a distance contract, so somebody has to be able to
+  // read exactly what they would be paying for without making an account first.
+  "/supporter",
 ] as const;
 
 /**

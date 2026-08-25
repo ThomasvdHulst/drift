@@ -35,8 +35,9 @@ export const metadata = {
 //     flag the feature is, so the page cannot describe a check that is not
 //     running.
 //
-// Last updated 31 July 2026.
-const UPDATED = "31 July 2026";
+// Last updated 25 August 2026 (Phase 32: the supporter unlock added a payment
+// processor, a purchase record and a daily reading count).
+const UPDATED = "25 August 2026";
 
 /** The legal entity behind each sign-in button, for the recipients list.
  *  `OAUTH_META` in lib/auth.ts holds the BUTTON labels ("Continue with Google"),
@@ -166,6 +167,20 @@ export default function PrivacyPage() {
           kept="Until you delete the trail, or your account."
         />
         <Keep
+          title="Your supporter unlock, if you buy one"
+          data="That your account holds the unlock, when it was granted, and the Stripe references for the payment (a customer id, a checkout id and a payment id). Drift never receives or stores your card details, your bank details or your billing address: those stay with Stripe, who take the payment."
+          why="So the daily reading allowance stops applying to your account, and so a refund can be matched back to the payment it belongs to."
+          basis="Article 6(1)(b), performance of the contract. The payment record Stripe keeps is also Article 6(1)(c), the legal obligation to keep business records."
+          kept="Until you delete your account. Stripe keeps its own record of the payment for as long as Dutch bookkeeping law requires, which is seven years, and that record is Stripe's rather than ours to delete."
+        />
+        <Keep
+          title="How many cards you read today"
+          data="A count of the cards you opened, per day, for the last 30 days. Not which cards: just how many."
+          why="So the daily reading allowance can be applied. It is the smallest thing that answers 'how much have you read today', and it is never used to rank, target or profile anything."
+          basis="Article 6(1)(b)."
+          kept="30 days, then deleted automatically. Sooner if you delete your account."
+        />
+        <Keep
           title="Your reactions and interests"
           data="The cards you liked or passed on, and the topic weightings worked out from them."
           why="So that drifting leans towards what you enjoy. It orders your own cards for you and does nothing else, and it is never shared."
@@ -247,7 +262,7 @@ export default function PrivacyPage() {
       </Section>
 
       {/* Article 13(1)(e): the recipients or categories of recipients. Naming
-          them is more useful than a category, and at this size there are five. */}
+          them is more useful than a category, and at this size there are six. */}
       <Section title="Who else sees it">
         <P>
           Drift runs on other people&apos;s computers, so a handful of companies
@@ -267,6 +282,15 @@ export default function PrivacyPage() {
           <li>
             <Lead>Resend </Lead>(Plus Five Five, Inc.). Sends the emails listed
             above.
+          </li>
+          <li>
+            <Lead>Stripe Payments Europe, Ltd. </Lead>
+            Only if you buy the supporter unlock. Stripe takes the payment on its
+            own pages and tells us that it succeeded. It receives what a payment
+            needs (your email address, your billing country, and your card or
+            bank details, which never pass through Drift), and it is a controller
+            in its own right for the fraud checks and record keeping the law
+            requires of it.
           </li>
           <li>
             <Lead>Cloudflare, Inc. </Lead>

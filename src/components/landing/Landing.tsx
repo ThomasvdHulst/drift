@@ -103,8 +103,11 @@ export function Landing() {
                 or sign in
               </a>
             </div>
+            {/* "Free" on its own stopped being the whole truth in Phase 32:
+                reading is free every day, but free reading has a daily
+                allowance. The line says the part that is unconditional. */}
             <p className="mt-4 text-xs text-ink-soft">
-              Free · your trails stay private to your account
+              Free to read · your trails stay private to your account
             </p>
           </div>
 

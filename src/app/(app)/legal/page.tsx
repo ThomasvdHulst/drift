@@ -69,14 +69,28 @@ export default function LegalPage() {
         </P>
       </Section>
 
+      {/* Article 3:15d(1)(f) BW wants the VAT number "insofar as" a VAT-liable
+          activity is carried on. Which branch is true depends on whether the
+          number is configured, so the prose follows the number rather than
+          sitting beside it contradicting it (Phase 32: this page said no number
+          was published for one render after the field went live). */}
       <Section title="Value added tax">
-        <P>
-          No VAT identification number is published for Drift because Drift
-          carries on no VAT-liable activity: it is free, it shows no advertising
-          and it earns nothing. Article 3:15d(1)(f) BW requires the number only
-          insofar as such an activity is carried on. If that changes, this page
-          changes first.
-        </P>
+        {d.vat ? (
+          <P>
+            The number above is published because Drift now carries on a
+            VAT-liable activity: the supporter unlock is sold to readers, and the
+            price shown at checkout includes Dutch BTW. Article 3:15d(1)(f) BW
+            requires the number insofar as such an activity is carried on.
+          </P>
+        ) : (
+          <P>
+            No VAT identification number is published for Drift because Drift
+            carries on no VAT-liable activity: it takes no payment, shows no
+            advertising and earns nothing. Article 3:15d(1)(f) BW requires the
+            number only insofar as such an activity is carried on. If that
+            changes, this page changes first.
+          </P>
+        )}
       </Section>
 
       <Section title="The rest of the paperwork">
