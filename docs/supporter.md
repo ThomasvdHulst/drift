@@ -141,10 +141,44 @@ Copy the **price id** (`price_…`, not the product id). That is `STRIPE_PRICE_I
 
 ### 3.3 Switch on Stripe Tax  ⚠️ this one is not optional
 
-**Settings → Tax.** Two separate things, and doing only the first is the trap:
+**Settings → Tax.** Three separate things, and the third is the one that actually bites:
 
-1. **Activate Stripe Tax** and set the origin address to the one on `/legal`.
-2. **Add your Dutch registration** (Registrations → Add registration → Netherlands).
+1. **Activate Stripe Tax.**
+2. **Set the head office address** to the one on `/legal` (Uilenstede 138, 1183 AN Amstelveen, NL).
+   Registrations cannot be added until this is complete: Stripe answers "you must set your head
+   office address" and nothing else works.
+3. **Add the Netherlands registration** (Registrations → Add registration → Netherlands).
+
+> ### ⚠️ THE REGISTRATION IS MANDATORY *BECAUSE* MANAGED PAYMENTS IS OFF
+>
+> These two settings are coupled, and the coupling is invisible until it bites.
+>
+> With **Managed Payments on**, Stripe is the merchant of record for tax. Sessions come back with
+> `automatic_tax.liability: { type: "stripe" }` and Stripe works the VAT out against *its own*
+> registrations, so a €7.00 sale to a Dutch buyer records €1.21 whether or not you have registered
+> anything. That is why tax worked before §3.4's fix.
+>
+> Turning Managed Payments **off** to get iDEAL back moves liability to
+> `{ type: "self" }`. The VAT is now computed against **your** registrations, and with none it is
+> €0.00 for everybody, silently, on a `status: "complete"` session that looks perfectly healthy.
+>
+> Two real payments an hour apart proved it: identical price, tax behaviour, product tax code,
+> currency and Dutch billing address, differing in exactly one field, `liability`. The one with
+> `stripe` recorded 121 cents of tax; the one with `self` recorded 0.
+>
+> **So: iDEAL and your own tax registration come as a pair.** Keeping Managed Payments off is still
+> the right call, since you need the NL registration for your own BTW return regardless. But it has
+> to exist in whichever mode you are taking money in.
+>
+> ### And all three are per mode
+>
+> Test mode and live mode do not share tax settings or registrations, so doing this in one does
+> nothing for the other. "Your tax information is verified" on the account status page is about your
+> business details; it is not a registration and it does not make Stripe calculate anything.
+>
+> Check from the API rather than by eye, in whichever mode you care about:
+> `tax.settings.retrieve()` should return a complete head office address, and
+> `tax.registrations.list()` should return one row for NL.
 
 It costs about 0.5% per transaction, roughly 3.5 cents on €7. It works out the right VAT per
 country, which is what stops a buyer outside the EU being charged Dutch VAT they do not owe, and it
@@ -160,9 +194,14 @@ produces the figures for your quarterly BTW return.
 > itemised" instead. And the server log shouts `NO TAX on session …` every time it happens. If you
 > see that line, come back here.
 
-**Check it before going live.** In the Stripe dashboard the Tax page should say active with one
-registration for the Netherlands, and a test checkout should show €1.21 of BTW inside the €7.00
-once a Dutch address is entered.
+**What correct looks like.** With a Dutch buyer, the checkout summary reads `Btw € 1,21` under a
+`Subtotaal € 7,00`, with `Totaal verschuldigd bedrag € 7,00`: the tax is inside the price, not added
+to it. The session's `automatic_tax.status` is `complete` and `total_details.amount_tax` is `121`. A
+buyer outside the EU correctly gets 0.
+
+If `automatic_tax.status` comes back **`requires_location_inputs`**, Stripe simply does not know
+where the buyer is yet; that resolves itself once they enter a billing address. If the tax stays at
+zero **after** an address is entered, it is the registration, not the address.
 
 ### 3.4 Turn on iDEAL
 
@@ -177,8 +216,12 @@ list, so adding another later is a settings change rather than a deploy.
 >
 > The checkout route therefore sends `managed_payments: { enabled: false }` on every session, which
 > falls back to your dashboard configuration and brings iDEAL back. It is set per request rather
-> than as an account toggle so a dashboard click cannot undo it. If you ever want Managed Payments,
-> that one line in `src/app/api/billing/checkout/route.ts` is where to start.
+> than as an account toggle so a dashboard click cannot undo it.
+>
+> ⚠️ **That line also moves the VAT liability onto you**, which makes the tax registration in §3.3
+> mandatory rather than merely correct. The two settings are coupled; §3.3 explains it. If you ever
+> decide you would rather have Stripe carry the tax and lose iDEAL, deleting that one line in
+> `src/app/api/billing/checkout/route.ts` is the whole change.
 
 ### 3.5 The webhook
 
@@ -289,7 +332,10 @@ update public.entitlements set revoked_at = now() where user_id = '<their-user-i
 | The refund button is not offered | Check why in `entitlements`: a `beta` or `manual` grant has nothing to refund, a row with no `stripe_payment_intent` cannot be refunded automatically, and past fourteen days it points at `/contact` instead. Each case says which it is on the page. |
 | A refund succeeded but the unlock stayed | The route revokes directly and does not wait for the webhook, so this should not happen. If it does, the server log has `refunded but could not revoke` and the fix is one `update` (see 4b). |
 | A reader refunded and wants to buy again | They can, straight away. The webhook and the withdraw route both leave `revoked_at` set, and a new purchase clears it. |
-| Checkout shows "Belasting € 0,00" | Stripe Tax is not activated, or has no Netherlands registration. §3.3. **Fix it before taking real money**: you owe that BTW either way. |
+| No `Btw` line at all when the page first opens | Normal. Stripe does not know where the buyer is yet (`automatic_tax.status: requires_location_inputs`). It appears as soon as a country is chosen. |
+| `Btw € 0,00` **after** a country is chosen | That mode has no tax registration, and because Managed Payments is off the liability is yours. §3.3. Fix it before taking real money; you owe that BTW either way. |
+| Tax worked, then stopped, with no code change in between | Check `automatic_tax.liability` on the two sessions. `stripe` means Managed Payments was carrying it; `self` means it is yours and needs your registration. |
+| Stripe says "you must set your head office address" | The head office address is incomplete **in that mode**. Set it, then add the registration. §3.3. |
 | `NO TAX on session …` in the server log | Same cause. It means a real payment came through with no tax itemised on it. |
 | iDEAL is enabled but not offered | Managed Payments is overriding it. The route already disables that per request (§3.4); if it comes back, check that line survived. |
 

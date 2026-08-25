@@ -4580,8 +4580,22 @@ permanent fuel gauge, and nothing dimmed or teased behind the message.
       then hand the receipt a zero, and the receipt said "BTW none (supplied outside the EU)" — a
       **wrong tax document**, sent quietly, to a Dutch buyer. `describeVat` now refuses to explain a
       zero away for an EU country (it says "not itemised" instead), the webhook logs `NO TAX on
-      session …` when it happens, and `docs/supporter.md` §3.3 is rewritten around the trap. Fixing
-      the account is the owner's, and it is on the §6 list.
+      session …` when it happens, and `docs/supporter.md` §3.3 is rewritten around the trap.
+      ⚠️ **Root cause, and it was (a).** The first diagnosis here was wrong and is recorded because
+      the wrongness is the lesson: it blamed a missing tax registration and asserted the tax had
+      never worked. The owner said it had worked an hour earlier, and he was right. Two real
+      payments, identical in price, tax behaviour, product tax code, currency and Dutch billing
+      address, differed in exactly one field: `automatic_tax.liability`. The earlier one had
+      `{ type: "stripe" }` and recorded **121** cents of VAT; the later one had `{ type: "self" }`
+      and recorded **0**.
+      **Turning Managed Payments off is what moved the liability.** With it on, Stripe is merchant of
+      record for tax and works VAT out against its own registrations; with it off, VAT is computed
+      against ours, and there were none, so it silently became zero on a `status: complete` session.
+      **iDEAL and our own tax registration are therefore a pair**, which nothing in Stripe's UI says.
+      Keeping Managed Payments off is still right (the NL registration is needed for the BTW return
+      regardless), but the registration is now mandatory rather than merely correct, per mode.
+      Verified after adding it: `Btw € 1,21` under `Subtotaal € 7,00` on the rendered page, iDEAL
+      first, and a US buyer still correctly zero-rated.
 - [x] **M5 — docs and verification.** `docs/supporter.md` is the owner's walkthrough end to end;
       `npm run verify:billing`; `/supporter` added to the contrast audit's route list. What is left
       is three things only the owner can do (that file's §6): publish the btw-id, do the Stripe
