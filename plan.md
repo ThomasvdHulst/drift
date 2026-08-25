@@ -12,7 +12,7 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > (**The Metropolitan Museum of Art**, CC0 — moved there in Phase 31 after the Art Institute's image
 > host went behind a blanket Cloudflare block).
 >
-> **Gates:** 1,150 unit tests green, `npm run build` and `npm run lint` clean, `npm run audit:contrast`
+> **Gates:** 1,168 unit tests green, `npm run build` and `npm run lint` clean, `npm run audit:contrast`
 > PASS (5,652 text nodes, 31 views x 2 themes; pass `BASE=http://localhost:3000` or it measures
 > nothing and still says PASS). Backend: `npm run verify:supabase`, `verify:social`, `verify:share`, `verify:billing`.
 > Update these numbers when they change.
@@ -4537,10 +4537,10 @@ permanent fuel gauge, and nothing dimmed or teased behind the message.
       quiet "N left today" line.
 - [x] **M3 — Stripe.** `lib/billing/price.ts` + `events.ts` (pure, tested), `server.ts`, the checkout
       and webhook routes, `/supporter` (public, and it doubles as the art. 6:230m BW pre-contractual
-      information), the account section, the receipt email, `verify:billing`. The **withdrawal
-      function** moved forward from M4 rather than ship a refund link that went nowhere: `/contact`
-      gained a "Withdraw from my purchase" topic, preselected by `?topic=`, one click from the
-      account page.
+      information), the account section, the receipt email, `verify:billing`. A first **withdrawal
+      route** moved forward from M4 rather than ship a refund link that went nowhere: `/contact`
+      gained a "Withdraw from my purchase" topic, preselected by `?topic=`. M6 replaced it as the
+      primary path.
 - [x] **M4 — the consumer and legal surface.** A sweep for every place the app claimed to be free,
       which found three beyond the one already known: `/terms` (two clauses), the **FAQ** ("Is Drift
       free?" answered "Yes. There is no paid tier"), and the **landing hero** ("Free ·"). `/terms`
@@ -4551,6 +4551,17 @@ permanent fuel gauge, and nothing dimmed or teased behind the message.
       **No DSA Art. 14(2) notice was sent**: the owner confirmed every account at that point was a
       test account, so there was nobody to notify. Recorded in `docs/supporter.md` §7, because it
       does not carry forward.
+- [x] **M6 — withdrawal that actually withdraws** *(added 25 August, after the owner asked what they
+      were supposed to do with a refund email)*. The first version emailed the owner to go and press
+      Refund in the Stripe dashboard. That satisfies the letter of the 19 June 2026 obligation and
+      misses its point: the reader's money then waits on somebody reading an inbox.
+      `POST /api/billing/withdraw` now issues the refund through Stripe on the spot, and revokes
+      **immediately** rather than waiting for the `charge.refunded` webhook, so the account page is
+      already right when the reader looks at it. The webhook still fires and finds nothing to do (its
+      update filters `revoked_at is null`), so the two paths converge in either order. The rules live
+      in `lib/billing/withdrawal.ts` and are unit tested: only the caller's own purchase, in full,
+      once, inside 14 days, and only where there is a payment to refund against. `/contact` stays for
+      what is left over (past the window, or a payment we cannot trace).
 - [x] **M5 — docs and verification.** `docs/supporter.md` is the owner's walkthrough end to end;
       `npm run verify:billing`; `/supporter` added to the contrast audit's route list. What is left
       is three things only the owner can do (that file's §6): publish the btw-id, do the Stripe

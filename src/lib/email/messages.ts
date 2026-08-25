@@ -309,3 +309,47 @@ export function supporterReceiptEmail(r: SupporterReceipt): EmailMessage {
     text: `Thank you for supporting Drift.\n\n${lines}\n\nYou can change your mind within 14 days and get your money back, for any reason or none.`,
   };
 }
+
+/**
+ * The withdrawal acknowledgement (Phase 32).
+ *
+ * Art. 6:230s(1) BW: when a consumer withdraws electronically, the trader must
+ * acknowledge receipt on a durable medium without delay. Since Drift refunds on
+ * the spot rather than queueing a request, this acknowledges the withdrawal and
+ * confirms the refund in one message, which is what the reader actually wants to
+ * know: the money is on its way and here is how long banks take.
+ */
+export function withdrawalConfirmedEmail(r: {
+  amountCents: number;
+  /** Stripe's reference for the original payment. */
+  reference: string;
+}): EmailMessage {
+  const who = imprint();
+  const amount = formatEur(r.amountCents);
+  return {
+    subject: "Your Drift refund is on its way",
+    html: renderEmail({
+      preheader: `${amount} is being returned to the way you paid.`,
+      heading: "Your refund is on its way",
+      body: [
+        `You have withdrawn from your purchase of the Drift supporter unlock, and ${amount} is being returned to the card or account you paid with. Banks usually take five to ten days to show it, which is out of our hands.`,
+        "The unlock has been removed from your account, so the daily reading allowance applies again. Everything you have read and saved is untouched, and you are welcome to keep reading Drift for free every day.",
+        "You do not need to tell us why, and we have not asked.",
+      ],
+      quote: {
+        label: "Refunded",
+        text: [
+          `Drift supporter unlock`,
+          `Amount        ${amount}`,
+          `Reference     ${r.reference}`,
+          ``,
+          `${who.legalName}, trading as ${who.tradeName}`,
+          `KVK ${who.kvk}${who.vat ? ` · BTW-id ${who.vat}` : ""}`,
+          who.email,
+        ].join("\n"),
+      },
+      note: "If the money has not appeared after ten days, reply to this email and we will look into it.",
+    }),
+    text: `Your refund is on its way.\n\nDrift supporter unlock\nAmount ${amount}\nReference ${r.reference}\n\nThe unlock has been removed from your account. Banks usually take five to ten days to show a refund.`,
+  };
+}

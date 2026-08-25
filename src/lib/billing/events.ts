@@ -106,7 +106,7 @@ export function decide(event: StripeEventLike): BillingDecision {
     if (!userId) {
       // Deliberately not an error the webhook retries: without a user there is
       // nothing to grant, and Stripe would redeliver forever. It is logged and
-      // handed to the owner instead (docs/supporter.md §4 grants by hand).
+      // handed to the owner instead (docs/supporter.md §4b grants by hand).
       return { kind: "ignore", why: "paid session with no user id attached" };
     }
 

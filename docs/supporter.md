@@ -16,6 +16,10 @@ counter from the browser console. When the allowance runs out the session ends i
 map (the reward belongs at the exit), and opening the feed on a spent day shows a calm closing
 page instead. **It fails open**: if the database is unreachable, nobody is ever stopped.
 
+**Refunds are self-service.** A reader who changes their mind inside fourteen days presses a button
+on their account page and Stripe returns the money immediately. You are not in the loop and there is
+nothing in your inbox to action. §4 covers the cases that do still reach you.
+
 Two things are worth knowing before you start.
 
 - **It is a soft meter.** It stops the easy bypass, not a determined person who blocks one
@@ -48,7 +52,7 @@ It creates two tables (`entitlements`, `usage_daily`) and two functions (`record
 > which is what stops it silently handing the unlock to everyone who signed up since. The
 > practical consequence is that if you run it now, on a Tuesday, and go live in three weeks,
 > everyone who joined in between is a paying reader. If that is not what you want, grant them by
-> hand (§4) or ask me to re-run the sweep with a later cut-off.
+> hand (§4b) or ask me to re-run the sweep with a later cut-off.
 
 **Check it landed.** In the SQL editor:
 
@@ -192,10 +196,14 @@ Still in test mode:
 5. Check the receipt email arrived and reads correctly: the total, the BTW inside it, your KVK
    number, and the fourteen day withdrawal line.
 6. Confirm the meter is gone: with `NEXT_PUBLIC_FREE_DAILY_STOPS=3`, read past three cards.
-7. **Refund it** (dashboard → the payment → Refund). Within a few seconds the unlock should be gone
-   and the limit back. That is the withdrawal path working.
+7. **Refund it, as the reader would.** On `/account`, press "Get a refund", then "Yes, refund it".
+   The money goes back through Stripe immediately, the unlock disappears, the limit returns, and a
+   confirmation email arrives. Check the payment shows as refunded in the Stripe dashboard.
+8. **Then refund one from the dashboard too** (buy again, then dashboard → the payment → Refund).
+   Within a few seconds the unlock should be gone. That is the `charge.refunded` webhook, and it is
+   the path you will use for anything outside the fourteen days.
 
-Only when all seven pass, switch the dashboard to live mode, redo §3.2 and §3.5 there (test-mode
+Only when all eight pass, switch the dashboard to live mode, redo §3.2 and §3.5 there (test-mode
 objects do not carry over), and swap the three variables.
 
 ### 3.8 Vercel Pro
@@ -206,7 +214,21 @@ grey area and it is not optional. Break-even is roughly 40 buyers a year.
 
 ---
 
-## 4. Granting the unlock by hand
+## 4. What still reaches you, and what to do with it
+
+Almost nothing. A reader inside the fourteen days refunds themselves. Three cases still land in your
+inbox through `/contact`, and all three are handled the same way:
+
+| What they write | What you do |
+|---|---|
+| "I want a refund" and they are **past fourteen days** | Your call: there is no obligation. If you say yes, refund it in the Stripe dashboard (the payment → Refund) and the webhook removes the unlock within seconds. |
+| A refund that could not be issued automatically (rare: the entitlement has no payment reference) | Same. Find the payment by their email address in Stripe, refund it, done. |
+| "I paid and nothing happened" | Check `entitlements` for their user id. If the payment is in Stripe but the row is not there, the webhook missed it: grant it by hand below, and check **Developers → Webhooks** for a failed delivery. |
+
+**You never need to reply to a refund request to make it happen.** Refunding in the dashboard is the
+whole action; the webhook does the rest.
+
+## 4b. Granting the unlock by hand
 
 For a payment that goes strange, or someone you want to give it to. In the SQL editor:
 
@@ -237,6 +259,9 @@ update public.entitlements set revoked_at = now() where user_id = '<their-user-i
 | A supporter got stopped | Should be impossible; `supporter_status` decides it. Check `select * from entitlements where user_id = …` and that `revoked_at` is null. |
 | The count looks low for a heavy reader | Supporters stop being counted once a limit is configured, on purpose: with a limit live their count serves no purpose and it is behavioural data we should not collect for nothing. |
 | Old rows piling up | They do not. `record_stop` prunes each reader's rows past 30 days on their first stop of a new day. |
+| The refund button is not offered | Check why in `entitlements`: a `beta` or `manual` grant has nothing to refund, a row with no `stripe_payment_intent` cannot be refunded automatically, and past fourteen days it points at `/contact` instead. Each case says which it is on the page. |
+| A refund succeeded but the unlock stayed | The route revokes directly and does not wait for the webhook, so this should not happen. If it does, the server log has `refunded but could not revoke` and the fix is one `update` (see 4b). |
+| A reader refunded and wants to buy again | They can, straight away. The webhook and the withdraw route both leave `revoked_at` set, and a new purchase clears it. |
 
 ---
 
@@ -277,6 +302,12 @@ you switch to live keys.
   point was a test account belonging to the owner or to someone who knew the project, so there was
   nobody to notify. **This does not carry forward.** From the first real user onward, a change of
   this size does need the email, and the promise in `/terms` is what makes that binding.
+- **Withdrawal is automatic, not a request.** The obligation since 19 June 2026 is a withdrawal
+  *function*, continuously available. A form that emails the owner to go and press Refund satisfies
+  the letter of that and misses the point, because the reader's money then waits on somebody reading
+  an inbox. The button issues the refund. It is safe to automate because it is so narrow: only the
+  caller's own purchase, in full, once, inside fourteen days, and only when there is a Stripe
+  payment to refund against.
 - **The 14 day withdrawal right is honoured, not excluded.** Most sellers of digital goods exclude
   it with a consent box at checkout. Doing that properly needs an express consent plus a separate
   acknowledgement, gathered as two deliberate acts, and getting it subtly wrong turns a 14 day

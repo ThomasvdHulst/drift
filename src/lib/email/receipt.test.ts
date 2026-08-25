@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { supporterReceiptEmail } from "./messages";
+import { supporterReceiptEmail, withdrawalConfirmedEmail } from "./messages";
 import { imprint } from "../imprint";
 import { breakdown, splitFromStripe } from "../billing/price";
 
@@ -89,5 +89,42 @@ describe("a zero-rated sale is described honestly", () => {
     expect(m.html).toContain("€5.79");
     expect(m.html).not.toContain("21%");
     expect(m.html).toMatch(/outside the EU|none/i);
+  });
+});
+
+describe("the withdrawal acknowledgement", () => {
+  // Art. 6:230s(1) BW: acknowledge an electronic withdrawal on a durable medium
+  // without delay. Drift refunds on the spot, so this acknowledges and confirms
+  // in one message.
+  const m = withdrawalConfirmedEmail({ amountCents: 700, reference: "pi_abc123" });
+  const who = imprint();
+
+  it("names the amount and the payment it belongs to", () => {
+    expect(m.html).toContain("€7.00");
+    expect(m.html).toContain("pi_abc123");
+  });
+
+  it("sets the expectation about when the money lands", () => {
+    expect(m.html).toMatch(/five to ten days/i);
+  });
+
+  it("says the unlock is gone and that reading continues", () => {
+    expect(m.html).toMatch(/removed from your account/i);
+    expect(m.html).toMatch(/free every day/i);
+  });
+
+  it("does not ask why, and says so", () => {
+    expect(m.html).toMatch(/do not need to tell us why/i);
+  });
+
+  it("still identifies the trader", () => {
+    expect(m.html).toContain(who.kvk);
+    expect(m.html).toContain(who.email);
+  });
+
+  it("has a plain-text alternative and no em or en dashes", () => {
+    expect(m.text).toBeTruthy();
+    expect(m.text).not.toMatch(/[—–]/);
+    expect(m.subject).not.toMatch(/[—–]/);
   });
 });
