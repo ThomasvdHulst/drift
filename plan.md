@@ -5,16 +5,21 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 **tested with success**. Keep the "Current status" line accurate. Full product detail is in
 `drift-spec.md`; working rules are in `CLAUDE.md`.
 
-> ## Current status: 2026-08-25
+> ## Current status: 2026-08-26
 >
 > **Drift is live** at <https://www.usedrift.org> (Vercel + Supabase) as an installable PWA, in a
-> small friends-and-family beta. Two realms ship: **Encyclopedia** (Wikipedia) and **Gallery**
-> (**The Metropolitan Museum of Art**, CC0 — moved there in Phase 31 after the Art Institute's image
-> host went behind a blanket Cloudflare block).
+> small friends-and-family beta, now taking real payments for the **supporter unlock** (Phase 32).
+> A refund starts a **seven day wait before that account can buy again** (Phase 32B); migration
+> `0006_refund_cooldown.sql` is applied and `verify:billing` is green against it.
 >
-> **Gates:** 1,174 unit tests green, `npm run build` and `npm run lint` clean, `npm run audit:contrast`
-> PASS (5,652 text nodes, 31 views x 2 themes; pass `BASE=http://localhost:3000` or it measures
-> nothing and still says PASS). Backend: `npm run verify:supabase`, `verify:social`, `verify:share`, `verify:billing`.
+> Two realms ship: **Encyclopedia** (Wikipedia) and **Gallery** (**The Metropolitan Museum of Art**,
+> CC0 — moved there in Phase 31 after the Art Institute's image host went behind a blanket
+> Cloudflare block).
+>
+> **Gates:** 1,196 unit tests green, `npm run build` and `npm run lint` clean, `npm run audit:contrast`
+> PASS (31 views x 2 themes; the node count varies with how much local reading data the instance
+> has, 3,878 on an empty one. Pass `BASE=…` matching your port or it measures nothing and still
+> says PASS). Backend: `npm run verify:supabase`, `verify:social`, `verify:share`, `verify:billing`.
 > Update these numbers when they change.
 >
 > ### The compliance audit is fully implemented and closed out
@@ -4658,3 +4663,108 @@ row that now prints the number. The prose branches on the number now, so the two
 **Still needs the owner** (`docs/supporter.md` §6): publish the btw-id (`NEXT_PUBLIC_VAT_ID`, and
 nothing fails if it is forgotten, which is why it is first on that list), do the Stripe setup, and
 upgrade to Vercel Pro before checkout goes live.
+
+---
+
+## Phase 32B: a refund cannot be bought back immediately ✅ *(2026-08-26)*
+
+**Why.** Phase 32 went live with real money, and the sums only look benign in one direction. A
+refund returns the buyer's €7 and keeps the fee Stripe charged to take it, so the owner is out
+roughly €0,30 to €0,60 on every buy-and-refund with the money ending exactly where it started. Once
+is the price of honouring the withdrawal right and worth paying. On a loop it is somebody spending
+the owner's money for free, and nothing in the system stopped the loop: the checkout route refused a
+second purchase only while an unlock was *held*, and a refund cleared exactly that.
+
+**The fix is one column and one gate.** A refund stamps `refunded_at`; `/api/billing/checkout`
+refuses while that is inside seven days. No Stripe configuration moved, no keys were re-issued, and
+the price, the tax setup and the payment methods are untouched.
+
+### What the shape is, and why it is not `revoked_at`
+
+The row already had a "the unlock is off" timestamp, and reusing it was the obvious move and the
+wrong one. `revoked_at` is **cleared by the next purchase**, because that is what makes buying again
+work at all. A cooldown built on it would end the moment somebody bought past it, which is precisely
+the moment it is supposed to hold. So `refunded_at` is a second timestamp that **no grant ever
+touches**, and the two mean different things on purpose: one is a state, the other is an event.
+
+`refund_count` rides along and the rule deliberately does **not** read it. It exists so the owner can
+see a repeat, because otherwise the only trace of the earlier ones is the Stripe dashboard. Making
+the wait grow with the count is one line in `lib/billing/cooldown.ts` if it is ever needed; it was
+not built on speculation.
+
+### What it must never become
+
+It gates **buying**, never **withdrawing**. A refund stays immediate, unconditional and unexplained,
+and a route that made somebody wait for their own money back would be the exact thing the withdrawal
+function exists to prevent. The copy follows from that: the notice says what the fee is and what the
+wait is for, counts down to the second in its final minutes, and carries a link that lifts it by
+hand. Nothing anywhere calls the reader a suspect. It is stated **before** the sale as well (a
+"Buying again later" row on `/supporter`, a clause in `/terms`, a paragraph in the refund email), so
+nobody meets the rule for the first time as a button that has stopped working.
+
+### Two holes, left open with reasons
+
+- **Deleting the account.** The cooldown hangs off `user_id` and cascades away with it. Closing that
+  means keeping an identifier after an erasure request: a real cost to every honest reader to
+  inconvenience one dishonest one, against a privacy promise made to all of them.
+- **A Checkout Session created before the refund.** Stripe sessions stayed payable for 24 hours, so
+  several tabs opened before a first purchase could be paid one after another, each refunded in
+  between, without ever passing the gate again. Sessions now expire in **two hours**
+  (`SESSION_LIFETIME_MINUTES`), which is generous for a €7 decision and shrinks the window to almost
+  nothing. If one still lands, the webhook **grants it anyway** and logs `COOLDOWN BYPASSED`:
+  refusing would leave somebody having paid for nothing, and auto-refunding would spend a second fee
+  to arrive where a refund already arrived. Neither is cheaper; both are worse for the honest reader
+  who forgot a tab.
+
+### The deploy window, which is the part that could have gone quietly wrong
+
+Code reaches production on a push; migration `0006` is a human pasting SQL into Studio. In between,
+`entitlements` has no `refunded_at`, and PostgREST answers a select naming it with **42703** rather
+than ignoring it. Left alone that is not "the cooldown is not on yet", it is an entitlement read that
+returns nothing, which takes the **refund button off the account page**: the statutory withdrawal
+function, gone, because a column was missing. So `readEntitlement` and `markRefunded` catch that one
+error and repeat the read without the new columns, warn once, and carry on. Verified against the real
+database with the migration deliberately not yet applied: checkout, the second-purchase refusal and
+the withdrawal path all behaved exactly as before.
+
+- [x] `0006_refund_cooldown.sql` — two columns, no new table, policy or function. The existing
+      `see own entitlement` policy already covers reading them, which is what lets the buy button
+      count down without a route of its own. Backfills an existing revoked purchase, because before
+      this migration only a refund ever set `revoked_at` on one.
+- [x] `lib/billing/cooldown.ts` — the rule, the countdown formatting and the tick interval, pure and
+      unit tested (22 cases). Fails **open** on an unreadable timestamp and clamps a future-dated one,
+      so a bad row can never lock somebody out permanently.
+- [x] `lib/billing/server.ts` — `readEntitlement` (one read, `failed` kept separate from "no row",
+      because telling a reader who paid that there is nothing to refund is the one wrong answer) and
+      `markRefunded`, shared by both refund paths so the cooldown cannot depend on which way a refund
+      travelled.
+- [x] The three routes: checkout gates, the withdraw route starts the period, the webhook starts it
+      from a dashboard refund and warns on a bypass.
+- [x] `RefundCooldownNotice` + `useRefundCooldown`, and the account page's post-refund sentence.
+- [x] Said before the sale: `/supporter`, `/terms` (effective date moved to 26 August 2026),
+      `docs/processing-record.md`, and the withdrawal-confirmation email.
+- [x] `verify:billing` grew a cooldown section whose real target is the one thing no unit test can
+      see: that a later purchase does **not** wipe `refunded_at`. What would wipe it is PostgREST,
+      not our code, so it is asserted against the live database.
+
+**Verified, with `0006` applied to the live database.** 1,196 unit tests green, `npm run build` and
+`npm run lint` clean, `audit:contrast` PASS, `verify:billing` PASS including the re-purchase check.
+The real routes driven with a throwaway account: a first purchase allowed, a second refused, a refund
+an hour old refused with the moment it lifts, the sixth day still refused ("23 hours and 59
+minutes"), the eighth day allowed, a fifth refund waiting the same seven days, and a forged token
+refused before anything is read. The pages driven in a real browser in both themes against **real
+rows, nothing stubbed**: the notice appears with the button gone on `/supporter` and `/account`,
+counts "6 days and 21 hours", ticks down through "1 minute and 32 seconds", disappears once the wait
+is over, never shows for somebody who has not refunded, and correctly yields to "you already hold the
+unlock" for a supporter carrying an older refund.
+
+Before the migration was applied, the same route probe confirmed the deploy-window fallback: checkout,
+the second-purchase refusal and the withdrawal path all behaved exactly as before, with one warning
+in the log.
+
+> **One check failed on the first real run, and it was the check that was wrong.** `verify:billing`
+> compared `refunded_at` as a STRING: Postgres returns `…699+00:00` where JavaScript wrote `…699Z`,
+> the same instant spelled two ways, so it reported the refund history as lost while the data was
+> perfectly correct. It now compares instants. Worth recording because the failure was maximally
+> alarming ("the cooldown is not enforceable like this") for a formatting difference, and because the
+> app code never had the bug: it parses the column with `new Date()` and never compares the text.

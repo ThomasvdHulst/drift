@@ -8,6 +8,7 @@ import { renderEmail, EMAIL_SITE_URL } from "./render";
 import { notificationSubject } from "../contact";
 import { imprint } from "../imprint";
 import { describeVat, formatEur } from "../billing/price";
+import { REFUND_COOLDOWN_LABEL } from "../billing/cooldown";
 
 export interface EmailMessage {
   subject: string;
@@ -336,6 +337,10 @@ export function withdrawalConfirmedEmail(r: {
         `You have withdrawn from your purchase of the Drift supporter unlock, and ${amount} is being returned to the card or account you paid with. Banks usually take five to ten days to show it, which is out of our hands.`,
         "The unlock has been removed from your account, so the daily reading allowance applies again. Everything you have read and saved is untouched, and you are welcome to keep reading Drift for free every day.",
         "You do not need to tell us why, and we have not asked.",
+        // Said here as well as on the page, because this is the durable copy
+        // the reader keeps, and finding out about the wait only when the buy
+        // button refuses would be a surprise we could have spared them.
+        `One thing to know: a refunded purchase cannot be bought again for ${REFUND_COOLDOWN_LABEL}. Every refund costs a payment fee that is not returned, and a short wait after one is what keeps that from being repeatable. If you change your mind before then, just reply to this email and it can be lifted.`,
       ],
       quote: {
         label: "Refunded",
@@ -351,6 +356,6 @@ export function withdrawalConfirmedEmail(r: {
       },
       note: "If the money has not appeared after ten days, reply to this email and we will look into it.",
     }),
-    text: `Your refund is on its way.\n\nDrift supporter unlock\nAmount ${amount}\nReference ${r.reference}\n\nThe unlock has been removed from your account. Banks usually take five to ten days to show a refund.`,
+    text: `Your refund is on its way.\n\nDrift supporter unlock\nAmount ${amount}\nReference ${r.reference}\n\nThe unlock has been removed from your account. Banks usually take five to ten days to show a refund. A refunded purchase cannot be bought again for ${REFUND_COOLDOWN_LABEL}; reply to this email if you would rather not wait.`,
   };
 }

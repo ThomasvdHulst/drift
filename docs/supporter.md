@@ -3,8 +3,9 @@
 Phase 32. Free readers get a daily reading allowance; a one-time **€7** purchase lifts it.
 This file is the walkthrough for the human half. Follow it top to bottom.
 
-> **Status: everything on the code side is built and verified (M1 to M5).**
-> What is left is in §6: three things only you can do, and none of them takes long.
+> **Status: everything on the code side is built and verified (M1 to M5), plus the Phase 32B
+> refund cooldown.** What is left is in §6: three things only you can do, and none of them takes
+> long. Migration `0006` (§1) is the one new database step.
 
 ---
 
@@ -20,6 +21,13 @@ page instead. **It fails open**: if the database is unreachable, nobody is ever 
 on their account page and Stripe returns the money immediately. You are not in the loop and there is
 nothing in your inbox to action. §4 covers the cases that do still reach you.
 
+**A refund starts a seven day wait before that account can buy again** (Phase 32B). Stripe keeps the
+fee it charged on the original payment when you refund it, so every buy-and-refund leaves you out of
+pocket by roughly €0,30 to €0,60 with the money back where it started. Once is the price of honouring
+the withdrawal right; on a loop it is somebody spending your money for free. The refund itself is
+untouched, immediate and unconditional as before: only **buying again** waits. The reader sees why,
+watches it count down, and gets a link to write to you if they would rather not wait.
+
 Two things are worth knowing before you start.
 
 - **It is a soft meter.** It stops the easy bypass, not a determined person who blocks one
@@ -31,16 +39,23 @@ Two things are worth knowing before you start.
 
 ---
 
-## 1. Run the migration (5 minutes, once)
+## 1. Run the migrations (5 minutes, once)
 
 This is the only step that touches your database, and nothing counts until it is done.
 
 1. Open **Supabase Studio → SQL Editor → New query**.
 2. Paste the whole of `supabase/migrations/0005_phase32_supporter.sql` and press **Run**.
 3. You should see `Success. No rows returned`.
+4. New query again, paste `supabase/migrations/0006_refund_cooldown.sql`, **Run**.
 
-It creates two tables (`entitlements`, `usage_daily`) and two functions (`record_stop`,
+`0005` creates two tables (`entitlements`, `usage_daily`) and two functions (`record_stop`,
 `supporter_status`), all with Row-Level Security.
+
+`0006` adds `refunded_at` and `refund_count` to `entitlements`, which is the whole of the
+refund cooldown's storage, and adds no table, no policy and no function. Until it is run the cooldown
+is simply **inactive**: the code notices the columns are missing, says so once in the server log
+(`[billing] \`entitlements\` has no refund columns …`), and falls back to reading the row exactly as
+it did before, so nothing else changes. Nothing breaks in the gap between a deploy and this paste.
 
 > ### ⚠️ Run this at the point you actually go live, not before
 >
@@ -194,9 +209,10 @@ produces the figures for your quarterly BTW return.
 > itemised" instead. And the server log shouts `NO TAX on session …` every time it happens. If you
 > see that line, come back here.
 
-**What correct looks like.** With a Dutch buyer, the checkout summary reads `Btw € 1,21` under a
-`Subtotaal € 7,00`, with `Totaal verschuldigd bedrag € 7,00`: the tax is inside the price, not added
-to it. The session's `automatic_tax.status` is `complete` and `total_details.amount_tax` is `121`. A
+**What correct looks like, and when.** On arrival the summary reads `Belasting € 0,00`, always, for
+everyone: Stripe has no location yet. **Select a payment method** (card or iDEAL, both behave the
+same) and it becomes `Btw € 1,21` under `Subtotaal € 7,00`, with `Totaal verschuldigd bedrag
+€ 7,00`: the tax is inside the price, not added to it. The session's `automatic_tax.status` is `complete` and `total_details.amount_tax` is `121`. A
 buyer outside the EU correctly gets 0.
 
 If `automatic_tax.status` comes back **`requires_location_inputs`**, Stripe simply does not know
@@ -293,6 +309,7 @@ inbox through `/contact`, and all three are handled the same way:
 |---|---|
 | "I want a refund" and they are **past fourteen days** | Your call: there is no obligation. If you say yes, refund it in the Stripe dashboard (the payment → Refund) and the webhook removes the unlock within seconds. |
 | A refund that could not be issued automatically (rare: the entitlement has no payment reference) | Same. Find the payment by their email address in Stripe, refund it, done. |
+| "I refunded and now I cannot buy again" | Correct and expected: a refund starts a seven day wait, and the page told them so with a countdown. Lifting it is one line: `update public.entitlements set refunded_at = null where user_id = '<their-user-id>';` Look at `refund_count` first. One is somebody who changed their mind twice; five is the thing the wait exists for. |
 | "I paid and nothing happened" | Check `entitlements` for their user id. If the payment is in Stripe but the row is not there, the webhook missed it: grant it by hand below, and check **Developers → Webhooks** for a failed delivery. |
 
 **You never need to reply to a refund request to make it happen.** Refunding in the dashboard is the
@@ -331,9 +348,12 @@ update public.entitlements set revoked_at = now() where user_id = '<their-user-i
 | Old rows piling up | They do not. `record_stop` prunes each reader's rows past 30 days on their first stop of a new day. |
 | The refund button is not offered | Check why in `entitlements`: a `beta` or `manual` grant has nothing to refund, a row with no `stripe_payment_intent` cannot be refunded automatically, and past fourteen days it points at `/contact` instead. Each case says which it is on the page. |
 | A refund succeeded but the unlock stayed | The route revokes directly and does not wait for the webhook, so this should not happen. If it does, the server log has `refunded but could not revoke` and the fix is one `update` (see 4b). |
-| A reader refunded and wants to buy again | They can, straight away. The webhook and the withdraw route both leave `revoked_at` set, and a new purchase clears it. |
-| No `Btw` line at all when the page first opens | Normal. Stripe does not know where the buyer is yet (`automatic_tax.status: requires_location_inputs`). It appears as soon as a country is chosen. |
-| `Btw € 0,00` **after** a country is chosen | That mode has no tax registration, and because Managed Payments is off the liability is yours. §3.3. Fix it before taking real money; you owe that BTW either way. |
+| A reader refunded and wants to buy again | Not for seven days. Both refund paths stamp `refunded_at`, and `/api/billing/checkout` refuses while it is inside the window. A new purchase clears `revoked_at` but deliberately leaves `refunded_at` alone. To lift it by hand, see §4. |
+| `[billing] \`entitlements\` has no refund columns` in the log | Migration `0006` has not been run (§1). The cooldown is inactive until it is; everything else, including the refund button, works normally. |
+| `COOLDOWN BYPASSED` in the log | Somebody paid a Checkout Session that was created before their refund and paid after it. It is granted anyway (the money is already taken; see §7) and logged so you can look. Check `refund_count` on that row. |
+| A reader deleted their account, signed up again, and bought again | Known and accepted. The cooldown hangs off `user_id`, which cascades away with the account. See §7 for why it is not closed. |
+| `Belasting € 0,00` when the page first opens | **Normal, and it is what everyone trips over.** Stripe does not know where the buyer is yet (`automatic_tax.status: requires_location_inputs`), so it shows a generic zero. Choose a payment method, card or iDEAL, and it becomes `Btw € 1,21`. The label itself changes from "Belasting" to "Btw" at that moment, which is the tell that Stripe has worked out the country. Do not judge the tax from the page before selecting a method. |
+| `Btw € 0,00` **after** choosing a payment method | Now it is real. That mode has no tax registration, and because Managed Payments is off the liability is yours. §3.3. Fix it before taking real money; you owe that BTW either way. |
 | Tax worked, then stopped, with no code change in between | Check `automatic_tax.liability` on the two sessions. `stripe` means Managed Payments was carrying it; `self` means it is yours and needs your registration. |
 | Stripe says "you must set your head office address" | The head office address is incomplete **in that mode**. Set it, then add the registration. §3.3. |
 | `NO TAX on session …` in the server log | Same cause. It means a real payment came through with no tax itemised on it. |
@@ -395,6 +415,24 @@ you switch to live keys.
   acknowledgement, gathered as two deliberate acts, and getting it subtly wrong turns a 14 day
   window into a 12 month one. At €7 the occasional refund is cheaper than the mechanism, and it
   reads better.
+- **The refund cooldown is seven days, flat, and it gates BUYING only.** It never gates withdrawing:
+  a refund is a right and delaying somebody's own money back would be the exact thing the withdrawal
+  function exists to prevent. `refund_count` is recorded but the rule does not read it, so a fifth
+  refund waits exactly as long as a first. Making the wait grow with the count is one line in
+  `src/lib/billing/cooldown.ts` if it is ever needed; it was not built speculatively.
+- **Two known ways past the cooldown, both accepted, both written down rather than pretended away.**
+  1. **Deleting the account.** It hangs off `user_id`, which cascades away with the account, so
+     signing up again is a clean slate. Closing it would mean keeping an identifier (an email hash)
+     after an erasure request, which is a real cost to every honest reader to inconvenience one
+     dishonest one, against a privacy promise made to all of them.
+  2. **A Checkout Session created before the refund.** Stripe sessions used to stay payable for 24
+     hours, so somebody could open checkout in several tabs, buy, refund, and pay a stale tab without
+     coming back through the gate. Sessions now expire in **two hours**
+     (`SESSION_LIFETIME_MINUTES` in the checkout route), which shrinks that to almost nothing. If one
+     still lands, the webhook **grants it anyway** and logs `COOLDOWN BYPASSED`. Refusing would leave
+     somebody having paid for nothing, and auto-refunding would spend a second fee to arrive where a
+     refund already arrived; neither is cheaper and both are worse for an honest reader who forgot a
+     tab. The log line plus `refund_count` is what tells you when it is a pattern instead.
 - **Supporters stop being counted** once a limit is configured. With a limit live their daily count
   serves no purpose, and a per-day record of how much somebody read is behavioural data (Art
   5(1)(c)). During the measure-first period everyone is counted, which is the point of it.

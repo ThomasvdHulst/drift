@@ -3,6 +3,7 @@ import { Monogram } from "@/components/BrandLogo";
 import { PublicFooter } from "@/components/PublicFooter";
 import { SupporterBuy } from "@/components/SupporterBuy";
 import { breakdown, formatEur } from "@/lib/billing/price";
+import { REFUND_COOLDOWN_LABEL } from "@/lib/billing/cooldown";
 import { imprint } from "@/lib/imprint";
 
 export const metadata = {
@@ -161,6 +162,25 @@ export default function SupporterPage() {
               </a>
               . Most sellers of digital things take this right away with a
               consent box at checkout. Drift does not.
+            </Row>
+            {/* Stated BEFORE the sale, not discovered after one. It is a
+                condition of buying, and art. 6:230m BW wants the conditions
+                where the decision is made. It is not a limit on the refund and
+                must never be written as though it were. */}
+            <Row label="Buying again later">
+              If you do get a refund, the unlock can be bought again after{" "}
+              {REFUND_COOLDOWN_LABEL}. That is not a limit on the refund, which
+              stays immediate and needs no reason. It is because a refund returns
+              your payment but not the fee charged to take it, so buying and
+              undoing repeatedly costs money with nothing changing. Your account
+              page counts it down, and{" "}
+              <Link
+                href="/contact?topic=account"
+                className="focus-ring rounded underline decoration-line underline-offset-2 hover:text-accent-strong"
+              >
+                a message
+              </Link>{" "}
+              lifts it sooner.
             </Row>
             <Row label="Who you are buying from">
               {who.legalName}, trading as {who.tradeName}, {who.address.join(", ")}

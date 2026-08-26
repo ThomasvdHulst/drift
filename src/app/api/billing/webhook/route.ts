@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { NO_STORE } from "@/lib/cache-headers";
-import { adminClient, stripeClient } from "@/lib/billing/server";
+import {
+  adminClient,
+  markRefunded,
+  readEntitlement,
+  stripeClient,
+} from "@/lib/billing/server";
+import { assessCooldown, formatRemaining } from "@/lib/billing/cooldown";
 import { decide } from "@/lib/billing/events";
 import { amountLooksRight, describeVat, splitFromStripe } from "@/lib/billing/price";
 import { supporterReceiptEmail } from "@/lib/email/messages";
@@ -70,13 +76,20 @@ export async function POST(request: Request) {
     if (decision.kind === "revoke") {
       // The refund path, which is how the 14 day withdrawal is honoured: the
       // owner refunds in the Stripe dashboard and this undoes the grant.
-      const { error } = await admin
-        .from("entitlements")
-        .update({ revoked_at: new Date().toISOString() })
-        .eq("stripe_payment_intent", decision.paymentIntent)
-        .is("revoked_at", null);
-      if (error) throw error;
-      console.info(`[billing/webhook] revoked for ${decision.paymentIntent}`);
+      //
+      // `markRefunded` does the revoke AND starts the waiting period before this
+      // account can buy again (Phase 32B). It is shared with the withdraw route
+      // so the cooldown does not depend on which of the two ways the refund
+      // happened to arrive, and it no-ops when the other one got here first,
+      // which is also what makes a redelivered event harmless.
+      const { applied, refunds } = await markRefunded(admin, {
+        paymentIntent: decision.paymentIntent,
+      });
+      console.info(
+        applied
+          ? `[billing/webhook] revoked for ${decision.paymentIntent} (refund #${refunds})`
+          : `[billing/webhook] ${decision.paymentIntent} was already revoked; nothing to do`,
+      );
       return NextResponse.json({ ok: true, revoked: true }, { headers: NO_STORE });
     }
 
@@ -89,10 +102,39 @@ export async function POST(request: Request) {
       );
     }
 
+    // A paid session from an account that is inside the refund cooldown.
+    //
+    // It grants ANYWAY, and the reasoning matters. The gate is the checkout
+    // route, which is the only place a purchase can begin; a payment reaching
+    // here despite it came from a Checkout Session created before the refund and
+    // paid after it (which is why sessions now expire in two hours). By the time
+    // we know, the money has already been taken, and the two alternatives are
+    // both worse than granting: refusing would leave somebody having paid for
+    // nothing, and auto-refunding would spend a SECOND fee to reach the same
+    // place a refund already reached. So it is granted and shouted about, and
+    // `refund_count` on the row is what tells the owner whether it is a stale
+    // tab or a pattern worth acting on by hand.
+    const { row: existing } = await readEntitlement(admin, decision.userId);
+    const cooldown = assessCooldown(existing);
+    if (cooldown.kind === "blocked") {
+      console.warn(
+        `[billing/webhook] COOLDOWN BYPASSED: ${decision.userId} paid session ` +
+          `${decision.sessionId} with ${formatRemaining(cooldown.msLeft)} of the ` +
+          `refund cooldown left (${cooldown.refunds} refund(s) on record). Granted ` +
+          `anyway, because the money is already taken. See docs/supporter.md §7.`,
+      );
+    }
+
     // Idempotent by construction: user_id is the primary key, so a webhook
     // delivered twice (Stripe is at-least-once) lands on the same row. The
     // update also clears `revoked_at`, which is what makes buying again after a
     // refund work without any special case.
+    //
+    // ⚠️ `refunded_at` and `refund_count` are ABSENT from this object on purpose.
+    // PostgREST builds its ON CONFLICT DO UPDATE from the keys it is given, so a
+    // column that is not here keeps its value. Adding them (even as null, even
+    // "for completeness") would wipe the refund history on the next purchase and
+    // silently turn the cooldown off.
     const { error } = await admin.from("entitlements").upsert(
       {
         user_id: decision.userId,

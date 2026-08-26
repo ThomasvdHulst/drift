@@ -4,9 +4,11 @@ import {
   adminClient,
   bearerToken,
   callerFromToken,
+  markRefunded,
+  readEntitlement,
   stripeClient,
 } from "@/lib/billing/server";
-import { assessWithdrawal, type EntitlementRow } from "@/lib/billing/withdrawal";
+import { assessWithdrawal } from "@/lib/billing/withdrawal";
 import { withdrawalConfirmedEmail } from "@/lib/email/messages";
 import { sendViaResend } from "@/lib/email/send";
 import { PRICE_CENTS } from "@/lib/billing/price";
@@ -27,6 +29,12 @@ export const dynamic = "force-dynamic";
 // and only when the entitlement carries a Stripe payment to refund against.
 // Every one of those conditions is decided in `lib/billing/withdrawal.ts`, where
 // it is unit tested, rather than here.
+//
+// ⚠️ THE REFUND COOLDOWN DOES NOT APPLY HERE, and must never be made to. It
+// delays BUYING AGAIN, which nobody has a right to; withdrawing is a right, and
+// a route that made somebody wait for their own money back would be the exact
+// thing this file exists to avoid. What happens here is that a successful refund
+// STARTS that period (`markRefunded`, below).
 //
 // The reply always names WHICH case applies, because "no" for four different
 // reasons needs four different sentences: a grandfathered unlock cost nothing, a
@@ -51,20 +59,18 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data, error } = await admin
-    .from("entitlements")
-    .select("source, granted_at, revoked_at, stripe_payment_intent")
-    .eq("user_id", caller.id)
-    .limit(1);
-  if (error) {
-    console.error("[api/billing/withdraw] could not read entitlement", error);
+  // `failed` rather than an empty row, deliberately. Reading "no row" out of a
+  // database error would tell a reader who paid that there is nothing to refund,
+  // which is the one wrong answer this route must never give.
+  const { row, failed } = await readEntitlement(admin, caller.id);
+  if (failed) {
     return NextResponse.json(
       { ok: false, error: "Could not check your purchase. Please try again." },
       { status: 500, headers: NO_STORE },
     );
   }
 
-  const verdict = assessWithdrawal((data?.[0] as EntitlementRow) ?? null);
+  const verdict = assessWithdrawal(row);
   if (verdict.kind !== "eligible") {
     return NextResponse.json(
       { ok: false, reason: verdict.kind },
@@ -100,14 +106,19 @@ export async function POST(request: Request) {
 
   // Revoke HERE rather than waiting for the `charge.refunded` webhook, so the
   // account page is already right when the reader looks at it. The webhook still
-  // fires and still runs, and finds nothing to do: its update filters on
-  // `revoked_at is null`. Two paths, one outcome, in either order.
-  const { error: revokeErr } = await admin
-    .from("entitlements")
-    .update({ revoked_at: new Date().toISOString() })
-    .eq("user_id", caller.id)
-    .is("revoked_at", null);
-  if (revokeErr) {
+  // fires and still runs, and finds nothing to do: `markRefunded` filters on
+  // `revoked_at is null`. Two paths, one outcome, in either order, and the
+  // waiting period before this account can buy again starts exactly once
+  // whichever of them gets here first (Phase 32B).
+  try {
+    const { refunds } = await markRefunded(admin, { userId: caller.id });
+    if (refunds > 1) {
+      // Not an error and nothing is done about it here. It is logged because a
+      // second or third refund on one account is the only signal the owner gets
+      // that the cooldown is doing real work rather than sitting idle.
+      console.info(`[api/billing/withdraw] ${caller.id} refund #${refunds}`);
+    }
+  } catch (revokeErr) {
     // The money is already going back, so this is not a failure to report as
     // one. It is loud in the log because the webhook is now the only thing that
     // will fix it, and if that has not been set up it will not.

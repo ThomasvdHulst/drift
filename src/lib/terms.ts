@@ -53,15 +53,17 @@ import { breakdown, formatEur, PRICE_CENTS } from "./billing/price";
 /** The date these terms took effect. Shown on the page and in the Markdown.
  *  Bump it whenever a clause changes, not merely when a typo is fixed: readers
  *  use it to tell whether what they agreed to is what is on screen. Last moved
- *  for the supporter unlock (Phase 32), which is the first time using Drift can
- *  involve paying for something. */
+ *  for the seven day wait between a refund and a further purchase (Phase 32B),
+ *  which is a condition of buying and therefore belongs in the document rather
+ *  than only on the page that sells it. Moved before that for the supporter
+ *  unlock (Phase 32), the first time using Drift could involve paying. */
 // The price is quoted in the document, so it is taken from the module that owns
 // it rather than typed out again. A terms page quoting a price the checkout does
 // not charge is the kind of small inconsistency that undoes a document like this.
 const PRICE = formatEur(PRICE_CENTS);
 const RATE = breakdown().ratePct;
 
-export const TERMS_EFFECTIVE = "25 August 2026";
+export const TERMS_EFFECTIVE = "26 August 2026";
 
 export type TermsBlock = { p: string } | { bullets: string[] };
 
@@ -130,6 +132,9 @@ export const TERMS: TermsSection[] = [
       },
       {
         p: "**You can change your mind within 14 days**, for any reason or none, and get the whole amount back. Ask from your [account page](/account), or write to the address on the [legal page](/legal). You are not asked to give up this right at checkout, which sellers of digital things are allowed to do and most of them do.",
+      },
+      {
+        p: "**After a refund, the unlock can be bought again after seven days.** This delays nothing about the refund itself, which stays immediate and needs no reason. It applies only to buying again, because a refund returns your payment but not the fee the payment provider charged to take it, and a purchase repeatedly made and undone costs Drift money each time with nothing changing. Your account page counts the seven days down, and if you would rather not wait you can [get in touch](/contact?topic=account) and it will be lifted.",
       },
       {
         p: "If the unlock does not do what it says here, your rights as a consumer apply in full: it has to match its description, and if it does not you can have it put right or have your money back. Nothing in these terms limits that.",

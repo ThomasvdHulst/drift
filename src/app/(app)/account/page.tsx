@@ -27,8 +27,13 @@ import { buildDataExport, dataExportFilename } from "@/lib/export-data";
 import { SupporterBuy } from "@/components/SupporterBuy";
 import { refreshStatus, subscribeMeter } from "@/lib/billing/meter";
 import { dailyLimit, type MeterState } from "@/lib/limits";
-import { fetchMyEntitlement, requestWithdrawal } from "@/lib/billing/client";
-import { assessWithdrawal, type EntitlementRow, type Withdrawability } from "@/lib/billing/withdrawal";
+import {
+  fetchMyEntitlement,
+  requestWithdrawal,
+  type MyEntitlement,
+} from "@/lib/billing/client";
+import { assessWithdrawal, type Withdrawability } from "@/lib/billing/withdrawal";
+import { REFUND_COOLDOWN_LABEL } from "@/lib/billing/cooldown";
 import { formatEur } from "@/lib/billing/price";
 
 // The account screen (Phase 9, extended Phase 13). Calm, on-brand handle setup +
@@ -624,7 +629,7 @@ function SupporterSection() {
   // copying it into a second source of truth is what causes cascading renders.
   const justPaid = useSearchParams().get("supported") === "1";
 
-  const [entitlement, setEntitlement] = useState<EntitlementRow | null>(null);
+  const [entitlement, setEntitlement] = useState<MyEntitlement | null>(null);
   // ⚠️ The refund confirmation lives HERE, not inside <Withdraw>. Refunding
   // flips this section to its non-supporter branch, which unmounts <Withdraw>
   // and would take any message it was holding with it: the confirmation would
@@ -666,6 +671,22 @@ function SupporterSection() {
             {formatEur(refunded)} is going back to the way you paid, which banks
             usually take five to ten days to show. The unlock has been removed
             and a confirmation is in your inbox. Thank you for trying it.
+          </p>
+          {/* Said here, in the email, and on the buy button, because a rule the
+              reader only meets when it refuses them is a rule they meet as a
+              surprise. It is one calm sentence: this moment belongs to the
+              refund, not to the wait that follows it. */}
+          <p className="mt-2 text-sm leading-relaxed text-ink-soft">
+            A refunded purchase cannot be bought again for{" "}
+            {REFUND_COOLDOWN_LABEL}, because every refund costs a payment fee
+            that is not returned. If you change your mind before then,{" "}
+            <Link
+              href="/contact?topic=account"
+              className="focus-ring rounded underline decoration-line underline-offset-2 transition hover:text-accent-strong"
+            >
+              get in touch
+            </Link>{" "}
+            and it can be lifted by hand.
           </p>
         </>
       )}

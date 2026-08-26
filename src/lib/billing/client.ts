@@ -15,19 +15,32 @@
 // ---------------------------------------------------------------------------
 
 import { getSupabase } from "../supabase/client";
+import type { CooldownRow } from "./cooldown";
 import type { EntitlementRow } from "./withdrawal";
 
-/** The signed-in reader's entitlement, or null (none, or we could not look). */
-export async function fetchMyEntitlement(): Promise<EntitlementRow | null> {
+/** The reader's own row: what they may withdraw, and what they must wait for. */
+export type MyEntitlement = EntitlementRow & CooldownRow;
+
+/**
+ * The signed-in reader's entitlement, or null (none, or we could not look).
+ *
+ * No `.eq("user_id", …)`: the `see own entitlement` policy is the filter, and
+ * adding one here would only make it look like the filter lives in the browser.
+ * The refund columns come back under that same policy, which is what lets the
+ * buy button count down to its own return without a route of our own.
+ */
+export async function fetchMyEntitlement(): Promise<MyEntitlement | null> {
   const sb = getSupabase();
   if (!sb) return null;
   try {
     const { data, error } = await sb
       .from("entitlements")
-      .select("source, granted_at, revoked_at, stripe_payment_intent")
+      .select(
+        "source, granted_at, revoked_at, stripe_payment_intent, refunded_at, refund_count",
+      )
       .limit(1);
     if (error) return null;
-    return (data?.[0] as EntitlementRow) ?? null;
+    return (data?.[0] as MyEntitlement) ?? null;
   } catch {
     return null;
   }

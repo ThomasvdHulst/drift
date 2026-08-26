@@ -4,18 +4,34 @@ import {
   adminClient,
   bearerToken,
   callerFromToken,
-  hasEntitlement,
+  holdsUnlock,
+  readEntitlement,
   returnOrigin,
   stripeClient,
 } from "@/lib/billing/server";
 import { CURRENCY } from "@/lib/billing/price";
+import { assessCooldown, formatRemaining } from "@/lib/billing/cooldown";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * How long a started checkout stays payable, in minutes (Phase 32B).
+ *
+ * Stripe's own default is 24 hours, and that default is what makes the cooldown
+ * above leaky: a session created BEFORE a refund is still payable for a day
+ * AFTER it, so somebody could open checkout in several tabs, buy, refund, and
+ * pay the next stale tab without ever coming back through this route. Two hours
+ * closes almost all of that window at no cost to a real buyer, who decides about
+ * €7 in a minute or two. Stripe's own floor is 30 minutes if it ever needs to be
+ * tighter. An expired session is not a lost sale: the page says so and the buy
+ * button starts a fresh one.
+ */
+const SESSION_LIFETIME_MINUTES = 120;
 
 // POST /api/billing/checkout — start a Stripe Checkout session for the supporter
 // unlock (Phase 32). Returns { url } for the browser to follow.
 //
-// Three things this route is careful about:
+// Four things this route is careful about:
 //
 //   1. IT DOES NOT TRUST THE BODY. The user id is taken from the caller's own
 //      verified JWT, never from what was posted, so nobody can buy an unlock
@@ -23,7 +39,12 @@ export const dynamic = "force-dynamic";
 //   2. IT REFUSES A SECOND PURCHASE. Someone who already holds the unlock is
 //      turned away here rather than charged and refunded later. The webhook is
 //      idempotent as well, but the kind thing is to not take the money.
-//   3. IT NEVER LEAKS A KEY. Everything Stripe happens server-side; the browser
+//   3. IT REFUSES A PURCHASE INSIDE THE REFUND COOLDOWN (Phase 32B). This is
+//      THE gate: it is the only place a purchase can begin, so a refund that
+//      started a waiting period stops the next one here, before any money moves.
+//      The buy button hides itself with the same rule, but that is a courtesy;
+//      this is the check that counts, because a browser can be told anything.
+//   4. IT NEVER LEAKS A KEY. Everything Stripe happens server-side; the browser
 //      only ever receives a redirect URL that Stripe itself issued.
 //
 // Graceful (CLAUDE.md §4): with Stripe or Supabase unconfigured it answers
@@ -49,9 +70,37 @@ export async function POST(request: Request) {
     );
   }
 
-  if (await hasEntitlement(admin, caller.id)) {
+  // One read, two questions ("do they hold it?" and "did they just refund?"),
+  // so the two answers cannot come from different moments. A read that FAILED
+  // arrives here as no row and lets the sale through, which is the right
+  // direction: refusing somebody's money because the database had a bad second
+  // is worse than one purchase that should have waited.
+  const { row: held } = await readEntitlement(admin, caller.id);
+
+  if (holdsUnlock(held)) {
     return NextResponse.json(
       { ok: false, error: "already a supporter", already: true },
+      { status: 409, headers: NO_STORE },
+    );
+  }
+
+  // The refund cooldown. Refused with the SAME 409 shape as "already a
+  // supporter", plus the moment it lifts, so the page can count down to it
+  // rather than showing a dead end. The reason is stated plainly and the
+  // withdrawal right is untouched: this delays buying again, never a refund.
+  const cooldown = assessCooldown(held);
+  if (cooldown.kind === "blocked") {
+    console.info(
+      `[api/billing/checkout] ${caller.id} is inside the refund cooldown ` +
+        `(${cooldown.refunds} refund(s), ${formatRemaining(cooldown.msLeft)} left)`,
+    );
+    return NextResponse.json(
+      {
+        ok: false,
+        cooldown: true,
+        until: cooldown.until.toISOString(),
+        error: `A refunded purchase cannot be bought again straight away. This account can buy the unlock again in ${formatRemaining(cooldown.msLeft)}.`,
+      },
       { status: 409, headers: NO_STORE },
     );
   }
@@ -97,6 +146,8 @@ export async function POST(request: Request) {
       // cannot be undone by a dashboard click, or by Stripe changing a default.
       managed_payments: { enabled: false },
       locale: "auto",
+      expires_at:
+        Math.floor(Date.now() / 1000) + SESSION_LIFETIME_MINUTES * 60,
       success_url: `${origin}/account?supported=1`,
       cancel_url: `${origin}/supporter?cancelled=1`,
     });

@@ -11,6 +11,9 @@
 //      cannot zero their counter or grant themselves the unlock. That is the
 //      whole security model (see the migration header), and it is exactly the
 //      kind of thing that is true until someone adds a convenient policy.
+//   3. THE REFUND COOLDOWN SURVIVES A RE-PURCHASE (Phase 32B). A refund stamp
+//      that the next grant wipes is a waiting period that never fires, and no
+//      unit test can see it, because what does the wiping is PostgREST.
 //
 // It provisions its OWN throwaway user rather than reusing SUPABASE_EMAIL,
 // because the interesting case is an account created after the grandfathering
@@ -164,6 +167,120 @@ async function main() {
     const afterRevoke = await user.rpc("supporter_status");
     if (afterRevoke.data?.[0]?.supporter === false) ok("a revoked entitlement stops counting");
     else bad(`revoke was ignored: ${JSON.stringify(afterRevoke.data)}`);
+    // 9. The refund cooldown (Phase 32B).
+    //
+    // The rule itself is unit tested and needs no database. What can only be
+    // checked HERE is the three things it rests on: that a reader can see their
+    // own refund stamp (without it the buy button cannot count down), that they
+    // cannot rewrite it (or the wait is one console line away from over), and
+    // above all that BUYING AGAIN LATER DOES NOT WIPE IT. That last one is not
+    // our code at all: it is PostgREST leaving columns absent from an upsert
+    // payload alone. If that ever changed, the cooldown would keep passing every
+    // unit test and quietly never fire again.
+    console.log("\nThe refund cooldown:");
+
+    const columns = await admin
+      .from("entitlements")
+      .select("refunded_at, refund_count")
+      .eq("user_id", uid)
+      .limit(1);
+    if (columns.error) {
+      bad(
+        `refunded_at / refund_count: ${columns.error.message}` +
+          "\n      → paste supabase/migrations/0006_refund_cooldown.sql into Studio → SQL Editor → Run",
+      );
+    } else {
+      ok("entitlements carries refunded_at + refund_count");
+
+      const session = `cs_verify_${uid.slice(0, 8)}`;
+      const intent = `pi_verify_${uid.slice(0, 8)}`;
+
+      // Make it look like a real purchase, then refund it the way both refund
+      // paths do (lib/billing/server.ts → markRefunded).
+      await admin
+        .from("entitlements")
+        .update({
+          source: "purchase",
+          revoked_at: null,
+          refunded_at: null,
+          refund_count: 0,
+          stripe_session_id: session,
+          stripe_payment_intent: intent,
+        })
+        .eq("user_id", uid);
+
+      const refundedAt = new Date().toISOString();
+      const refund = await admin
+        .from("entitlements")
+        .update({ revoked_at: refundedAt, refunded_at: refundedAt, refund_count: 1 })
+        .eq("user_id", uid)
+        .is("revoked_at", null);
+      if (refund.error) bad(`recording a refund: ${refund.error.message}`);
+      else ok("a refund records revoked_at + refunded_at + refund_count");
+
+      const mine = await user
+        .from("entitlements")
+        .select("refunded_at, refund_count")
+        .limit(1);
+      if (mine.data?.[0]?.refunded_at) ok("the reader can see their own refund stamp");
+      else bad(`the reader cannot read refunded_at: ${mine.error?.message ?? "no row"}`);
+
+      const tamper = await user
+        .from("entitlements")
+        .update({ refunded_at: null, refund_count: 0 })
+        .eq("user_id", uid);
+      const afterTamper = (
+        await admin.from("entitlements").select("refunded_at").eq("user_id", uid).limit(1)
+      ).data?.[0]?.refunded_at;
+      if (afterTamper) ok("cannot clear their own cooldown");
+      else bad(`refunded_at was wiped by the reader (error was: ${tamper.error?.message ?? "none"})`);
+
+      // THE LOAD-BEARING ONE. Exactly the payload the webhook's grant sends,
+      // refund columns deliberately absent. `revoked_at` must clear (or nobody
+      // could ever buy again) and `refunded_at` must survive (or the cooldown
+      // is over the moment somebody pays past it).
+      const regrant = await admin.from("entitlements").upsert(
+        {
+          user_id: uid,
+          kind: "supporter",
+          source: "purchase",
+          granted_at: new Date().toISOString(),
+          revoked_at: null,
+          stripe_customer_id: null,
+          stripe_session_id: `${session}_2`,
+          stripe_payment_intent: `${intent}_2`,
+        },
+        { onConflict: "user_id" },
+      );
+      if (regrant.error) bad(`re-granting: ${regrant.error.message}`);
+      else {
+        const after = (
+          await admin
+            .from("entitlements")
+            .select("revoked_at, refunded_at, refund_count")
+            .eq("user_id", uid)
+            .limit(1)
+        ).data?.[0];
+        if (after?.revoked_at) bad("buying again did not clear revoked_at");
+        else ok("buying again clears revoked_at");
+        // ⚠️ Compared as INSTANTS, not as strings. Postgres hands the timestamp
+        // back as `…699+00:00` where JavaScript wrote `…699Z`: the same moment
+        // spelled two ways, and comparing the text fails on every run while the
+        // data is perfectly correct. (It did, once. This is the fix.)
+        const kept = after?.refunded_at
+          ? new Date(after.refunded_at).getTime() === new Date(refundedAt).getTime()
+          : false;
+        if (kept && after?.refund_count === 1) {
+          ok("buying again does NOT wipe the refund history");
+        } else {
+          bad(
+            `the refund history did not survive a re-purchase: refunded_at=${after?.refunded_at} ` +
+              `(expected the instant ${refundedAt}), refund_count=${after?.refund_count} ` +
+              `(expected 1). The cooldown is not enforceable like this.`,
+          );
+        }
+      }
+    }
   } finally {
     // Deleting the auth user cascades both new tables away with it.
     await admin.auth.admin.deleteUser(uid);
@@ -175,7 +292,7 @@ async function main() {
   console.log(
     failures
       ? `\n\x1b[31m${failures} check(s) failed.\x1b[0m\n`
-      : "\n\x1b[32mAll checks passed — the meter counts and cannot be edited.\x1b[0m\n",
+      : "\n\x1b[32mAll checks passed — the meter counts, it cannot be edited, and a refund sticks.\x1b[0m\n",
   );
 }
 

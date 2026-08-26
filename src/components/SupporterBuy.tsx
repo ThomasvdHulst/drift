@@ -6,6 +6,12 @@ import { useAuth } from "@/components/AuthProvider";
 import { getSupabase } from "@/lib/supabase/client";
 import { formatEur, PRICE_CENTS } from "@/lib/billing/price";
 import { refreshStatus, subscribeMeter } from "@/lib/billing/meter";
+import { fetchMyEntitlement, type MyEntitlement } from "@/lib/billing/client";
+import { assessCooldown } from "@/lib/billing/cooldown";
+import {
+  RefundCooldownNotice,
+  useRefundCooldown,
+} from "@/components/RefundCooldownNotice";
 import type { MeterState } from "@/lib/limits";
 
 // ---------------------------------------------------------------------------
@@ -20,6 +26,7 @@ import type { MeterState } from "@/lib/limits";
 // thing §2 actually forbids:
 //   • signed out      → say so and offer the way in, do not pretend to sell
 //   • already holding → say thank you, do not offer to sell it twice
+//   • just refunded   → say when it can be bought again, and why (Phase 32B)
 //   • unconfigured    → say buying is not available, do not throw
 //   • in flight       → say so, and stay disabled so a double click cannot
 //                       create two sessions
@@ -30,11 +37,28 @@ export function SupporterBuy({ compact = false }: { compact?: boolean }) {
   const [meter, setMeter] = useState<MeterState | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The reader's own entitlement row, for the refund cooldown. Read under the
+  // `see own entitlement` policy, so this is their row and only their row.
+  const [entitlement, setEntitlement] = useState<MyEntitlement | null>(null);
+  const cooldown = useRefundCooldown(entitlement);
 
   useEffect(() => {
     const unsubscribe = subscribeMeter(setMeter);
-    if (user) void refreshStatus();
-    return unsubscribe;
+    // `live` because the row is read with the session that was current when the
+    // read started: signing out or switching account mid-flight must not land
+    // one reader's row in another reader's page. (Signing out needs no reset of
+    // its own; the `!user` branch below returns before the row is ever read.)
+    let live = true;
+    if (user) {
+      void refreshStatus();
+      void fetchMyEntitlement().then((row) => {
+        if (live) setEntitlement(row);
+      });
+    }
+    return () => {
+      live = false;
+      unsubscribe();
+    };
   }, [user]);
 
   async function buy() {
@@ -58,6 +82,7 @@ export function SupporterBuy({ compact = false }: { compact?: boolean }) {
         error?: string;
         unconfigured?: boolean;
         already?: boolean;
+        cooldown?: boolean;
       };
       if (body.unconfigured) {
         setError("Buying is not set up on this deployment yet.");
@@ -67,6 +92,20 @@ export function SupporterBuy({ compact = false }: { compact?: boolean }) {
         // Someone else's tab, or a purchase that landed while this page sat
         // open. Not an error worth alarming anyone about: just catch up.
         await refreshStatus();
+        return;
+      }
+      if (body.cooldown) {
+        // A page that was open before the refund, or one left open across the
+        // moment a refund landed elsewhere. Re-read the row and let the notice
+        // replace this button, which explains it better than an error line can.
+        // The sentence the server sent is the fallback for a re-read that comes
+        // back empty, so this can never fail into a button that just does
+        // nothing.
+        const fresh = await fetchMyEntitlement();
+        setEntitlement(fresh);
+        if (assessCooldown(fresh).kind !== "blocked") {
+          setError(body.error ?? "This account cannot buy the unlock right now.");
+        }
         return;
       }
       if (!body.ok || !body.url) {
@@ -121,6 +160,12 @@ export function SupporterBuy({ compact = false }: { compact?: boolean }) {
         </p>
       </div>
     );
+  }
+
+  // Refunded recently: no button at all. Hiding a control that would refuse is
+  // kinder than offering one that does, and the notice says when it comes back.
+  if (cooldown.kind === "blocked") {
+    return <RefundCooldownNotice cooldown={cooldown} />;
   }
 
   return (

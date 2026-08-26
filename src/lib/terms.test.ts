@@ -66,9 +66,10 @@ describe("terms — copy rules", () => {
       for (const seg of parseInline(p)) {
         if (seg.kind !== "link") continue;
         if (seg.href.startsWith("http")) continue;
-        expect(known.has(seg.href), `${seg.href} in "${p.slice(0, 40)}"`).toBe(
-          true,
-        );
+        // A query string is the same route with the form pre-filled
+        // (`/contact?topic=account`), so it is the PATH that has to exist.
+        const path = seg.href.split("?")[0];
+        expect(known.has(path), `${seg.href} in "${p.slice(0, 40)}"`).toBe(true);
       }
     }
   });
