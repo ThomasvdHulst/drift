@@ -197,6 +197,49 @@ async function main() {
     bad("SECURITY: B revoked A's link");
   }
 
+  // 8. The owner must NOT be able to rewrite what a sent link says (0009).
+  //
+  // RLS answers "whose row is this?" and never asked which column, so 0004's
+  // update policy let `payload` be rewritten as readily as `revoked_at`. That
+  // makes a forwarded link a bait-and-switch: the address keeps working while
+  // the contents change under everyone holding it. 0009 withdraws table-wide
+  // UPDATE and grants back only `revoked_at`.
+  const swap = await A.client
+    .from("public_shares")
+    .update({ payload: { displayTitle: "SWAPPED" } })
+    .eq("token", live)
+    .select();
+  const afterSwap = await anon
+    .rpc("get_public_share", { p_token: live })
+    .maybeSingle();
+  if (swap.error && afterSwap.data?.payload?.displayTitle === "Octopus") {
+    ok("the owner cannot rewrite a sent link's payload (0009)");
+  } else if (afterSwap.data?.payload?.displayTitle === "SWAPPED") {
+    bad(
+      "SECURITY: a sent link's payload was rewritten — migration 0009 is not applied" +
+        "\n      → paste supabase/migrations/0009_share_payload_immutable.sql into Studio → SQL Editor → Run",
+    );
+  } else {
+    bad(
+      `payload swap gave an unexpected result: error=${swap.error?.message ?? "none"}, ` +
+        `anon now sees ${JSON.stringify(afterSwap.data?.payload)}`,
+    );
+  }
+
+  // 9. And revoking must still work, because 0009 narrows a privilege the app
+  // itself depends on. A fix that quietly broke the revoke button would be worse
+  // than the hole it closed.
+  const stillRevocable = await A.client
+    .from("public_shares")
+    .update({ revoked_at: new Date().toISOString() })
+    .eq("token", live)
+    .select();
+  if (!stillRevocable.error && (stillRevocable.data?.length ?? 0) === 1) {
+    ok("revoking still works after the privilege narrows");
+  } else {
+    bad(`revoke BROKE after 0009: ${stillRevocable.error?.message ?? "no row updated"}`);
+  }
+
   console.log("\nDeletion:");
   // The cascade is what makes account deletion reach these rows. Prove it
   // against the real database rather than trusting the DDL.

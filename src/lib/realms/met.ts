@@ -110,6 +110,34 @@ export function parseMetImageWidth(segment: string): MetImageWidth | null {
 }
 
 /**
+ * Does this image-host response mean THE HOST is in trouble, as opposed to this
+ * one picture not existing?
+ *
+ * ⚠️ THE ANSWER DECIDES WHETHER A STRANGER CAN TURN THE GALLERY OFF. The image
+ * route used to feed `!res.ok` straight into its breaker, so a 404 counted as a
+ * refusal. The breaker opens after four in a row, so four requests for
+ * well-formed but nonexistent names — and the name is a free path segment anyone
+ * can type — shut every Met image off for thirty seconds, repeatable forever, on
+ * a route with no auth in front of it. Measured before the fix: a real artwork
+ * answered 200 with 41 KB of JPEG, four bogus names went by, and the SAME
+ * artwork then answered 502 `CircuitOpenError`.
+ *
+ * This is the rule `fetchUpstream` already states for the API host ("Only a
+ * THROTTLE moves the breaker. A 404 is a perfectly healthy answer from a healthy
+ * host"). The image route hand-rolls its own fetch loop and so never inherited
+ * it; this predicate is that rule, written once and tested.
+ *
+ * It is deliberately NOT the same list as `fetchUpstream`'s. That host refuses
+ * with 403/429; THIS host fails by going slow or falling over, which is why a
+ * timeout counts (recorded at the throw site, not here) and why any 5xx counts.
+ * A 403 does not: the image CDN does not use it to throttle, and treating one as
+ * a throttle would re-open the same hole from a different direction.
+ */
+export function isMetImageHostFailure(status: number): boolean {
+  return status === 429 || status >= 500;
+}
+
+/**
  * The card's image: our own origin, resized to the width asked for.
  *
  * WHY THIS IS A PROXY AND NOT A HOTLINK. The museum publishes four fixed

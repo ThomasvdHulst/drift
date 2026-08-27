@@ -81,11 +81,16 @@ export default function PrinciplesPage() {
         <Bullets>
           <li>No streaks.</li>
           <li>No badges or unread counts.</li>
-          <li>
-            No push notifications. Drift does not contact you at all.
-          </li>
+          <li>No push notifications, and no mailing list.</li>
           <li>No daily goal and no time-spent target.</li>
         </Bullets>
+        <P>
+          Drift does send email, but only ever about something you did: a welcome
+          when you confirm your address, a password reset when you ask for one, a
+          receipt and a refund confirmation if you buy the supporter unlock, and a
+          note when you delete your account. Nothing on that list exists to pull
+          you back, and there is no list to be added to.
+        </P>
         <P>
           The counter is deliberately the whole of it. Anything stronger tends to
           become pressure of a different kind rather than less pressure.

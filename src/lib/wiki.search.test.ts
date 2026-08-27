@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { isListLikeTitle, normalizeSearchResults } from "./wiki";
+import { isListLikeTitle, normalizeSearchResults,
+  readSearchQuery,
+  SEARCH_QUERY_MAX,
+} from "./wiki";
 
 describe("isListLikeTitle", () => {
   it("flags list / index / listings titles", () => {
@@ -48,5 +51,36 @@ describe("normalizeSearchResults", () => {
     expect(normalizeSearchResults(null)).toEqual([]);
     expect(normalizeSearchResults({})).toEqual([]);
     expect(normalizeSearchResults({ query: {} })).toEqual([]);
+  });
+});
+
+describe("readSearchQuery — bounded at both ends", () => {
+  it("drops anything under two characters", () => {
+    expect(readSearchQuery("")).toBe("");
+    expect(readSearchQuery("a")).toBe("");
+    expect(readSearchQuery("  b  ")).toBe("");
+    expect(readSearchQuery(null)).toBe("");
+    expect(readSearchQuery(undefined)).toBe("");
+  });
+
+  it("passes an ordinary query through, trimmed", () => {
+    expect(readSearchQuery("  Octopus ")).toBe("Octopus");
+    expect(readSearchQuery("Black hole")).toBe("Black hole");
+  });
+
+  // A MediaWiki title cannot exceed 255 bytes, so a longer term matches nothing;
+  // measured, a 400 character prefixsearch returns no pages at all. Truncating
+  // rather than rejecting keeps a long paste working in an autocomplete box.
+  it("truncates rather than rejecting an over-long query", () => {
+    const long = "x".repeat(1000);
+    const out = readSearchQuery(long);
+    expect(out).toHaveLength(SEARCH_QUERY_MAX);
+    expect(out).toBe("x".repeat(SEARCH_QUERY_MAX));
+  });
+
+  it("leaves no trailing space behind after truncating", () => {
+    const out = readSearchQuery("y".repeat(SEARCH_QUERY_MAX - 1) + "   tail");
+    expect(out).toBe(out.trim());
+    expect(out.length).toBeLessThanOrEqual(SEARCH_QUERY_MAX);
   });
 });

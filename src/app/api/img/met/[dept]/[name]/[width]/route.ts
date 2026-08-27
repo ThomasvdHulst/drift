@@ -35,6 +35,7 @@ import sharp from "sharp";
 import {
   MET_DEPT_RE,
   MET_NAME_RE,
+  isMetImageHostFailure,
   metUpstreamImageUrl,
   parseMetImageWidth,
   type MetImageSize,
@@ -139,7 +140,14 @@ async function fetchDerivative(
     });
     // A timeout is the failure that actually happens here, so unlike the API
     // host's breaker this one counts slowness, not just refusals.
-    imageBreaker.record(!res.ok);
+    //
+    // ⚠️ But NOT a 404. This used to be `record(!res.ok)`, which let four
+    // requests for made-up artwork names — a free path segment, no auth — open
+    // the circuit and take every Met image down for thirty seconds, on repeat.
+    // `isMetImageHostFailure` carries that rule and the measurement behind it.
+    // The throw below is unchanged: a missing derivative still falls back to
+    // `web-large`, it just no longer counts against the host.
+    imageBreaker.record(isMetImageHostFailure(res.status));
     if (!res.ok) throw new Error(`image ${size} responded ${res.status}`);
     return Buffer.from(await res.arrayBuffer());
   } catch (err) {

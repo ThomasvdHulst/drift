@@ -5,11 +5,12 @@ import { SupporterBuy } from "@/components/SupporterBuy";
 import { breakdown, formatEur } from "@/lib/billing/price";
 import { REFUND_COOLDOWN_LABEL } from "@/lib/billing/cooldown";
 import { imprint } from "@/lib/imprint";
+import { dailyLimit } from "@/lib/limits";
 
 export const metadata = {
   title: "Support Drift",
   description:
-    "One payment, no subscription, no advertising. Lift the daily reading limit and keep a small project running.",
+    "One payment, no subscription, no advertising. Keep a small project running, and never meet the daily reading limit.",
   alternates: { canonical: "/supporter" },
 };
 
@@ -40,6 +41,8 @@ export const metadata = {
 export default function SupporterPage() {
   const price = breakdown();
   const who = imprint();
+  // Null means no cap is configured (see the note on the bullet below).
+  const limit = dailyLimit();
 
   return (
     <div className="flex min-h-dvh flex-col bg-paper">
@@ -82,14 +85,36 @@ export default function SupporterPage() {
         <section className="mt-10">
           <h2 className="font-serif text-2xl text-ink">What it changes</h2>
           <ul className="mt-4 space-y-3 text-base leading-relaxed text-ink/75">
-            <li>
-              <span className="font-medium text-ink">
-                The daily reading limit no longer applies.
-              </span>{" "}
-              Free reading has a generous allowance each day, because a day&rsquo;s
-              reading should have an end. If you are someone who reads past it,
-              this removes it.
-            </li>
+            {/* ⚠️ THIS BULLET MUST NEVER PROMISE TO REMOVE SOMETHING THAT IS NOT
+                THERE. `NEXT_PUBLIC_FREE_DAILY_STOPS` is unset by default, which
+                `parseDailyLimit` reads as "no limit at all" — the deliberate
+                measure-first state described in lib/limits.ts. In that state the
+                old copy ("The daily reading limit no longer applies") was
+                selling the removal of a limit nobody was subject to, which is a
+                consumer-law problem and not merely an awkward sentence. So the
+                claim is made only when a limit is actually configured, and the
+                honest version is shown when it is not. */}
+            {limit === null ? (
+              <li>
+                <span className="font-medium text-ink">
+                  You will never meet the daily reading limit.
+                </span>{" "}
+                There is no cap on free reading at the moment, while we work out
+                what an ordinary day looks like. If one is ever introduced,
+                because a day&rsquo;s reading should have an end, this unlock
+                means it will not apply to you. Buying today is mostly a way of
+                keeping the project running.
+              </li>
+            ) : (
+              <li>
+                <span className="font-medium text-ink">
+                  The daily reading limit no longer applies.
+                </span>{" "}
+                Free reading is capped at {limit} stops a day, because a
+                day&rsquo;s reading should have an end. If you are someone who
+                reads past it, this removes the cap.
+              </li>
+            )}
             <li>
               <span className="font-medium text-ink">
                 Everything added to the unlock later is included,
@@ -120,9 +145,25 @@ export default function SupporterPage() {
         <section className="mt-10 rounded-2xl border border-line p-6">
           <h2 className="font-serif text-2xl text-ink">What you are buying</h2>
           <dl className="mt-4 space-y-4 text-sm leading-relaxed">
+            {/* The pre-contractual "what it is" (art. 6:230m BW). It carries the
+                same conditional as the bullet above, and for the same reason:
+                describing the thing as the removal of a limit that is not
+                currently applied would misdescribe what is being sold. */}
             <Row label="What it is">
-              A one-time unlock on your Drift account that removes the daily
-              reading limit, plus whatever is later added to the unlock.
+              {limit === null ? (
+                <>
+                  A one-time, permanent unlock on your Drift account. No daily
+                  reading limit is in force today; if one is introduced, this
+                  exempts your account from it. It also includes whatever is
+                  later added to the unlock.
+                </>
+              ) : (
+                <>
+                  A one-time unlock on your Drift account that removes the daily
+                  reading limit of {limit} stops, plus whatever is later added to
+                  the unlock.
+                </>
+              )}
             </Row>
             <Row label="Total price">
               {formatEur(price.grossCents)}, including {price.ratePct}% Dutch BTW

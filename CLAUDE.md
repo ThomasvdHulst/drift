@@ -8,16 +8,35 @@ implementation plan and progress tracker lives in `plan.md`.
 
 ## 1. What we're building
 
-**Drift** is a local, single-user web app for "healthy scrolling" — an antidote to
-doomscroll slot machines like TikTok/Instagram. It's a feed of full-screen Wikipedia
-"knowledge cards" where **the user is the algorithm**: every card exposes visible
-"threads" (related directions) you can pull to steer your own rabbit hole. Sessions have
-a beginning (a topic seed), a middle (the trail), and an end (a shareable **trail map** of
-where your curiosity wandered).
+**Drift** is a local-first web app for "healthy scrolling" — an antidote to doomscroll slot
+machines like TikTok/Instagram. It's a feed of full-screen "knowledge cards" where **the
+user is the algorithm**: every card exposes visible "threads" (related directions) you can
+pull to steer your own rabbit hole. Sessions have a beginning (a topic seed), a middle (the
+trail), and an end (a shareable **trail map** of where your curiosity wandered).
 
-This is a **hobby project for personal use** — no accounts, no database, no deployment, no
-social features. It runs locally with `npm run dev` at `localhost:3000` and persists
-everything in the browser via IndexedDB.
+Cards come from **realms** (`src/lib/realms/`): **Encyclopedia** (Wikipedia), **Gallery**
+(The Met's CC0 Open Access collection), and **Papers** (arXiv, built but switched off behind
+`NEXT_PUBLIC_REALM_PAPERS`).
+
+⚠️ **THIS SECTION USED TO SAY "a hobby project for personal use — no accounts, no database,
+no deployment, no social features", AND EVERY CLAUSE OF THAT IS NOW FALSE.** It is recorded
+here rather than quietly deleted because it is the kind of stale line that silently
+mis-briefs a whole session: it is the first thing anyone reads, and §8.5 used to repeat it as
+an instruction. What is actually true today:
+
+- **Accounts exist and the hosted app is gated behind one** (Phase 13, `AuthGate`).
+- **There is a database.** Supabase Postgres, optional, with the schema and RLS in
+  `supabase/migrations/`. IndexedDB is still the source of truth for a session and the app
+  stays fully usable signed-out or unconfigured; the cloud syncs, it does not own.
+- **It is deployed**, at `usedrift.org` on Vercel, and read by real people.
+- **There are social features** (profiles, friends, sharing) and **public share links**
+  (`/s/<token>`), the latter of which makes Drift an "online platform" under the DSA. See
+  `supabase/migrations/0004_public_shares.sql`.
+- **It takes money.** A one-time €7 supporter unlock through Stripe, with a daily reading
+  meter, a refund path and a cooldown (Phases 32/32B).
+
+`npm run dev` at `localhost:3000` still runs the whole thing locally with no configuration
+at all, and that must stay true (§4, graceful degradation).
 
 ## 2. The anti-slot-machine principles (hard product constraints, not nice-to-haves)
 
@@ -42,6 +61,16 @@ without them:
 5. **Content is vetted, AI only reshapes** — all content originates from openly-licensed,
    human-curated sources (Wikipedia/Wikimedia, and The Metropolitan Museum of Art's CC0 Open
    Access collection). AI may summarize, label, and curate; it must **never invent facts**.
+   ⚠️ **A THIRD SOURCE IS BUILT AND SWITCHED OFF, AND TURNING IT ON IS NOT A ONE-LINER.**
+   The Papers realm reads **arXiv** and is gated behind `NEXT_PUBLIC_REALM_PAPERS`, which is
+   `0`. Nothing is wrong while it stays `0`, but arXiv appears in **none** of the four places
+   that have to name a source: `/sources`, `/privacy`, `/colophon`, and
+   `docs/processing-record.md`. Flipping the flag without updating all four makes two
+   published legal documents wrong at once. The licence *position* is already decided and is
+   fine: arXiv per-paper licences vary, so `lib/licenses.ts` deliberately makes **no** licence
+   claim for that source (`licenceFor` returns null) and the card shows a plain "arXiv"
+   credit. It is the four documents that are missing, not the thinking. Update them **first**,
+   then flip the flag.
 
 ## 3. Tech stack
 
@@ -325,6 +354,23 @@ Next 16 allows only one `next dev` per directory. If one is already running, cop
 to a scratch dir (hard-linking `node_modules`, since Turbopack rejects a symlinked one that
 points outside the project root) and run `npx next dev -p <other-port>` there.
 
+⚠️ **NEVER RUN `next build` IN A DIRECTORY A LIVE `next start` IS SERVING FROM, and be careful
+with the scratch dir above, which is exactly where this happens.** The rebuild overwrites the
+`.next` the running server is still reading, and the result is far nastier than a crash: the
+server keeps answering **HTTP 200** with server-rendered HTML, while its CSS and JS chunks now
+point at content-hashed filenames that no longer exist. Pages look *almost* right and behave
+subtly wrong. Measured symptoms from one such instance: `ChunkLoadError` in the console on some
+routes, and `npm run audit:contrast` reporting **19 dark-mode contrast failures on `/`** that a
+clean build of the identical commit does not reproduce (the topic tiles lost the rule that picks
+their dark face, so it measured near-white on near-white). Both were chased as product bugs
+before the rig was suspected. **If a measurement disagrees with what a browser shows you, kill
+the server, delete `.next`, rebuild, and re-measure before believing it.** Two independent
+measurements agreeing against a third is a signal about the third.
+
+⚠️ Related: **several `next start` processes may share one build directory happily, but only if
+nothing rebuilds it while they run.** That is why §11's load rig builds once and then starts K
+instances, and why it never builds again mid-run.
+
 ## 8. Working agreement — how Claude must behave here
 
 **This is the most important section. Follow it in every session.**
@@ -349,8 +395,13 @@ points outside the project root) and run `npx next dev -p <other-port>` there.
 4. **Match the existing code style and structure.** Read neighboring files before adding
    new ones. Keep pure logic (filtering, diversity selection, drift weighting, naming) in
    `src/lib/*` as small, unit-testable functions — that's where bugs hide.
-5. **Stay in scope.** Build v1 (spec §3). Do not add accounts, databases, non-Wikipedia
-   sources, or the §12 "parking lot" ideas unless explicitly asked.
+5. **Stay in scope.** Work the current phase in `plan.md`. Do not add content sources,
+   dependencies, third-party services, metrics or `drift-spec.md` §12 "parking lot" ideas
+   unless explicitly asked. Engagement-maximizing metrics are never in scope.
+   ⚠️ This rule used to read "Do not add accounts, databases, non-Wikipedia sources", which
+   stopped being true once Phases 9, 13, 31 and 32 shipped exactly those. Read literally it
+   told a session that load-bearing, already-shipped subsystems were out of bounds. Scope is
+   defined by `plan.md`'s current phase, not by that list.
 6. **Ask before destructive or irreversible actions.** Don't `git init`/commit/push unless
    the user asks. Don't delete or overwrite files you didn't create without flagging it.
 7. **Prefer plan mode for non-trivial work.** For a new phase or a meaningfully complex

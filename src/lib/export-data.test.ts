@@ -70,3 +70,50 @@ describe("dataExportFilename", () => {
     expect(dataExportFilename(AT)).toBe("drift-data-2026-07-31.json");
   });
 });
+
+describe("the present / empty / absent contract", () => {
+  // The regression: sections used to be written as `...(xs.length ? { xs } : {})`,
+  // which makes "you have none" and "we could not look" produce the identical
+  // file, while EXPORT_RIGHTS told the reader an absent section "was not held".
+  // A failed read therefore became a positive claim that the reader had nothing.
+  it("keeps an empty section that was actually looked at", () => {
+    const out = buildDataExport({ shareLinks: [], readingDays: [] }, AT);
+    expect(out).toHaveProperty("shareLinks");
+    expect(out.shareLinks).toEqual([]);
+    expect(out).toHaveProperty("readingDays");
+  });
+
+  it("drops a section that was not looked at", () => {
+    const out = buildDataExport({ shareLinks: undefined }, AT);
+    expect(out).not.toHaveProperty("shareLinks");
+  });
+
+  // A reader who never bought the unlock has a REAL answer (null), which is not
+  // the same as the row being unreadable.
+  it("distinguishes 'never bought' from 'could not look'", () => {
+    const neverBought = buildDataExport({ supporter: null }, AT);
+    expect(neverBought).toHaveProperty("supporter");
+    expect(neverBought.supporter).toBeNull();
+
+    const couldNotLook = buildDataExport({}, AT);
+    expect(couldNotLook).not.toHaveProperty("supporter");
+  });
+
+  it("carries the purchase record and the reading counter when held", () => {
+    const out = buildDataExport(
+      {
+        supporter: { source: "purchase", refund_count: 1 },
+        readingDays: [{ day: "2026-08-27", stops: 12 }],
+      },
+      AT,
+    );
+    expect(out.supporter).toEqual({ source: "purchase", refund_count: 1 });
+    expect(out.readingDays).toEqual([{ day: "2026-08-27", stops: 12 }]);
+  });
+
+  it("explains the distinction to whoever opens the file years later", () => {
+    expect(EXPORT_RIGHTS).toMatch(/present but empty/i);
+    expect(EXPORT_RIGHTS).toMatch(/missing entirely/i);
+  });
+});
+

@@ -22,9 +22,23 @@
 import type { Trail, SessionStats } from "./types";
 import type { Interest, Reaction } from "./interest";
 
-/** Everything the export can carry. Cloud-only sections are absent, not empty,
- *  when signed out or when the social feature is off, so a reader can tell
- *  "there is none of this" from "this was not looked at". */
+/**
+ * Everything the export can carry.
+ *
+ * ⚠️ THE PRESENT / EMPTY / ABSENT DISTINCTION IS LOAD-BEARING, and it is the
+ * whole of what this file promises a reader:
+ *
+ *   present with data  we hold this, and here it is
+ *   present but empty  we looked, and there is none
+ *   absent             we could not look (signed out, feature off, read failed)
+ *
+ * The middle row is the one that used to be missing. Sections were written as
+ * `...(xs.length ? { xs } : {})`, which collapses "you have none" into "we could
+ * not look", and `EXPORT_RIGHTS` then told the reader that an absent section
+ * "was not held". So a failed read became a positive claim that the reader had
+ * nothing. Every optional section below must now be gated on whether the query
+ * RAN, never on whether it returned rows.
+ */
 export interface DataExportParts {
   account?: { id: string; email?: string; createdAt?: string };
   trails?: Trail[];
@@ -41,6 +55,14 @@ export interface DataExportParts {
    *  and stopped" is answerable, and an export that hid withdrawn links would
    *  be a less complete answer than the database can give. */
   shareLinks?: unknown;
+  /** The supporter unlock: whether it is held, when it was granted, revoked and
+   *  refunded, and the Stripe references. Listed in docs/processing-record.md
+   *  row 10 as personal data Drift holds, so Article 15 covers it. Present and
+   *  `null` means the reader never bought it; absent means we could not look. */
+  supporter?: unknown;
+  /** The rolling 30 day reading counter (processing-record row 11): a date and a
+   *  count per day, never which cards. */
+  readingDays?: unknown;
 }
 
 export interface DataExport extends DataExportParts {
@@ -59,7 +81,7 @@ export const EXPORT_ABOUT =
   "This file is a copy of the personal data Drift holds about one account. It was produced by that account's own owner from the account page.";
 
 export const EXPORT_RIGHTS =
-  "It is provided under Articles 15 and 20 of the GDPR (the rights of access and of data portability). Sections that are absent were not held: an absent section is not the same as an empty one. See https://www.usedrift.org/privacy.";
+  "It is provided under Articles 15 and 20 of the GDPR (the rights of access and of data portability). A section that is present but empty means Drift looked and there was nothing of that kind. A section that is missing entirely means it could not be read when this file was made, which is not the same as it being empty. See https://www.usedrift.org/privacy.";
 
 /**
  * Assemble the export. `now` is injected so the test does not depend on a clock.

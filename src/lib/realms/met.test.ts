@@ -19,6 +19,7 @@ import {
   MET_NAME_RE,
   isMetImageWidth,
   parseMetImageWidth,
+  isMetImageHostFailure,
   type MetObject,
   phraseQuery,
 } from "./met";
@@ -537,5 +538,36 @@ describe("MET_IMAGE_WIDTHS — the proxy's cost control", () => {
       const w = Number(url.split("/").pop());
       expect(isMetImageWidth(w)).toBe(true);
     }
+  });
+});
+
+describe("isMetImageHostFailure — who is allowed to open the image breaker", () => {
+  // The regression this exists for: a stranger requesting four well-formed but
+  // nonexistent artwork names used to open the circuit and take EVERY Met image
+  // down for thirty seconds, repeatable indefinitely, on an unauthenticated
+  // route. A 404 is a settled answer about one picture, not a sick host.
+  it("does not count a missing image", () => {
+    expect(isMetImageHostFailure(404)).toBe(false);
+    expect(isMetImageHostFailure(410)).toBe(false);
+  });
+
+  it("does not count a success", () => {
+    expect(isMetImageHostFailure(200)).toBe(false);
+    expect(isMetImageHostFailure(304)).toBe(false);
+  });
+
+  // A 403 from THIS host is not a throttle (that is the API host's habit), and
+  // treating it as one would reopen the same hole from another direction.
+  it("does not count a refusal", () => {
+    expect(isMetImageHostFailure(403)).toBe(false);
+    expect(isMetImageHostFailure(400)).toBe(false);
+  });
+
+  it("counts rate limiting and anything 5xx, which is how this host fails", () => {
+    expect(isMetImageHostFailure(429)).toBe(true);
+    expect(isMetImageHostFailure(500)).toBe(true);
+    expect(isMetImageHostFailure(502)).toBe(true);
+    expect(isMetImageHostFailure(503)).toBe(true);
+    expect(isMetImageHostFailure(504)).toBe(true);
   });
 });

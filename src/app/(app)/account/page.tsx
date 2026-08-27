@@ -13,6 +13,7 @@ import {
 } from "@/lib/sync/replicator";
 import { getMyProfile, upsertProfile, exportSocialData } from "@/lib/social/client";
 import { listMyPublicShares } from "@/lib/publicshare/client";
+import { fetchMySupporterData } from "@/lib/billing/client";
 import { normalizeHandle, handleError } from "@/lib/social/handles";
 import { socialEnabled } from "@/lib/social/enabled";
 import {
@@ -385,7 +386,17 @@ function DownloadData({ user }: { user: { id: string; email?: string; created_at
     setError(null);
     setBusy(true);
     try {
-      const [trails, reactions, interests, settings, seen, sessions, social, shareLinks] =
+      const [
+        trails,
+        reactions,
+        interests,
+        settings,
+        seen,
+        sessions,
+        social,
+        shareLinks,
+        supporter,
+      ] =
         await Promise.all([
           listTrails(),
           getReactions(),
@@ -397,6 +408,10 @@ function DownloadData({ user }: { user: { id: string; email?: string; created_at
           // NOT behind socialEnabled(): share links are not the friend layer and
           // are available whether or not that flag is set.
           listMyPublicShares(),
+          // The supporter unlock and the reading counter: processing-record rows
+          // 10 and 11 list both as personal data Drift holds, so Article 15
+          // covers them and the export used to omit them entirely.
+          fetchMySupporterData(),
         ]);
 
       const file = buildDataExport({
@@ -418,9 +433,16 @@ function DownloadData({ user }: { user: { id: string; email?: string; created_at
               shares: social.shares,
             }
           : {}),
-        // Absent rather than empty when the backend is unreachable, so a reader
-        // can tell "you made none" from "we could not look".
-        ...(shareLinks.length ? { shareLinks } : {}),
+        // Gated on whether the query RAN, never on whether it returned rows:
+        // an empty list is the honest answer "you made none", while a failed
+        // read must leave the section out. See DataExportParts.
+        ...(shareLinks.looked ? { shareLinks: shareLinks.shares } : {}),
+        ...(supporter.looked
+          ? {
+              supporter: supporter.entitlement,
+              readingDays: supporter.readingDays,
+            }
+          : {}),
       });
 
       // A Blob rather than a data: URL. A long trail list can run to megabytes,

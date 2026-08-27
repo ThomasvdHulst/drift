@@ -82,18 +82,37 @@ export async function revokePublicShare(token: string): Promise<boolean> {
   }
 }
 
+/**
+ * The outcome of asking for this user's links.
+ *
+ * ⚠️ `looked` IS THE WHOLE POINT OF THIS TYPE. This function used to answer a
+ * bare `MyPublicShare[]` and return `[]` for all three of "no backend", "the
+ * query failed" and "you genuinely have none". The data export then wrote
+ * `...(shareLinks.length ? { shareLinks } : {})` under a comment promising the
+ * reader could tell "you made none" from "we could not look" — a distinction the
+ * data could not carry, so an export taken during a bad second silently asserted
+ * that somebody had never shared anything. Under Article 15 that is not a
+ * cosmetic slip; it is the file answering a question it did not ask.
+ */
+export type MyPublicShareList = {
+  /** True when the query actually ran. False for no backend or a failed read. */
+  looked: boolean;
+  /** Empty AND `looked` means the reader really has none. */
+  shares: MyPublicShare[];
+};
+
 /** Every link this user has made. RLS scopes it to them; the filter is not the
  *  security boundary, the policy is. */
-export async function listMyPublicShares(): Promise<MyPublicShare[]> {
+export async function listMyPublicShares(): Promise<MyPublicShareList> {
   const sb = getSupabase();
-  if (!sb) return [];
+  if (!sb) return { looked: false, shares: [] };
   try {
     const { data, error } = await sb
       .from("public_shares")
       .select("token,kind,payload,created_at,revoked_at")
       .order("created_at", { ascending: false });
-    if (error || !Array.isArray(data)) return [];
-    return data.map((r) => {
+    if (error || !Array.isArray(data)) return { looked: false, shares: [] };
+    const shares = data.map((r) => {
       const row = r as {
         token: string;
         kind: PublicShareKind;
@@ -112,7 +131,8 @@ export async function listMyPublicShares(): Promise<MyPublicShare[]> {
         revokedAt: row.revoked_at,
       };
     });
+    return { looked: true, shares };
   } catch {
-    return [];
+    return { looked: false, shares: [] };
   }
 }

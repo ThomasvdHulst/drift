@@ -162,6 +162,36 @@ export function topicSearch(keyword: string): string {
 }
 
 /**
+ * The longest search-box query Drift forwards upstream.
+ *
+ * A MediaWiki page title cannot exceed 255 bytes, so a `prefixsearch` term
+ * longer than that has no title it could possibly be a prefix of. Measured: a
+ * 300 and a 400 character term both come back `{"batchcomplete":true}` with no
+ * pages at all, which is a guaranteed-empty answer bought with a turn of the
+ * shared Wikimedia rate budget (§4) on an endpoint the whole feed depends on.
+ *
+ * 300 rather than 255 because the cap is a backstop, not a validator: it should
+ * sit above every real title without pretending to know the byte length of one.
+ *
+ * TRUNCATED, NEVER REJECTED. This is an autocomplete box. Someone who pastes
+ * something long did nothing wrong, and answering a paste with a 400 is a dead
+ * end; trimming it and searching anyway is what they expected. The lower bound
+ * stays where it was: under two characters returns nothing rather than asking
+ * Wikipedia to prefix-match the alphabet.
+ */
+export const SEARCH_QUERY_MAX = 300;
+
+/**
+ * The query a search request should actually send upstream, or `""` when there
+ * is nothing worth asking. Pure, so the bounds are tested rather than sitting as
+ * two conditions in a route handler.
+ */
+export function readSearchQuery(raw: string | null | undefined): string {
+  const q = (raw ?? "").trim().slice(0, SEARCH_QUERY_MAX).trim();
+  return q.length < 2 ? "" : q;
+}
+
+/**
  * Normalize a `prefixsearch` generator response into ordered search suggestions,
  * dropping disambiguation + list/index pages. Suggestions have no extract (just a
  * title + short description), so we can't use the full isJunk here. Pure; the

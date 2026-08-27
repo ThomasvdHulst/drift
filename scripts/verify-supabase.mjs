@@ -218,6 +218,42 @@ async function main() {
     await user.from("user_kv").delete().eq("key", "__verify_big__");
   }
 
+  // The per-user ROW cap on user_kv (0008). Unlike 0007's 500-row cap on trails
+  // this one is cheap to prove — the cap is 20 — so it IS checked, row by row,
+  // and the loop stops the moment the database says no.
+  //
+  // The gap it guards: `user_kv`'s primary key is (user_id, key) and `key` is
+  // free-form, so before 0008 a browser could invent keys without limit and pay
+  // the 256 KB ceiling separately on each. Measured at the time: 300 invented
+  // keys accepted in 236ms, and ~5 MB of them in 2.4s.
+  let accepted = 0;
+  let refusedAt = null;
+  for (let i = 0; i < 25; i++) {
+    const r = await user
+      .from("user_kv")
+      .insert({ key: `__verify_cap_${i}__`, value: { i } });
+    if (r.error) {
+      refusedAt = i;
+      break;
+    }
+    accepted++;
+  }
+  if (refusedAt === null) {
+    bad(
+      `25 invented user_kv keys were all ACCEPTED — migration 0008 is not applied` +
+        "\n      → paste supabase/migrations/0008_user_kv_row_cap.sql into Studio → SQL Editor → Run",
+    );
+  } else if (accepted < 10) {
+    // Refusing too early would mean an honest reader (four blobs: interests,
+    // settings, seen, sessions) could hit the cap, which would stall real sync.
+    bad(`the user_kv row cap refused after only ${accepted} rows — too tight for four real blobs`);
+  } else {
+    ok(`invented user_kv keys are capped (accepted ${accepted}, refused the next)`);
+  }
+  for (let i = 0; i < 25; i++) {
+    await user.from("user_kv").delete().eq("key", `__verify_cap_${i}__`);
+  }
+
   // NOTE what is deliberately NOT checked here: 0007's per-user ROW cap (500).
   // Proving it needs 500 inserts, which is slow over the network and would leave
   // a mess in the real project if this script were interrupted part-way. The two

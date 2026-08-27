@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { wikiQuery } from "@/lib/wiki-server";
-import { normalizeSearchResults } from "@/lib/wiki";
+import { normalizeSearchResults, readSearchQuery } from "@/lib/wiki";
 import { cacheHeaders, CACHE_MEDIUM, NO_STORE } from "@/lib/cache-headers";
 
 // GET /api/wiki/search?q=<query> → up to ~8 page suggestions for the "drift
@@ -9,8 +9,10 @@ import { cacheHeaders, CACHE_MEDIUM, NO_STORE } from "@/lib/cache-headers";
 // one call; disambiguation + list/index pages are filtered out. Graceful: a short
 // query or any upstream failure returns [] (HTTP 200) so the bar never errors.
 export async function GET(request: Request) {
-  const q = (new URL(request.url).searchParams.get("q") ?? "").trim();
-  if (q.length < 2) return NextResponse.json([], { headers: NO_STORE });
+  // Bounded at BOTH ends (see `readSearchQuery`): too short asks Wikipedia to
+  // prefix-match the alphabet, too long cannot match any title that exists.
+  const q = readSearchQuery(new URL(request.url).searchParams.get("q"));
+  if (!q) return NextResponse.json([], { headers: NO_STORE });
   try {
     const raw = await wikiQuery({
       generator: "prefixsearch",
