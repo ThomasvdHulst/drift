@@ -13,7 +13,10 @@
     "verify:social": "node --env-file=.env scripts/verify-social.mjs",
     "verify:share": "node --env-file=.env scripts/verify-publicshare.mjs",
     "verify:billing": "node --env-file=.env scripts/verify-billing.mjs",
-    "audit:contrast": "node scripts/audit-contrast.mjs"
+    "audit:contrast": "node scripts/audit-contrast.mjs",
+    "bots:seed": "node --env-file=.env scripts/bots/seed-accounts.mjs",
+    "bots:teardown": "node --env-file=.env scripts/bots/seed-accounts.mjs --teardown",
+    "bots:run": "node --env-file=.env scripts/bots/run.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.5",

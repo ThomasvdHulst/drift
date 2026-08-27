@@ -26,8 +26,20 @@ export async function GET(
     );
 
   try {
-    return NextResponse.json(await r.related(id), {
-      headers: cacheHeaders(CACHE_STABLE, request),
+    const candidates = await r.related(id);
+    // ⚠️ ONLY EVER CACHE A REAL ANSWER, exactly as discover does.
+    //
+    // This used to send `s-maxage=86400` whatever came back, so a card whose
+    // threads were empty because the upstream was throttling — or because the
+    // Met breaker was open and the adapter deliberately made no request at all —
+    // had "this card has no threads" frozen into the CDN for a DAY, for every
+    // reader. A card with no threads is the one thing the feed cannot recover
+    // from gracefully, and nothing in the app would ever have re-asked.
+    //
+    // A genuinely thread-less card costs one repeated lookup. That is the right
+    // side to be wrong on.
+    return NextResponse.json(candidates, {
+      headers: candidates.length ? cacheHeaders(CACHE_STABLE, request) : NO_STORE,
     });
   } catch (err) {
     console.error(`[api/realm/${realm}/related]`, err);

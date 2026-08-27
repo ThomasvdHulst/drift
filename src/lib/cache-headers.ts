@@ -29,13 +29,23 @@ export const CACHE_STABLE: CacheProfile = { sMaxAge: 86_400, swr: 604_800 };
 export const CACHE_MEDIUM: CacheProfile = { sMaxAge: 3_600, swr: 86_400 };
 
 // For an answer we BELIEVE but do not want to freeze: fresh for ten minutes,
-// stale for an hour. It exists for "we looked and there is nothing there" —
-// specifically the cross-realm doorway, which finds nothing about half the time.
-// Those misses used to be NO_STORE, on the reasoning that a miss might be a
-// transient failure rather than a real absence. That reasoning is right and the
-// conclusion was too strong: it made the most repeated lookup in the app the one
-// that never cached, so every reader re-asked it for every card. Ten minutes
-// keeps a transient failure transient while stopping the repetition.
+// stale for an hour.
+//
+// ⚠️ NOTHING USES THIS TODAY, and the story of why is the useful part. It was
+// built for the cross-realm doorway's misses, which are about half of all cards:
+// NO_STORE made the app's most repeated lookup the one that never cached, and
+// ten minutes was the hedge against caching a THROTTLE as though it were a
+// settled "there is nothing here".
+//
+// The hedge turned out to be treating a symptom. The real fault was that
+// `searchIds` swallowed upstream errors and returned [], so a throttle and a
+// genuine miss were literally the same value. Once the doorway path rethrows
+// (`{ rethrow: true }`), a failure answers NO_STORE on its own and a `null`
+// really does mean "we looked" — so the miss earned CACHE_STABLE like everything
+// else deterministic.
+//
+// Kept because the shape is a legitimate one, but do not reach for it to hedge
+// against an uncertain answer: make the answer honest instead.
 export const CACHE_SHORT: CacheProfile = { sMaxAge: 600, swr: 3_600 };
 
 /**

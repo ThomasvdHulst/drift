@@ -5,7 +5,7 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 **tested with success**. Keep the "Current status" line accurate. Full product detail is in
 `drift-spec.md`; working rules are in `CLAUDE.md`.
 
-> ## Current status: 2026-08-26
+> ## Current status: 2026-08-27
 >
 > **Drift is live** at <https://www.usedrift.org> (Vercel + Supabase) as an installable PWA, in a
 > small friends-and-family beta, now taking real payments for the **supporter unlock** (Phase 32).
@@ -16,7 +16,14 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > CC0 — moved there in Phase 31 after the Art Institute's image host went behind a blanket
 > Cloudflare block).
 >
-> **Gates:** 1,196 unit tests green, `npm run build` and `npm run lint` clean, `npm run audit:contrast`
+> The Gallery's traffic to The Met is the live constraint. Phase 33 cut the doorway's cost; **Phase
+> 33C (27 August) fixed the three faults that survived it** — a breaker that could wedge open for the
+> life of the process, a `related` route that cached an empty thread list for a day, and phrase
+> quoting that silently deleted thread chips. The Met gate now carries a rolling budget matched to
+> what the museum actually grants. Measured after: a 12-card Gallery session is 96 Met requests with
+> zero 403s, zero breaker trips and threads on every card.
+>
+> **Gates:** 1,304 unit tests green, `npm run build` and `npm run lint` clean, `npm run audit:contrast`
 > PASS (31 views x 2 themes; the node count varies with how much local reading data the instance
 > has, 3,878 on an empty one. Pass `BASE=…` matching your port or it measures nothing and still
 > says PASS). Backend: `npm run verify:supabase`, `verify:social`, `verify:share`, `verify:billing`.
@@ -4768,3 +4775,311 @@ in the log.
 > perfectly correct. It now compares instants. Worth recording because the failure was maximally
 > alarming ("the cooldown is not enforceable like this") for a formatting difference, and because the
 > app code never had the bug: it parses the column with `new Date()` and never compares the text.
+
+---
+
+## Tooling — the load rehearsal (`scripts/bots/`), 2026-08-26
+
+**Not a phase.** A development harness, in service of the beta: before flyers go out, we wanted
+evidence that Drift holds up with 20 to 50 people reading at once. It runs simulated readers with
+real accounts, real supporter unlocks and randomised reading speeds, and writes a report to
+`reports/loadtest/<timestamp>/`. Nothing in `src/` changed except four new test files.
+
+### Why it runs locally, and what that cost
+
+Vercel permits load testing on **Enterprise plans only**, and says an unannounced one gets its
+source IP blocked. So the target is a local rig. That is also the safer choice for the upstreams:
+the run spends this machine's Wikimedia and Met budget rather than the live site's, which matters
+most for the Gallery, where the museum throttles at ~80 requests per **30 seconds** and repeated
+tripping shrinks that budget for a **day** (`CLAUDE.md` §4).
+
+But a plain local server is **not** a small production. Two things had to be built or it would have
+measured a system nobody deploys:
+
+- **`edge.mjs`, a caching reverse proxy** standing where Vercel's CDN stands. Without it, every bot
+  request reaches an upstream and the app's main scaling lever is simply absent. It has no caching
+  policy of its own: it reads the `Cache-Control` the app emits, so it cannot drift from
+  `lib/cache-headers.ts`, and it mirrors that file's `carriesUserSession` bypass — an emulator that
+  cached an authenticated response would be reproducing the M-10 leak inside the harness.
+- **K `next start` instances** rather than one. The request-spacing gate in `upstream.ts` is per
+  PROCESS; with a single instance it becomes a global serialiser pinning the whole swarm at 200
+  req/min, which Vercel's several concurrent functions do not do. Several `next start` share one
+  build directory happily. `next dev` is never used: it would measure Turbopack.
+
+### The part that makes the numbers trustworthy
+
+A plain Node script cannot import the app's modules (extensionless relative specifiers do not
+resolve outside the bundler — verified), so the harness carries copies of the four URL builders,
+the bucket lists and the discover constants. **A copy nobody checks is a copy that rots**, and a
+rotted one here would mean the run measures a fiction and still prints a confident report. So:
+
+- `src/lib/loadbot.test.ts` asserts the copied builders produce byte-identical URLs to the app's,
+  that every bucket is one the server's allowlist accepts, and that `REFILL_TOPICS`,
+  `DISCOVER_LIMIT` and `SEED_LIMIT` still match the values **read out of `drift/page.tsx`**.
+- `src/lib/loadbot-edge.test.ts` feeds the app's real cache profiles through the emulator's parser.
+- `src/lib/loadbot-behaviour.test.ts` pins the distributions, including the Gallery cap.
+- `src/lib/loadbot-report.test.ts` pins the arithmetic somebody will decide "the beta is fine" on.
+
+And at runtime the report compares **requests per card** between the HTTP bots and real browser
+bots. Measured across three runs: **4%, 9% and 19% apart**, all straddling the ~2.4 measured in
+`docs/beta-readiness.md`. If they ever diverge the report says so in the calibration section
+instead of quietly averaging.
+
+### What the first real rehearsal found (25 bots, 20 minutes, 3 instances)
+
+**494 cards read, 0 failed requests, 2.41 API requests per card** — which lands on the ~2.4
+measured in `docs/beta-readiness.md`, from a completely independent direction. Time to the next
+card p50 2.1s / p95 5.3s. **The app itself held up: 25 concurrent readers produced no errors.**
+
+Two things are worth acting on:
+
+1. **The museum is the bottleneck, by a factor of fifty.** Six concurrent Gallery readers produced
+   **1,470 `403`s from `collectionapi.metmuseum.org`**, against **26 `429`s from Wikipedia** for
+   nineteen Encyclopedia readers. A later 6-minute run with only TWO Gallery bots still drew 559.
+   Wikipedia at beta scale is a non-issue; the Met is already at its limit with a handful of
+   readers, and `CLAUDE.md` §4's warning that repeated tripping shrinks the budget for a day was
+   visible within one afternoon. One Gallery bot ended "ran dry" — its buffer never refilled.
+2. **The edge cache does almost nothing in a short window** (11.6%, and 19.3% at 12 bots). That is
+   not a fault: discover offsets tile across ~101 windows per topic and threads are keyed by
+   article, so 25 readers in 20 minutes barely overlap. It means the cache pays off across a DAY
+   of traffic, not within a session, and no scaling argument should lean on it at this scale.
+
+### Bugs found by running it, all invisible from the code
+
+- **The emulator served gzip labelled as plain text.** It forwarded the client's `accept-encoding`,
+  buffered the compressed bytes, then stripped `content-encoding` on the way out. JSON survived (too
+  small for Next to compress), so the HTTP bots looked healthy — but every browser bot got
+  `1f8b08…` as HTML, rendered nothing, and failed with a 30s timeout hunting for the sign-in form.
+  Fixed by asking upstream for `identity`: a shared cache holding one entry per URL cannot be
+  correct for clients that asked for different encodings.
+- **Importing the seeder ran it.** `run.mjs` imports `loadAccounts` from `seed-accounts.mjs`, whose
+  CLI body was top-level, so starting a load test silently created ten accounts nobody asked for.
+- **The report blamed Wikipedia for the museum's refusals.** Throttle statuses were kept in one
+  run-wide histogram and printed on every host's row, so a run of 1,470 Met `403`s and 26 Wikipedia
+  `429`s rendered as though Wikipedia had 403ed us 1,470 times. Same totals, entirely wrong story.
+  Now kept per host and pinned by a test.
+- **A browser bot gave up where a reader would press again.** All three browser bots ended
+  "stopped advancing" in the 25-bot run. Not an app bug: `advance` and `onThread` early-return
+  while `busyRef` holds (`drift/page.tsx:2076`), which it does for the whole of a buffer refill —
+  and refills were slow because the museum was throttling. A reader sees the loading state and
+  presses again; the bot waited 30s and recorded the app as broken. It now re-presses twice, and
+  **counts how often it had to**, which is a real signal: every repeat is a moment a reader felt
+  the app not answer. Zero repeats in the clean 12-bot run.
+
+### The one line that protects something outside the test
+
+Bot accounts are created with `app_metadata.welcomed: true`. `AuthProvider` fires
+`/api/email/welcome` on every confirmed sign-in and that route **sends via Resend** unless the stamp
+is set, so without it a 50-bot run is 50 hard bounces to a `.invalid` domain against a real sending
+reputation. Verified on a real row read back from the server. Teardown selects on
+`app_metadata.load_bot`, never on the address, and checks the cascade left no rows behind.
+
+Commands are in `CLAUDE.md` §7; the reasoning is §11.
+
+---
+
+## Phase 33 — Cutting the Met's load (2026-08-26)
+
+The load rehearsal said the app holds up at 25 concurrent readers and that the museum does not.
+Measuring where the museum's traffic actually came from changed the diagnosis completely:
+**the Gallery was never the bottleneck, the cross-realm doorway was.**
+
+`/api/doorway` fires on every card in BOTH realms (`drift/page.tsx:941`), and from an Encyclopedia
+card it searched The Met for the article title. That was **491 of 494 cards and 92.6% of all Met
+requests**: nineteen Encyclopedia readers cost the museum twelve times what six Gallery readers did.
+
+### The five changes
+
+1. **Phrase-quote free-text searches** (`phraseQuery`, `lib/realms/met.ts`). Their search ORs the
+   words; the doorway's gate wants the term as a **substring**. Unquoted,
+   `Powers of the president of the United States` returned **55,804** results, every one of which
+   was going to be rejected after five record fetches. Quoted: **0**. A single word is unaffected
+   (`House` = 21,105 either way), so nothing that used to match stopped matching.
+2. **Stop fetching five records to keep one.** `metTopMatch` takes an `accept` predicate and stops
+   at the first record that satisfies it; `crossRealmDoorway` passes `passesReverseGate`, so the
+   rule stays in the pure cross-realm module and only the stopping moves.
+3. **A search cache and single-flight.** `searchIds` had **no cache at all**, and neither it nor
+   `fetchObject` de-duplicated in-flight work — so twenty-five readers arriving on the same object
+   within a few milliseconds each made their own request. A cache only helps the second reader;
+   this is the part that helps the twenty-fifth.
+4. **"No doorway" now caches for a day**, which is honest only because `searchIds({rethrow:true})`
+   makes a throttled search an ERROR rather than an empty result. `crossRealmDoorway` always
+   claimed a failure throws; `searchIds` had been quietly breaking that promise, so a busy second
+   was already being cached as a settled "nothing here" — and lengthening the cache without fixing
+   it would have frozen that onto a card until tomorrow. The two halves are one decision.
+5. **A circuit breaker** (`makeBreaker`, `lib/upstream.ts`), opt-in per source and wired ONLY to
+   the Met. `retryOn: [403]` made every refusal cost three requests exactly when the museum was
+   telling us to stop. Five consecutive refusals now buy 35 seconds of silence.
+
+### Measured, same seed, same 25-bot population, 20 minutes
+
+| | Before | After |
+|---|--:|--:|
+| **Met refusals (403)** | **1,470** | **110** |
+| Wikipedia 429s | 26 | 57 |
+| Doorway calls made | 491 | 547 |
+| Cards read | 494 | **552** |
+| Time to next card, p50 / p95 | 2,102 / 5,332 ms | **1,670 / 4,661 ms** |
+| API requests per card | 2.41 | 2.41 |
+| Failed requests | 0 | 1 (0.1%) |
+
+**93% fewer refusals while making MORE doorway calls and serving MORE cards, faster.** Per action,
+the doorway went from ~6 Met requests to ~1.9 (measured over the fourteen real article titles the
+first rehearsal's bots actually read: 64 → 26).
+
+Wikipedia's 429s rose because the bots were no longer waiting on the museum and simply read more;
+57 across ~1,300 requests is self-correcting and `Retry-After` is honoured.
+
+### Two things worth knowing
+
+- **The baked pools do NOT keep a room readable while the breaker is open.** They supply a room's
+  ids without a search, but `metDiscover` still fetches each record, and those go through the
+  breaker. A cold instance serves a Gallery room zero cards for those 35 seconds and the feed falls
+  back to a thread neighbour; a warm one does better because `objectCache` answers. Written into
+  the code comment, which originally claimed otherwise.
+- **`realms/server/*` had never been unit-testable**, because those modules use the `@/` alias and
+  `vitest.config.ts` did not resolve it. One `resolve.alias` line fixed that, and the request-count
+  tests it unlocks (`met.request.test.ts`) are exactly the kind that catch this class of bug: the
+  doorway's return value was always fine, it was the number of requests behind it that was ruinous,
+  and no assertion on an answer can see that.
+
+Gates: 1,284 tests green, `npm run build`, `npm run lint` clean. `CACHE_SHORT` is now unused; its
+comment records why rather than being left describing a caller that no longer exists.
+
+### Phase 33B — the artwork image proxy (same day)
+
+Found by the owner testing Phase 33: `/api/img/met/… 502 in 20.0s`, repeatedly, while the Gallery
+was otherwise fine. **A different host and a different fault from the 403s** — the API answered
+200 in 2.1s throughout. `images.metmuseum.org` was delivering `web-large` in 0.31s while `original`
+crawled at 3.5 KB/s and never finished.
+
+Three faults, none of them caused by Phase 33 and all of them older:
+
+1. **The route had no gate and no breaker**, unlike every other upstream call. The rehearsal's
+   browser bots had therefore been pulling multi-megabyte originals with no spacing at all, which is
+   a plausible reason the host was so unhappy afterwards. It now has both, and unlike the API's
+   breaker a **timeout counts as a failure**, because that is this host's actual failure mode.
+2. **No `maxDuration` was set anywhere in the repo**, so the route ran under Vercel's default (10s
+   Hobby / 15s Pro) while its own fetch timeout was 20s — meaning in production the platform killed
+   the function before it could even return a clean 502. Now `maxDuration = 25`, with a 10s original
+   and 5s fallback sized to fit inside it.
+3. **No fallback.** A slow original meant a broken image on the card. It now falls back to
+   `web-large`, served with a **short** cache rather than the 30-day `immutable` one, because
+   freezing a soft picture into the CDN would turn one slow minute at the museum into a month of
+   blurred cards. Verified on the exact failing artwork: **502 after 20s → 200 with a real image in
+   10.3s**, at 500x625.
+
+And one waste found while reading it: **the trail map asks this route for width 160**
+(`artImageAtWidth`, `TrailMap.tsx:62`) **and that was fetching the full ~3.4 MB original to make a
+thumbnail** — a dozen artworks on a map was a dozen multi-megabyte downloads. Requests at or below
+400px now read `web-large` directly: measured **8 KB in 0.47s**, correct at 160x197.
+
+Also: `CircuitOpenError` is now a real type (`isCircuitOpen`), because logging a breaker refusal as
+`[met] search failed` with a full stack trace is what made the breaker's first real firing look like
+a crash. It is healthy degradation and now says so in one quiet line.
+
+Gates: 1,285 tests green, build and lint clean.
+
+---
+
+## Phase 33C — Why the Gallery still died, and stayed dead (2026-08-27)
+
+Reported by the owner after Phase 33: `[met] search skipped: circuit open` repeating for the rest
+of a dev session, cards showing "Couldn't load a card just now", and cards that did load showing no
+threads. Phase 33's measurements were real; three separate faults were sitting underneath them, and
+**one of them was introduced by Phase 33 itself.**
+
+### 1. The circuit breaker could wedge open permanently
+
+`makeBreaker`'s half-open probe was gated by a `probing` flag that only `record()` could clear, and
+`fetchUpstream` called `record()` **only when a response came back**. A probe whose fetch *threw* —
+a timeout, a reset connection, DNS — never reported anything, so `probing` stayed `true` and `open`
+stayed `true` **for the life of the process**. Every later `guard()` threw. The Met was dead until
+the server was restarted, which is exactly what the log showed: eighteen consecutive discover calls
+answering in 3-8 ms with no upstream request behind any of them, long after the 35s cooldown.
+
+Fixed twice over, because either half alone would have left it fragile:
+
+- The probe now holds a **time-boxed slot** (`sinceAt` moves forward when a probe is let through)
+  instead of a sticky flag. A lost probe costs one more cooldown; it cannot wedge.
+- `fetchUpstream` now **reports a thrown fetch to the breaker**. The image host's breaker already
+  counted a timeout for this reason; a throttled API edge that simply hangs looks the same from here.
+
+### 2. `/api/realm/[realm]/related` cached an EMPTY thread list for a day
+
+The route sent `s-maxage=86400` on whatever came back. So a card whose threads were empty because
+the museum was throttling — or because the breaker was open and the adapter deliberately made no
+request at all — had **"this card has no threads" written into the CDN for every reader until
+tomorrow**, and nothing in the app would ever have re-asked. Discover had guarded against exactly
+this since Phase 31; related never had. It is dev-invisible (no CDN locally) and would have been
+the worst of the three in production.
+
+Same fault, same fix, in the Gallery half of the doorway: `metArtworkMeta` swallowed a failed record
+fetch and returned `null`, which `/api/doorway` then cached for a day as a settled "no doorway".
+`fetchObject` now takes `{ rethrow }` — the distinction `searchIds` already made — and returns
+`null` only for a genuine 404. That needed `UpstreamError` to carry a **status**, since a 404 and a
+403 had been the same `Error("Upstream responded …")` string.
+
+### 3. Phase 33 phrase-quoted the thread searches, and that silently deleted threads
+
+`phraseQuery` is measured to pay for the **doorway**, where a loose OR returned 55,804 works the
+gate was going to reject one record at a time. It pays nothing for a card's threads: a facet search
+costs one request whatever it returns, and only the first three ids are ever fetched. What it does
+instead is sometimes return nothing. Measured live, twice, on 27 August:
+
+```
+artistOrCulture q=Winslow Homer     -> 13 works
+artistOrCulture q="Winslow Homer"   ->  0 works     (the chip just disappears)
+```
+
+and it moves the other way just as arbitrarily (Hokusai: 10 → 427). Their quoting is not a phrase
+operator in any consistent sense. Reverted for `metRelated`'s three facets, kept for `metTopMatch`.
+
+### The gate now knows the budget it is spending
+
+Underneath all three: `makeGate(50)` is 20 requests a second and **the museum grants about 80 per
+thirty seconds** (CLAUDE.md §4). Spacing alone cannot express a bucket, so one reader opening the
+Gallery spent ~30 requests in two seconds and a second drift straight after was refused. A refusal
+is strictly worse than a wait — it costs a request, returns nothing, feeds the breaker, and repeated
+tripping shrinks their budget for a *day*.
+
+`makeGate` takes an optional rolling budget, and the Met's is `burst: 30, windowMs: 15_000` (the
+same ~2/s their bucket refills at, in a window short enough that running into it costs seconds).
+`maxWaitMs: 5_000` keeps waiting honest: the feed aborts a discover batch after 6s, so holding one
+longer would spend the museum's budget on a batch nobody is still listening for. Past that the gate
+refuses (`GateBudgetError`) without making the request, and the feed degrades the way it already
+does for an empty batch. Met retries also went from 2 to 1: the 300 ms backoff is nowhere near the
+~31s their bucket needs, so a second retry costs a third of everything we spend while throttled and
+almost never succeeds.
+
+### Measured against a local `next start` with the upstream counter (§11)
+
+| | |
+|---|--:|
+| Session start (3 × discover limit=4, cold) | 15 Met requests, 10 cards, 2.0s |
+| One cold card's threads + doorway | 14 Met requests, 4 threads |
+| **12-card Gallery session** | **96 Met requests, 57s** |
+| Cards with no threads | **0** (avg 3.1 chips) |
+| 403s / breaker trips / budget refusals | **0 / 0 / 0** |
+| 8 Encyclopedia doorway lookups | 24 Met requests (~3 each) |
+
+A later run, after this session's own testing had already drawn ~200 requests, took two 403s out of
+~96 — absorbed with one retry each, no cascade, no blackout, threads still on every card. That is
+the behaviour the breaker was supposed to produce all along.
+
+### What is still true, and is the next thing worth doing
+
+**The baked pools do not keep a room readable while the breaker is open**, and this phase did not
+change that. `met.pools.json` bakes a room's **ids**; `metDiscover` still fetches each **record**,
+and those go through the breaker. Measured: five buffer refills is **75 Met requests for 60 cards**,
+every one of them a record fetch for an id we already have on disk.
+
+Baking those ~3,209 records (trimmed to the fields `metToCard` reads: measured at ~705 bytes each,
+≈2.2 MB) would take room discover to **zero** upstream requests, make `metSummary` and
+`metRelated`'s self-lookup free for any pooled work, and mean a throttled museum costs a reader
+nothing at all in a room. `scripts/probe-met-pools.mjs` already fetches every one of those records
+in `filterUsable` and throws them away, so producing the file is a small change to a script that
+already exists. Not done here: it is a data decision (a 2 MB committed file that goes stale) and
+belongs to the owner.
+
+Gates: 1,304 tests green (78 files), `npm run build` and `npm run lint` clean.

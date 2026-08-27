@@ -103,11 +103,71 @@ without them:
     shrinks the budget hard — down to 6 requests after a day of heavy use. Trust the edge, not the
     docs.
   - **Budget the request COST of a feature, because ids-only search makes it high.** Measured per
-    action: a cold room is **21** requests (1 search + ~20 record fetches), one card's threads **9**.
-    So "start a new drift" is ~30 and two in a row approach the ceiling. The knobs are
-    `OVERFETCH_BAKED`/`OVERFETCH_LIVE` and the `FACETS_SHOWN`/`PER_FACET`/`FETCH_PER_FACET`
-    constants in `metRelated` — the client only ever shows ONE candidate per facet, capped at three
-    (`selectFacetThreads`), so fetching more than a spare each is pure waste.
+    action: a cold room is **21** requests (1 search + ~20 record fetches), one card's threads **8**,
+    a discover batch of 4 is **5**. So "start a new drift" is ~30 and two in a row approach the
+    ceiling. The knobs are `OVERFETCH_BAKED`/`OVERFETCH_LIVE` and the
+    `FACETS_SHOWN`/`PER_FACET`/`FETCH_PER_FACET` constants in `metRelated` — the client only ever
+    shows ONE candidate per facet, capped at three (`selectFacetThreads`), so fetching more than a
+    spare each is pure waste.
+  - ⚠️ **THE BIGGEST CONSUMER OF THE MUSEUM IS THE ENCYCLOPEDIA, NOT THE GALLERY.** `/api/doorway`
+    fires on EVERY card in BOTH realms (`drift/page.tsx:941`), and from an Encyclopedia card it
+    searches The Met for the article title. In a 25-reader load rehearsal that was **491 of 494
+    cards and 92.6% of all Met traffic**; nineteen Encyclopedia readers cost the museum twelve times
+    what six Gallery readers did. Do not reason about Gallery load without counting the doorway.
+    Measure with `NODE_OPTIONS="--import ./scripts/bots/upstream-count.mjs"` rather than guessing —
+    the cost is all fan-out and invisible in the code.
+  - ⚠️ **Their search ORs the words together, and it accepts PHRASE QUOTES — but ONLY the doorway
+    may use them.** Unquoted, `q=Powers of the president of the United States` returns **55,804**
+    results; quoted it returns **0**. The doorway's gate (`passesReverseGate`) wants the term as a
+    SUBSTRING of the artwork's title or tags, so every one of those 55,804 was going to be rejected
+    after five record fetches. `phraseQuery` (`lib/realms/met.ts`) is therefore used by `metTopMatch`
+    and **nowhere else**. It was briefly applied to `metRelated`'s three facet searches too and that
+    silently deleted thread chips: a facet search costs one request whatever it returns and only the
+    first three ids are ever fetched, so quoting saves nothing there and sometimes returns nothing at
+    all. Measured live, twice (27 Aug): `artistOrCulture q=Winslow Homer` → **13** works,
+    `q="Winslow Homer"` → **0**; and it moves the other way just as arbitrarily (Hokusai 10 → 427).
+    Their quoting is not a phrase operator in any consistent sense — use it only where it is measured
+    to pay. **Never quote `q: "*"`** — the place facet needs the wildcard.
+  - **A refusal must not be retried into the ground.** `retryOn: [403]` with two retries makes every
+    403 cost three requests exactly when the museum is telling us to stop, which is how a rehearsal
+    turned ~3,181 requests into 1,470 refusals and left the budget shrunk all day. Met calls now use
+    **one** retry, not two: the 300 ms backoff is nowhere near the ~31s their bucket needs, so a
+    second attempt almost never succeeds and costs a third of everything spent while throttled.
+    `metBreaker` (`makeBreaker` in `lib/upstream.ts`, opt-in per source, wired ONLY to the Met —
+    never Wikimedia) opens after 5 consecutive refusals and makes no request for 35s. While open a
+    cold instance serves a Gallery room zero cards and the feed falls back to a thread neighbour; the
+    baked pools do NOT cover this, because they supply ids and the records still have to be fetched.
+  - ⚠️ **A BREAKER THAT IS NEVER TOLD HOW A PROBE WENT WILL WEDGE OPEN.** The half-open probe used to
+    be a sticky `probing` flag that only `record()` could clear, and `record()` ran only when a
+    RESPONSE came back — so a probe whose fetch *threw* (timeout, reset, DNS) left the circuit shut
+    for the life of the process. The symptom is unmistakable and was reported as "the Gallery died
+    and stayed dead": `[met] search skipped: circuit open` repeating, every discover answering in
+    3-8 ms with no upstream request behind it, long after the cooldown. Two things keep it fixed and
+    both must stay: the probe holds a **time-boxed slot**, and `fetchUpstream` **reports a thrown
+    fetch to the breaker**.
+  - ⚠️ **NEVER CACHE AN EMPTY ANSWER AT THE EDGE.** `/api/realm/[realm]/related` sent
+    `s-maxage=86400` on whatever came back, so a card whose threads were empty because the museum was
+    throttling — or because the breaker was open and we deliberately made no request — had "this card
+    has no threads" frozen into the CDN **for a day**, for every reader, with nothing in the app that
+    would re-ask. Discover has guarded against this since Phase 31; related and the Gallery half of
+    the doorway did not. The rule applies to every route that answers from an upstream: a real answer
+    caches, an empty one gets NO_STORE. Where a caller's answer is cached for a day it must be able
+    to tell "we looked and there is nothing" from "we could not look" — that is what
+    `searchIds({rethrow})`, `fetchObject({rethrow})` and `UpstreamError.status` are for (a 404 is a
+    settled answer; a 403 is not).
+  - **The gate carries a rolling BUDGET, not just spacing** (`makeGate(50, { burst: 30, windowMs:
+    15_000, maxWaitMs: 5_000 })`). Spacing alone cannot express a bucket: at 20 req/s one reader
+    opening the Gallery spent ~30 requests in two seconds and the next drift was refused. A refusal
+    is strictly worse than a wait, so the gate waits at the edge of the budget instead — but only up
+    to `maxWaitMs`, because the feed aborts a discover batch after 6s and holding one longer would
+    spend the museum's budget on a batch nobody receives. Past that it throws `GateBudgetError` and
+    makes no request. Measured after (local `next start`, upstream counter): a 12-card Gallery
+    session is **96 Met requests in 57s with zero 403s, zero breaker trips, threads on every card**.
+  - ⚠️ **`searchIds` rethrowing and the doorway's cache lifetime are ONE decision.** The doorway
+    route caches "no doorway" for a **day**, which is only honest because `searchIds({rethrow:true})`
+    makes a throttled search an error rather than an empty result. Lengthen one without the other
+    and a busy second freezes "nothing here" onto a card until tomorrow. Every other `searchIds`
+    caller keeps the forgiving `[]`.
   - **In production the CDN absorbs nearly all of this and in dev NOTHING does.** discover/related/
     summary all carry `s-maxage=86400`; verified on the live site (`x-vercel-cache: MISS` then
     `HIT`). So local development hits the limit far more readily than the deployed app ever will,
@@ -132,7 +192,16 @@ without them:
     readable while the museum is throttling us. The EU copyright test is deliberately NOT baked: it
     is recomputed per request because the cut-off widens every 1 January.
 - 🎨 **Artwork is ALWAYS served through `/api/img/met/{dept}/{name}/{width}`** (sharp resize), and
-  there is deliberately no flag to disable it. Two structural reasons: the Met publishes only fixed
+  there is deliberately no flag to disable it. ⚠️ **That route has THREE protections you must not
+  strip, all added after it 502'd for twenty seconds at a time (2026-08-26):** its own gate and
+  breaker on `images.metmuseum.org` (a *different* host from the API, and its failure mode is
+  slowness, not 403, so a timeout counts against the breaker); an explicit `maxDuration = 25` with
+  fetch timeouts sized to fit inside it (there was none, so Vercel's 10s/15s default killed the
+  function before its own 20s timeout could answer); and a **fallback to `web-large` when the
+  original will not come**, served with a SHORT cache so a soft picture cannot freeze into the CDN
+  for thirty days. Measured on the same artwork: 502 after 20s became 200 with a real image in 10s.
+  Also: **a request at or below 400px never touches the original at all.** The trail map asks for
+  160 and was pulling a ~3.4 MB original per node to make a thumbnail; it is now 8 KB in 0.5s. Two structural reasons: the Met publishes only fixed
   sizes (largest "small" ≈600px, too soft for a card; next is a ~4000px/8MB original), and it sends
   **no CORS header**, which measurably breaks the trail map's `crossOrigin="anonymous"` thumbnails.
   The URL is rebuilt from two anchored components, never taken from upstream. Note the PNG export
@@ -208,6 +277,11 @@ npm run test:watch      # vitest in watch mode
 npm run verify:supabase # Phase 9: check the cloud backend (tables + RLS + upserts)
 npm run verify:social   # Phase 10: check the friends/sharing tables + RLS
 npm run audit:contrast  # WCAG 2.2 AA contrast sweep of the RUNNING app (see §10)
+
+# Load rehearsal — simulated readers against a local production rig (see §11)
+npm run bots:seed -- --count 25   # burner accounts + supporter unlock (idempotent)
+npm run bots:run  -- --bots 25 --minutes 20
+npm run bots:teardown             # delete every load_bot account
 ```
 
 (Keep this section accurate as scripts are added.)
@@ -303,3 +377,40 @@ measures actual pixels, catching what static token maths cannot (opacity stackin
 ⚠️ **Turbopack does not reliably rebuild `globals.css` in a copied scratch instance.** If a
 new CSS rule seems to have no effect, it is almost certainly stale cache, not your code:
 delete `.next` and restart before debugging anything else.
+
+## 11. Load rehearsal — the bot swarm (`scripts/bots/`, 2026-08-26)
+
+Before handing out flyers we need evidence Drift holds up with 20 to 50 readers at once.
+`scripts/bots/` runs simulated readers with real accounts, real supporter unlocks and
+randomised reading speeds, and writes a report to `reports/loadtest/<timestamp>/`.
+
+**It runs against a LOCAL rig, and that is deliberate.** Vercel permits load testing on
+Enterprise plans only and states that an unannounced one gets its source IP blocked. Running
+locally also moves the upstream spend onto your own connection instead of the live site's,
+which matters most for the Gallery: The Met throttles at ~80 requests per **30 seconds** and
+repeated tripping shrinks that budget for a **day** (§4). `run.mjs` refuses a non-localhost
+`--base` without an explicit flag and caps it at 5 bots; `GALLERY_CAP` caps museum bots at 10.
+
+**Two pieces make local comparable to production, and without them it is not:**
+
+- **`edge.mjs`, a caching reverse proxy**, standing where Vercel's CDN stands. It reads the
+  `Cache-Control` the app itself emits (so it can never drift from `lib/cache-headers.ts`) and
+  mirrors the `carriesUserSession` bypass. Without it every bot request reaches an upstream and
+  the run measures a system nobody deploys. It asks upstream for `accept-encoding: identity` —
+  buffering gzip and re-serving it is what silently fed browser bots a blank page.
+- **K `next start` instances** (never `next dev`, which would measure Turbopack). The gate in
+  `upstream.ts` is per PROCESS; with one instance it becomes a global serialiser that pins the
+  whole swarm at 200 req/min, which production does not do. Several `next start` share one build
+  directory happily (verified).
+
+**The fidelity gates.** `src/lib/loadbot*.test.ts` pin the harness's copied URL builders,
+buckets and discover constants against the app's own, and pin the emulator against the real
+cache profiles — a plain Node script cannot import the app's modules, so the copies are checked
+rather than trusted. At runtime the report compares **requests per card** between the HTTP bots
+and the real browser bots; measured 2.57 vs 2.67 (4% apart), against the ~2.4 in
+`docs/beta-readiness.md`. If those two diverge, the volume bots are lying and the report says so.
+
+⚠️ **Bot accounts must carry `app_metadata.welcomed: true`.** `AuthProvider` fires
+`/api/email/welcome` on every confirmed sign-in and that route sends via Resend unless the stamp
+is set. Without it a 50-bot run means 50 hard bounces to `.invalid` against a real sending
+reputation. Teardown selects on `app_metadata.load_bot`, never on the address.

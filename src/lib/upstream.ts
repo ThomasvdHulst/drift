@@ -15,21 +15,248 @@ export interface Gate {
   next(sleep: (ms: number) => Promise<void>): Promise<void>;
 }
 
+export interface GateOptions {
+  /**
+   * A rolling budget on top of the spacing: at most `burst` starts in any
+   * `windowMs`. Omit both and the gate is spacing only, as it always was.
+   *
+   * WHY A SECOND RATE. Spacing alone cannot express the shape of a real edge.
+   * The Met's is a bucket, not a metronome: it accepts a burst and then refuses
+   * until it refills (measured, CLAUDE.md §4 — 403 after 83 requests at 20/s,
+   * clear again after ~31s of quiet). A 50 ms gate is 20 requests a second, so
+   * anything sustained drained that bucket and everything after it was refused.
+   *
+   * And a refusal is strictly worse than a wait: it costs a request, it earns
+   * nothing, it feeds the breaker, and CLAUDE.md §4 records that repeated
+   * tripping shrinks the museum's budget for a DAY. So the gate now knows the
+   * budget it is spending and waits at the edge of it instead.
+   */
+  burst?: number;
+  windowMs?: number;
+  /**
+   * The longest this gate will HOLD a caller waiting for budget before refusing.
+   *
+   * Waiting out the window is only better than a 403 while somebody is still
+   * listening. The feed aborts a discover batch after 6 seconds, so a gate that
+   * quietly held one for thirty would spend the museum's budget on a batch
+   * nobody receives — the worst of both. Past this, refuse without making the
+   * request: that costs the museum nothing, says so in one line, and the feed
+   * degrades the way it already does for an empty batch (a thread neighbour).
+   */
+  maxWaitMs?: number;
+}
+
+/** Thrown when a gate refuses rather than holding a caller past `maxWaitMs`.
+ *  A distinct type for the same reason as `CircuitOpenError`: choosing not to
+ *  ask is healthy degradation, not a crash, and must not be logged as one. */
+export class GateBudgetError extends Error {
+  constructor(waitMs: number) {
+    super(`Rate budget exhausted; would wait ${Math.round(waitMs)}ms`);
+    this.name = "GateBudgetError";
+  }
+}
+
+/** True when this error is our OWN budget refusing, rather than an upstream. */
+export function isBudgetExhausted(err: unknown): err is GateBudgetError {
+  return err instanceof GateBudgetError;
+}
+
 /** A per-host request-spacing gate. Serializes callers and keeps consecutive
  *  request starts ≥ minGapMs apart. At human pace this adds no latency; it only
- *  smooths bursts (prefetch + threads firing together, fast scrolling). */
-export function makeGate(minGapMs: number): Gate {
+ *  smooths bursts (prefetch + threads firing together, fast scrolling).
+ *
+ *  With `burst`/`windowMs` it also holds a rolling window, so a source with a
+ *  bucket-shaped limit is never asked for more than it grants. */
+export function makeGate(minGapMs: number, opts: GateOptions = {}): Gate {
+  const { burst, windowMs, maxWaitMs } = opts;
   let chain: Promise<void> = Promise.resolve();
   let lastStartAt = 0;
+  // Start times inside the current window, oldest first. Bounded by `burst`.
+  const recent: number[] = [];
+
   return {
     next(sleep) {
       const mine = chain.then(async () => {
-        const wait = Math.max(0, lastStartAt + minGapMs - Date.now());
+        let wait = Math.max(0, lastStartAt + minGapMs - Date.now());
+        if (burst && windowMs) {
+          // Drop anything that has aged out, then wait for the oldest survivor
+          // to age out if the window is already full.
+          const cutoff = Date.now() - windowMs;
+          while (recent.length && recent[0] <= cutoff) recent.shift();
+          if (recent.length >= burst) {
+            wait = Math.max(wait, recent[0] + windowMs - Date.now());
+          }
+        }
+        if (maxWaitMs !== undefined && wait > maxWaitMs) throw new GateBudgetError(wait);
         if (wait > 0) await sleep(wait);
         lastStartAt = Date.now();
+        if (burst && windowMs) {
+          const cutoff = lastStartAt - windowMs;
+          while (recent.length && recent[0] <= cutoff) recent.shift();
+          recent.push(lastStartAt);
+        }
       });
       chain = mine.catch(() => {});
       return mine;
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The circuit breaker.
+//
+// WHY THIS EXISTS. `retryOn: [403]` with `retries: 2` means every refusal costs
+// THREE requests, at precisely the moment we are being told to stop. A 25-reader
+// load rehearsal drew 1,470 refusals from the museum against ~3,181 requests,
+// and CLAUDE.md §4 records what that does: repeated tripping shrinks their
+// budget hard, down to six requests after a day of heavy use. The retry is not
+// wrong for a one-off blip; it is catastrophic for a sustained one, because it
+// feeds the thing that is starving us.
+//
+// So: after a run of refusals, stop asking entirely for a while. The museum was
+// measured to recover after about 31 seconds of quiet, and the Gallery's baked
+// pools (met.pools.json) exist precisely so a room still reads while we are not
+// asking.
+//
+// Opt-in per source, exactly like `retryOn`, and deliberately NOT wired to
+// Wikimedia: its 429s are rare, carry `Retry-After`, and are already handled
+// correctly. A breaker there would only be a new way to fail.
+// ---------------------------------------------------------------------------
+
+/**
+ * Thrown when a breaker refuses a request. A distinct type, not a string to
+ * match on: callers legitimately want to treat "we chose not to ask" differently
+ * from "we asked and it went wrong" — the first is healthy degradation and
+ * should not be logged as a crash, which is exactly the confusion it caused the
+ * first time the breaker fired for real.
+ */
+export class CircuitOpenError extends Error {
+  readonly host: string;
+  constructor(host: string) {
+    super(`Upstream circuit open for ${host}`);
+    this.name = "CircuitOpenError";
+    this.host = host;
+  }
+}
+
+/** True when this error is a breaker refusing, rather than an upstream failing. */
+export function isCircuitOpen(err: unknown): err is CircuitOpenError {
+  return err instanceof CircuitOpenError;
+}
+
+/**
+ * An upstream that answered, badly. Carries the status, because callers have to
+ * be able to tell the two kinds of "no" apart:
+ *
+ *   404 — a healthy host answering honestly. The museum's own search hands us
+ *         ids it then 404s on, and that is a settled answer we may cache.
+ *   403/429/503 — we could not look. Caching THAT as an answer is what freezes
+ *         "there is nothing here" onto a card until tomorrow.
+ *
+ * Before this the two were the same `Error("Upstream responded 404")` string,
+ * so nothing downstream could distinguish them without parsing a message.
+ */
+export class UpstreamError extends Error {
+  readonly status: number;
+  readonly host: string;
+  constructor(status: number, url: string) {
+    super(`Upstream responded ${status}`);
+    this.name = "UpstreamError";
+    this.status = status;
+    this.host = hostOf(url);
+  }
+}
+
+/** The HTTP status behind a failure, or null if it was not an upstream answer
+ *  (a timeout, a breaker refusal, a parse error). */
+export function upstreamStatus(err: unknown): number | null {
+  return err instanceof UpstreamError ? err.status : null;
+}
+
+export interface Breaker {
+  /** Throw if the circuit is open. Called before any network work. */
+  guard(url: string): void;
+  /** Record how a request turned out, so the state can move. */
+  record(throttled: boolean): void;
+  /** For tests and logging. */
+  state(): "closed" | "open" | "half-open";
+}
+
+export interface BreakerOptions {
+  /** Consecutive throttles before the circuit opens. */
+  threshold?: number;
+  /** How long to stay open. */
+  cooldownMs?: number;
+  /** Injectable clock, so the state machine is testable without waiting. */
+  now?: () => number;
+}
+
+/**
+ * A per-source breaker.
+ *
+ * closed → counts CONSECUTIVE throttles; any success resets the count, because a
+ *   scattering of refusals across a healthy hour is not the failure mode we care
+ *   about — a run of them is.
+ * open → every call throws immediately, making no request at all, until the
+ *   cooldown elapses.
+ * half-open → the first call through is a probe. It succeeds and we close; it
+ *   fails and we open again for another cooldown, rather than letting a stream
+ *   of callers all probe at once.
+ */
+export function makeBreaker(opts: BreakerOptions = {}): Breaker {
+  const { threshold = 5, cooldownMs = 35_000, now = Date.now } = opts;
+  let failures = 0;
+  // When the current closed-to-traffic window started: the moment the circuit
+  // opened, or the moment a probe was let through. See `guard`.
+  let sinceAt = 0;
+  let open = false;
+
+  return {
+    guard(url) {
+      if (!open) return;
+      if (now() - sinceAt >= cooldownMs) {
+        // Cooldown served. Let exactly one caller through to find out — and
+        // give that probe its own window by moving `sinceAt` forward, which is
+        // what keeps the queue behind it from all probing at once.
+        //
+        // ⚠️ THE PROBE HOLDS THE SLOT FOR ONE COOLDOWN, NOT FOREVER. This used
+        // to be a `probing` flag that only `record` could clear, and a probe
+        // whose fetch THREW never reached `record` — a timeout, a reset
+        // connection, DNS. One of those wedged the circuit open permanently, so
+        // The Met stayed dead for the whole life of the server process while
+        // the log repeated "circuit open" long after the host had recovered.
+        // A time-boxed slot cannot wedge: the worst a lost probe costs is one
+        // more cooldown.
+        sinceAt = now();
+        console.warn(`[upstream] ${hostOf(url)} circuit half-open, probing`);
+        return;
+      }
+      throw new CircuitOpenError(hostOf(url));
+    },
+    record(throttled) {
+      if (throttled) {
+        failures++;
+        // `failures` is never reset except by a success, so once the threshold
+        // is crossed this also covers "the probe came back angry": re-open for
+        // another full cooldown rather than letting the next caller try.
+        if (failures >= threshold) {
+          if (!open) {
+            console.warn(
+              `[upstream] circuit OPEN after ${failures} consecutive throttles`,
+            );
+          }
+          open = true;
+          sinceAt = now();
+        }
+        return;
+      }
+      if (open) console.warn("[upstream] circuit closed");
+      failures = 0;
+      open = false;
+    },
+    state() {
+      if (!open) return "closed";
+      return now() - sinceAt >= cooldownMs ? "half-open" : "open";
     },
   };
 }
@@ -52,6 +279,12 @@ export interface FetchJsonOptions {
    * is permanent and must NOT be retried).
    */
   retryOn?: number[];
+  /**
+   * A circuit breaker for THIS source. When it is open, the request throws
+   * without touching the network, so a throttled host is left alone to recover
+   * instead of being retried into the ground. See `makeBreaker`.
+   */
+  breaker?: Breaker;
 }
 
 /**
@@ -75,16 +308,40 @@ async function fetchUpstream(
     sleep = defaultSleep,
     timeoutMs,
     retryOn = [],
+    breaker,
   } = opts;
 
   for (let attempt = 0; ; attempt++) {
+    // Before the gate, not after: an open circuit should cost nothing at all,
+    // not a turn in the queue.
+    breaker?.guard(url);
     if (gate) await gate.next(sleep);
-    const res = await fetch(url, {
-      headers: { ...defaultHeaders, ...headers },
-      cache: "no-store",
-      signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
-    });
-    if (res.ok) return res;
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        headers: { ...defaultHeaders, ...headers },
+        cache: "no-store",
+        signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
+      });
+    } catch (err) {
+      // A fetch that THROWS — a timeout, a reset connection, DNS — produced no
+      // response, so it never reached the `record` calls below and the breaker
+      // was told nothing at all about it. Two reasons that is wrong:
+      //
+      //  - A host that has stopped answering is exactly what a breaker is for.
+      //    The image host's breaker already counts a timeout for this reason,
+      //    and a throttled API edge that simply hangs looks the same from here.
+      //  - Silence from a probe is what wedged the circuit (see `makeBreaker`).
+      //    That is now impossible either way, but the honest fix is to report
+      //    the outcome rather than rely on the state machine to survive not
+      //    hearing about it.
+      breaker?.record(true);
+      throw err;
+    }
+    if (res.ok) {
+      breaker?.record(false);
+      return res;
+    }
 
     const retryable =
       res.status === 429 || res.status === 503 || retryOn.includes(res.status);
@@ -98,6 +355,10 @@ async function fetchUpstream(
         `[upstream] ${res.status} from ${hostOf(url)} (attempt ${attempt + 1}/${retries + 1})`,
       );
     }
+    // Only a THROTTLE moves the breaker. A 404 is a perfectly healthy answer
+    // from a healthy host — the museum returns them for ids its own search hands
+    // us — and counting one would open the circuit on a source that is fine.
+    breaker?.record(retryable);
     if (retryable && attempt < retries) {
       const stated = retryAfterMs(res.headers.get("retry-after"));
       if (stated !== null && stated > MAX_RETRY_WAIT_MS) {
@@ -109,7 +370,7 @@ async function fetchUpstream(
         console.warn(
           `[upstream] ${hostOf(url)} asked for ${Math.round(stated / 1000)}s; not retrying`,
         );
-        throw new Error(`Upstream responded ${res.status}`);
+        throw new UpstreamError(res.status, url);
       }
       // Honour the stated wait in full when there is one. The old code capped it
       // at 1500 ms, which is not honouring it: being told "wait 5 seconds" and
@@ -118,7 +379,7 @@ async function fetchUpstream(
       await sleep(base + Math.floor(Math.random() * 200));
       continue;
     }
-    throw new Error(`Upstream responded ${res.status}`);
+    throw new UpstreamError(res.status, url);
   }
 }
 

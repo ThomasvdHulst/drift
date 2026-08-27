@@ -59,13 +59,17 @@ export async function crossRealmDoorway(
 
   if (fromRealm === "encyclopedia") {
     // For an Encyclopedia card the native id IS the Wikipedia title.
-    const top = await metTopMatch(id);
-    if (
-      !top ||
-      !passesReverseGate(id, { title: top.title, term_titles: top.term_titles })
-    ) {
-      return null;
-    }
+    //
+    // The gate is handed DOWN rather than applied to the answer. It used to run
+    // here, on whichever single work five record fetches had already paid for —
+    // so a card that was never going to have a doorway still cost five requests,
+    // and across a real session that was 92% of everything the museum was asked.
+    // Passing it in lets the adapter stop at the first record that satisfies it,
+    // while the rule itself stays here, where cross-realm decisions belong.
+    const top = await metTopMatch(id, ({ title, term_titles }) =>
+      passesReverseGate(id, { title, term_titles }),
+    );
+    if (!top) return null;
     const c = top.card;
     return {
       pageTitle: c.pageTitle,

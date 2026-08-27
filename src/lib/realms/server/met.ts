@@ -28,7 +28,14 @@
 // ---------------------------------------------------------------------------
 
 import type { Card, ExtendedBody, RelatedCandidate } from "@/lib/types";
-import { makeGate, fetchJson } from "@/lib/upstream";
+import {
+  makeGate,
+  makeBreaker,
+  isCircuitOpen,
+  isBudgetExhausted,
+  upstreamStatus,
+  fetchJson,
+} from "@/lib/upstream";
 import { metBucketById } from "../met.buckets";
 import {
   foldName,
@@ -48,6 +55,7 @@ import {
   metToCandidate,
   metArtistQid,
   artSubjects,
+  phraseQuery,
   type MetObject,
 } from "../met";
 import { wikidataEnwikiTitles } from "@/lib/wiki-server";
@@ -64,12 +72,32 @@ const UA =
 /**
  * Its own gate, separate from Wikimedia's 300 ms and the other realms'.
  *
- * 50 ms is 20 requests a second: comfortably under the 80/s the museum's docs
- * ask for, and at the pace that was measured to be accepted. The docs and the
- * edge disagree (a burst of ~80 got a 403 despite the stated 80/s), so this
- * follows the edge, not the documentation.
+ * TWO RATES, because the museum's edge has two and spacing alone could not
+ * express the second one. 50 ms (20 req/s) is the pace a burst is allowed to
+ * run at, so opening a room still feels instant. The rolling window is the
+ * budget that burst is drawn from.
+ *
+ * ⚠️ THE DOCS SAY 80 PER SECOND AND THE EDGE MEANS 80 PER THIRTY (CLAUDE.md §4:
+ * 403 after 83 requests at 20/s, clear again after ~31s of quiet). With spacing
+ * only, one reader opening the Gallery spent about 30 requests in two seconds
+ * and a second drift straight after was refused — and a refusal is strictly
+ * worse than a wait, because it costs a request, returns nothing, feeds the
+ * breaker, and repeated tripping shrinks their budget for a DAY.
+ *
+ * 30 per 15 seconds is the same ~2/s their bucket refills at, in a window half
+ * as long — so a reader who does run into the budget waits seconds rather than
+ * half a minute, and a burst can never approach the 80 that trips them.
+ *
+ * 30 rather than 20 because that is the shape of opening the Gallery: a session
+ * start is 15 requests and the first card's threads are another 12, and those
+ * arrive together. Measured at 20, that opening spilled over the window and put
+ * a visible ten-second gap before the second card.
+ *
+ * `maxWaitMs` is what keeps waiting honest: the feed aborts a discover batch
+ * after 6 seconds, so holding one for longer would spend the museum's budget on
+ * a batch nobody is still listening for.
  */
-const metGate = makeGate(50);
+const metGate = makeGate(50, { burst: 30, windowMs: 15_000, maxWaitMs: 5_000 });
 
 /** The museum's edge throttles with 403. See the header note. */
 const RETRY_ON = [403];
@@ -78,11 +106,52 @@ function headers() {
   return { "User-Agent": UA };
 }
 
+/**
+ * Stop asking when the museum is refusing.
+ *
+ * `retryOn: [403]` turns every refusal into three requests, which is the right
+ * trade for a one-off blip and catastrophic for a sustained one — it feeds the
+ * thing that is starving us. Measured in a 25-reader rehearsal: 1,470 refusals
+ * against ~3,181 requests, and the budget stayed shrunk for the rest of the day,
+ * exactly as the note in CLAUDE.md §4 warns.
+ *
+ * Five consecutive refusals, then 35 seconds of silence — the museum was
+ * measured to recover after about 31 seconds of quiet.
+ *
+ * WHAT AN OPEN CIRCUIT ACTUALLY COSTS THE READER, stated plainly because it is
+ * easy to assume the baked pools cover it and they do not. `met.pools.json`
+ * supplies a room's candidate IDS without a search, but `metDiscover` still has
+ * to fetch each RECORD, and those go through this breaker — so while it is open
+ * a cold instance serves a Gallery room zero cards (HTTP 200, empty, no-store),
+ * and the feed does what it already does with an empty batch: falls back to a
+ * thread neighbour rather than dead-ending. A warm instance does better, because
+ * `objectCache` answers for anything already seen.
+ *
+ * That is worse for 35 seconds and much better afterwards, which is the trade:
+ * today those same 35 seconds are spent retrying into a budget that CLAUDE.md §4
+ * records as shrinking for a DAY once repeatedly tripped.
+ */
+const metBreaker = makeBreaker({ threshold: 5, cooldownMs: 35_000 });
+
+/**
+ * ONE retry on a 403, not the default two.
+ *
+ * Every retry of a refusal is another request made at the exact moment the
+ * museum is telling us to stop, and the backoff (300 ms) is nowhere near the
+ * ~31 seconds their bucket needs to refill — so a second retry has almost no
+ * chance of succeeding and costs a third of everything we spend while throttled.
+ * One attempt at recovery covers the genuine one-off blip; the breaker covers
+ * the sustained case.
+ */
+const METRETRIES = 1;
+
 async function metFetch(url: string, timeoutMs = 6000): Promise<unknown> {
   return fetchJson(url, {
     headers: headers(),
     gate: metGate,
     retryOn: RETRY_ON,
+    retries: METRETRIES,
+    breaker: metBreaker,
     timeoutMs,
   });
 }
@@ -104,6 +173,30 @@ const IDS_TTL_MS = 60 * 60 * 1000;
  *  Map iteration order gives us for free. */
 const objectCache = new Map<number, MetObject>();
 const OBJECT_CACHE_MAX = 3000;
+
+/**
+ * Search results, which had no cache at all until the load rehearsal.
+ *
+ * Keyed on the finished query string, so it cannot disagree with what was
+ * actually sent. Same hour as `bucketIds` and for the same reason: what a search
+ * matches moves when the museum re-catalogues, which is not an hourly event.
+ */
+const searchCache = new Map<string, { at: number; ids: number[] }>();
+const SEARCH_CACHE_MAX = 500;
+
+/**
+ * IN-FLIGHT work, which is a different thing from cached work and was the actual
+ * multi-reader bug.
+ *
+ * A cache only helps the SECOND reader. Twenty-five people reading at once ask
+ * for the same popular object and the same department search within the same few
+ * milliseconds, before any of it has resolved — so every one of them made its own
+ * request. These maps collapse that to one, and are cleared the moment it
+ * settles, so nothing is remembered here that the caches above are not already
+ * responsible for.
+ */
+const inFlightSearch = new Map<string, Promise<number[]>>();
+const inFlightObject = new Map<number, Promise<MetObject | null>>();
 
 function rememberObject(id: number, obj: MetObject) {
   if (objectCache.size >= OBJECT_CACHE_MAX) {
@@ -132,22 +225,69 @@ function rememberObject(id: number, obj: MetObject) {
  * period slice just looks empty rather than broken. So the ordering is enforced
  * HERE, once, rather than trusted to every caller's object-literal key order.
  */
-async function searchIds(params: Record<string, string>): Promise<number[]> {
+async function searchIds(
+  params: Record<string, string>,
+  opts: { rethrow?: boolean } = {},
+): Promise<number[]> {
   const { q, ...rest } = params;
   const qs = new URLSearchParams({
     hasImages: "true",
     ...rest,
     ...(q !== undefined ? { q } : {}),
   }).toString();
+
+  const hit = searchCache.get(qs);
+  if (hit && Date.now() - hit.at < IDS_TTL_MS) return hit.ids;
+
+  // The shared promise carries the RAW outcome, failure included. Deciding what
+  // a failure means has to happen per caller, below: callers do not agree about
+  // that (see `rethrow`), and whoever happened to arrive first must not get to
+  // impose their answer on everyone waiting behind them.
+  let run = inFlightSearch.get(qs);
+  if (!run) {
+    run = (async () => {
+      // The largest department is ~700 KB of ids, so this gets a longer budget
+      // than a record fetch.
+      const raw = (await metFetch(`${API}/search?${qs}`, 12000)) as {
+        objectIDs?: number[] | null;
+      };
+      const ids = Array.isArray(raw?.objectIDs) ? raw.objectIDs : [];
+      // Never cache an empty result. The same rule `poolFor` states: an empty
+      // answer is far more likely a throttle than an empty room, and holding it
+      // for an hour would freeze that room shut.
+      if (ids.length) {
+        if (searchCache.size >= SEARCH_CACHE_MAX) {
+          const oldest = searchCache.keys().next().value;
+          if (oldest !== undefined) searchCache.delete(oldest);
+        }
+        searchCache.set(qs, { at: Date.now(), ids });
+      }
+      return ids;
+    })();
+    inFlightSearch.set(qs, run);
+    // Clear on settle. The extra `.catch` is what stops a rejection here from
+    // being an unhandled one when every real caller has already handled it.
+    void run.catch(() => {}).finally(() => inFlightSearch.delete(qs));
+  }
+
   try {
-    // The largest department is ~700 KB of ids, so this gets a longer budget
-    // than a record fetch.
-    const raw = (await metFetch(`${API}/search?${qs}`, 12000)) as {
-      objectIDs?: number[] | null;
-    };
-    return Array.isArray(raw?.objectIDs) ? raw.objectIDs : [];
+    return await run;
   } catch (err) {
-    console.warn("[met] search failed", err);
+    // ⚠️ THE DOORWAY NEEDS TO KNOW THE DIFFERENCE between "we searched and there
+    // is nothing" and "we could not search". Swallowing this made those two
+    // identical, so a throttled lookup was cached as a settled "no doorway" —
+    // and now that the route holds that answer for a DAY, the distinction is
+    // load-bearing. `crossRealmDoorway`'s header always claimed an upstream
+    // failure throws; this is what makes that true.
+    // Every other caller wants the forgiving behaviour and keeps it.
+    if (opts.rethrow) throw err;
+    // An open circuit is not a failure, it is the breaker doing its job — but
+    // logging it as `[met] search failed` with a full stack trace made a healthy
+    // degradation look exactly like a crash, which is precisely how it was first
+    // reported. Say what actually happened, once, without the trace.
+    if (isCircuitOpen(err)) console.warn("[met] search skipped: circuit open");
+    else if (isBudgetExhausted(err)) console.warn("[met] search skipped: rate budget");
+    else console.warn("[met] search failed", err);
     return [];
   }
 }
@@ -198,18 +338,47 @@ async function poolFor(bucket: string): Promise<number[]> {
 }
 
 /** One object record. `null` for anything that did not come back — including a
- *  404, which search legitimately returns ids for. */
-async function fetchObject(id: number): Promise<MetObject | null> {
+ *  404, which search legitimately returns ids for.
+ *
+ *  `rethrow` is the same distinction `searchIds` makes, and for the same reason:
+ *  a caller whose answer gets cached for a DAY has to be able to tell "the museum
+ *  says there is no such record" (a settled 404) from "we could not ask" (a
+ *  throttle, a breaker refusal, a timeout). Everyone else keeps the forgiving
+ *  `null`, because a discover batch that loses a record still serves. */
+async function fetchObject(
+  id: number,
+  opts: { rethrow?: boolean } = {},
+): Promise<MetObject | null> {
   const hit = objectCache.get(id);
   if (hit) return hit;
+
+  // Concurrent readers land on the same popular object within milliseconds of
+  // each other, before any request has resolved — so the cache above cannot help
+  // them and every one of them used to make its own call. Share the one request.
+  // The shared promise carries the RAW outcome, failure included, so whoever
+  // arrives first cannot impose their reading of a failure on everyone behind.
+  let run = inFlightObject.get(id);
+  if (!run) {
+    run = (async () => {
+      const raw = (await metFetch(`${API}/objects/${id}`)) as MetObject;
+      if (!raw || typeof raw.objectID !== "number") return null;
+      rememberObject(id, raw);
+      return raw;
+    })();
+    inFlightObject.set(id, run);
+    // The extra `.catch` is what stops a rejection here from being an unhandled
+    // one when every real caller has already handled it.
+    void run.catch(() => {}).finally(() => inFlightObject.delete(id));
+  }
+
   try {
-    const raw = (await metFetch(`${API}/objects/${id}`)) as MetObject;
-    if (!raw || typeof raw.objectID !== "number") return null;
-    rememberObject(id, raw);
-    return raw;
-  } catch {
-    // Deliberately quiet: a 404 here is normal and a throttle has already been
-    // logged by the retry core. A batch that loses a few records still serves.
+    return await run;
+  } catch (err) {
+    // A 404 is a settled answer even for a rethrowing caller: the museum's own
+    // search hands us ids it then does not hold a record for.
+    if (opts.rethrow && upstreamStatus(err) !== 404) throw err;
+    // Deliberately quiet otherwise: a 404 here is normal and a throttle has
+    // already been logged by the retry core.
     return null;
   }
 }
@@ -697,6 +866,20 @@ export async function metRelated(id: string): Promise<RelatedCandidate[]> {
     }
   };
 
+  // ⚠️ THE FACET SEARCHES ARE DELIBERATELY *NOT* PHRASE-QUOTED, unlike the
+  // doorway's. Quoting exists to stop a loose OR returning tens of thousands of
+  // works the caller is then going to reject one record at a time
+  // (`phraseQuery`, lib/realms/met.ts) — and that is the doorway's problem, not
+  // this one. Here the search costs ONE request whatever it returns and only the
+  // first three ids are ever fetched, so quoting saves nothing at all. What it
+  // does do is occasionally return nothing, which silently deletes a thread.
+  //
+  // Measured against the live API, twice, on 27 August:
+  //   artistOrCulture q=Winslow Homer     -> 13 works
+  //   artistOrCulture q="Winslow Homer"   ->  0 works   (the chip disappears)
+  // and it moves the other way just as arbitrarily (Hokusai: 10 -> 427). Their
+  // quoting is not a phrase operator in any consistent sense, so the only safe
+  // rule is to use it where it is measured to pay and nowhere else.
   const artist = (self.artistDisplayName ?? "").trim();
   if (artist) {
     await add(
@@ -722,12 +905,7 @@ export async function metRelated(id: string): Promise<RelatedCandidate[]> {
     // Search by the department NAME rather than its id: the id is not on the
     // object record, and the museum's own name for the room is what the chip
     // should read anyway.
-    await add(
-      { q: department },
-      department,
-      `dept:${department}`,
-      "The room",
-    );
+    await add({ q: department }, department, `dept:${department}`, "The room");
   }
 
   return out;
@@ -776,7 +954,13 @@ export async function metExtended(id: string): Promise<ExtendedBody | null> {
  * something a cataloguer actually wrote down.
  */
 export async function metArtworkMeta(id: string): Promise<ForwardEntities | null> {
-  const obj = await fetchObject(Number(id));
+  // Rethrowing, because /api/doorway caches this answer for a DAY. A refused or
+  // timed-out record fetch used to return `null` here, indistinguishable from
+  // "this artwork names nobody to look up" — so one throttled second froze
+  // "no doorway" onto that card at the edge until tomorrow. The route turns a
+  // throw into no doorway + NO_STORE, which is the same thing for the reader
+  // and a very different thing for the cache.
+  const obj = await fetchObject(Number(id), { rethrow: true });
   if (!obj) return null;
   const [ok] = usable([obj]);
   if (!ok) return null;
@@ -799,21 +983,44 @@ export async function metArtworkMeta(id: string): Promise<ForwardEntities | null
  * Only the first few results are examined: a match that is not near the top is
  * not a doorway, it is a coincidence.
  */
-export async function metTopMatch(term: string): Promise<
-  { card: Card; title: string; term_titles: string[] } | null
-> {
+export async function metTopMatch(
+  term: string,
+  /** The caller's own test for "is this a genuine match?", applied as each
+   *  record arrives so a doomed lookup stops after one fetch instead of five. */
+  accept?: (top: { title: string; term_titles: string[] }) => boolean,
+): Promise<{ card: Card; title: string; term_titles: string[] } | null> {
   const q = term.trim();
   if (!q) return null;
-  const ids = (await searchIds({ q })).slice(0, 5);
+
+  // Phrase-quoted, which is most of why this used to be the app's most expensive
+  // call. See `phraseQuery`: an unquoted multi-word title matched tens of
+  // thousands of works on an OR, none of which could pass the caller's gate.
+  //
+  // `rethrow` because the doorway must be able to tell "nothing here" from
+  // "could not look" — the route caches the first for a day.
+  const ids = (await searchIds({ q: phraseQuery(q) }, { rethrow: true })).slice(0, 5);
   if (!ids.length) return null;
-  const [best] = usable(await fetchObjects(ids));
-  if (!best) return null;
-  await resolveArtistArticles([best]);
-  return {
-    card: toCardWithBody(best),
-    title: (best.title ?? "").trim(),
-    term_titles: artSubjects(best),
-  };
+
+  // ONE AT A TIME, STOPPING AT THE FIRST THAT WILL DO. This used to fetch all
+  // five records and keep one, then hand it back for the caller to gate — so a
+  // card whose match was going to be rejected anyway still cost five requests.
+  // With `accept` the gate is applied here, as each record arrives, and the usual
+  // answer costs one.
+  //
+  // The gate itself stays in lib/crossrealm.ts and is passed in: this adapter
+  // should not know what makes a doorway good, only how to stop early.
+  for (const id of ids) {
+    const obj = await fetchObject(id);
+    if (!obj) continue;
+    const [ok] = usable([obj]);
+    if (!ok) continue;
+    const title = (ok.title ?? "").trim();
+    const term_titles = artSubjects(ok);
+    if (accept && !accept({ title, term_titles })) continue;
+    await resolveArtistArticles([ok]);
+    return { card: toCardWithBody(ok), title, term_titles };
+  }
+  return null;
 }
 
 /** Bucket ids the discover route will accept. The injection guard: the client

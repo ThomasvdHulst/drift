@@ -40,3 +40,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# load-test harness (scripts/bots)
+/scripts/bots/.accounts.json
+/scripts/bots/.sessions.json
+/reports/
