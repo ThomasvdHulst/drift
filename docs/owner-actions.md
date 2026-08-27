@@ -35,6 +35,46 @@ Two things worth holding on to while you read:
 
 ---
 
+## 0. Added 27 August 2026 by the pre-flyer review — do these before the flyers
+
+The review is at <https://claude.ai/code/artifact/f24319a1-9ff1-4936-b7ad-7ccc840a1a2d> and its
+Phase 33D entry in `plan.md` explains each of these. Everything else it found is already fixed in
+code; these two need you, and the first one is the one that matters.
+
+**1. Paste one migration. Two minutes.**
+
+Open Supabase Studio → SQL Editor → paste `supabase/migrations/0007_write_limits.sql` → Run. Then
+`npm run verify:supabase`, which checks it landed and currently fails two checks on purpose.
+
+Why it matters: Row-Level Security answers "whose row is this?" and nothing else. Until this is
+applied, any signed-in account can write as much data as it likes straight into the database.
+Measured against your live project from an ordinary account: an 8 MB row accepted in 2 seconds, 500
+rows in 3 seconds. Your free tier is 500 MB, so one unfriendly signup could fill it and pause the
+project. The migration caps a row at 256 KB (your largest real trail is 41 KB) and an account at 500
+rows. No honest reader will ever meet either.
+
+**2. Switch Turnstile on. Ten minutes.**
+
+Create a Cloudflare Turnstile widget and set `NEXT_PUBLIC_TURNSTILE_SITE_KEY` and
+`TURNSTILE_SECRET_KEY` in Vercel. The code is already written and already fails closed.
+
+Why it matters: `/api/contact` sends two emails per submission, one of them to an address the sender
+chose, from your domain. The throttle in front of it used to key on a header the sender controls;
+that is fixed, but Turnstile is the layer the code itself calls the real defence, and it is off.
+Note this adds Cloudflare as a processor — `/privacy` and `docs/processing-record.md` already have
+the conditional wording, so nothing else needs writing.
+
+**Also, while you are in there:** `SUPABASE_EMAIL` and `SUPABASE_PASSWORD` in `.env` are now unused
+and can be deleted. The verify scripts used to sign in as your own account with them, that password
+went stale, and two of the four gates had been silently dead for weeks as a result. They now create
+and delete their own test accounts.
+
+**Not for you, but write it down:** if you ever set `NEXT_PUBLIC_SOCIAL=1`, the two `revoke`
+statements in the Phase 33D entry have to go in first. Friendship can currently be forged, which
+defeats the friends-only rule on sharing. It is harmless while the friends UI is hidden.
+
+---
+
 ## 1. Four things to do, about half an hour
 
 Sit down once, do these, and this section is finished.

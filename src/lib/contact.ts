@@ -248,6 +248,41 @@ export function validateContact(
   return validateFields(input);
 }
 
+/**
+ * Which address a submission is counted against by the per-IP throttle.
+ *
+ * ⚠️ `x-forwarded-for` IS WRITTEN BY THE CALLER AND MUST NOT BE TRUSTED ALONE.
+ * The throttle used to read `x-forwarded-for.split(",")[0]`, which is whatever
+ * the client chose to put in front of its real address. Measured against a local
+ * instance: eight submissions from one spoofed value throttled after five, as
+ * designed, while eight submissions rotating that value went through with no 429
+ * at all. A limit keyed on a field the limited party controls is not a limit.
+ *
+ * So the order below is trust-first. `x-vercel-forwarded-for` is set by the
+ * platform's edge and sits in the reserved `x-vercel-*` namespace it strips from
+ * inbound requests, so a browser cannot supply it. `x-real-ip` is the same idea
+ * one step down. `x-forwarded-for` is LAST and is only meaningful when something
+ * we control put it there — in local development, where there is no edge in
+ * front, it is the only header present and spoofing it is not interesting.
+ *
+ * Returns "" when nothing usable is present, which `throttled()` treats as "do
+ * not count", because bucketing every anonymous caller together would let one
+ * script lock the form for everybody.
+ *
+ * Pure so it can be tested without a server: pass any header lookup, including
+ * `(n) => request.headers.get(n)`.
+ */
+export function clientIpFromHeaders(
+  get: (name: string) => string | null | undefined,
+): string {
+  for (const name of ["x-vercel-forwarded-for", "x-real-ip", "x-forwarded-for"]) {
+    // Each of these may carry a list; the left-most entry is the client.
+    const first = (get(name) ?? "").split(",")[0]?.trim() ?? "";
+    if (first) return first;
+  }
+  return "";
+}
+
 /** The owner-facing subject line. Front-loads the topic and who it's from, so the
  *  forwarded copy is triageable from an inbox list without opening it.
  *

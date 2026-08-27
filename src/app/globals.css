@@ -192,6 +192,25 @@ body {
   display: none;
 }
 
+/* The FEED's bottom bar has the same problem the tour had, and needs the
+   opposite answer.
+
+   The bar ("Previous stop" + "Drift onward") is 64px tall and sits flush at the
+   bottom of the viewport; the notice is `fixed ... bottom-safe`, i.e. 1rem up.
+   So on a first visit the notice covered the primary control by 48px, measured
+   identically at 390, 360 and 1280 px wide — elementFromPoint at the centre of
+   "Drift onward" returned the notice. The first tap on the one control the app
+   is about did nothing.
+
+   The tour is finite, so there the notice waits its turn (above). The feed is
+   not, so hiding would defer the disclosure indefinitely. It is lifted clear
+   instead: 1rem of its own + the 4rem bar. Covering card text briefly is the
+   harmless half of the overlap, and the notice is still dismissed in one tap.
+   `FeedBottomNav` sets the attribute only while the bar is actually mounted. */
+:root[data-feed-nav] [data-storage-notice] {
+  bottom: calc(5rem + env(safe-area-inset-bottom));
+}
+
 /* Start-tile faces (2026-07-28 contrast audit). One authored tint per tile, two
    rendered faces: `src/lib/tiles.ts` publishes both as custom properties on the
    button and these two rules pick between them.

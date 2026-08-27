@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import type { TrailStep } from "@/lib/types";
 import type { RealmId } from "@/lib/realms/types";
@@ -210,6 +211,29 @@ export function FeedBottomNav({
   onBack: () => void;
   onAdvance: () => void;
 }) {
+  // Tell the document this bar is on screen, so the first-run storage notice can
+  // sit ABOVE it instead of on top of it.
+  //
+  // Both are anchored to the bottom, and the notice is `fixed ... z-40`, so on a
+  // first visit it landed squarely over "Drift onward". Hit-tested with
+  // elementFromPoint at 390, 360 and 1280 px wide, the element at the centre of
+  // the button was the notice, not the button: the very first tap on the one
+  // control the whole app is about did nothing. The notice's own "Got it" is the
+  // bigger, greener target so most people cleared it by accident, which is
+  // exactly why it survived to a review rather than being reported.
+  //
+  // Raising the notice rather than hiding it, because the disclosure has to be
+  // made; covering card text for a moment is the harmless half of the overlap.
+  // The same shape as the tour's `data-tour-active` (TourProvider.tsx) and the
+  // rule lives beside it in globals.css. An attribute rather than a prop because
+  // the notice is mounted in the ROOT layout — it has to appear on the
+  // signed-out landing too — so the two components never meet in the tree.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.setAttribute("data-feed-nav", "");
+    return () => root.removeAttribute("data-feed-nav");
+  }, []);
+
   return (
     <div className="flex items-center justify-center gap-3 px-4 py-3">
       <button

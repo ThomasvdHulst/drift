@@ -67,6 +67,25 @@ outside the EEA identified with the safeguard relied on.
 | Google | Advertising (not active); identity provider only where `NEXT_PUBLIC_OAUTH_PROVIDERS` is set | Ireland / United States | Ads Data Processing Terms; DPF adequacy where certified |
 | Stripe Payments Europe, Ltd. | Payment processing, tax determination, the receipt reference | Ireland (EU) | **No transfer to assess for the EU entity**: the contracting party is established in Ireland. Stripe's own onward transfers to its US affiliates run on SCCs in Stripe's DPA. Note Stripe is a **controller in its own right** for fraud prevention and its regulatory record keeping, not only a processor. |
 
+### Not processors: the two content sources a reader's browser contacts directly
+
+Card pictures are loaded from the source rather than copied onto Drift's servers, so the reader's
+browser makes a request straight to **Wikimedia Foundation, Inc.** (article images) and to **The
+Metropolitan Museum of Art** (artwork previews). Each therefore receives the reader's **IP address**
+and sets a **cookie on its own domain** — measured 27 August 2026, the museum's image host sets an
+Incapsula `visid_incap_*` with a one year expiry plus a per-session cookie; Wikimedia sets `WMF-Uniq`.
+
+Neither is a **processor**: they do not process personal data *on Drift's behalf*, they are
+independent controllers for their own logs, and there is no instruction from Drift to them. They are
+recorded here because Article 30(1)(d) asks for **recipients**, and a disclosure of the reader's IP
+address to a third party is a disclosure whether or not a contract sits behind it. `/privacy` states
+this to the reader in the same terms.
+
+The alternative is to proxy every image, which is a bandwidth decision rather than a compliance one
+and is on the owner's list. Note artwork is *already* proxied at full size through `/api/img/met`;
+what reaches the museum directly is the small `previewUrl` placeholder (`metPreviewUrl`). **If a
+realm is ever added, measure its image host and add it here before it ships.**
+
 The adequacy decision relied on is the European Commission's decision of **10 July 2023** on the
 EU-US Data Privacy Framework. It remains valid: the General Court dismissed the challenge in
 *Latombe v Commission* (T-553/23) on 3 September 2025, with an appeal pending as C-703/25 P. It is

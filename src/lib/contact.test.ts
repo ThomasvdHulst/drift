@@ -11,6 +11,7 @@ import {
   REPORT_MESSAGE_MIN,
   LOCATION_MAX,
   CONTACT_TOPICS,
+  clientIpFromHeaders,
 } from "./contact";
 
 const T0 = 1_700_000_000_000;
@@ -363,5 +364,66 @@ describe("topicLabel", () => {
   it("maps known ids and falls back for unknown ones", () => {
     expect(topicLabel("bug")).toBe("Something is broken");
     expect(topicLabel("nope")).toBe("Message");
+  });
+});
+
+describe("clientIpFromHeaders — the throttle key", () => {
+  const h = (o: Record<string, string>) => (n: string) => o[n] ?? null;
+
+  it("prefers the platform header a client cannot forge", () => {
+    // The exact shape of the attack that worked: a forged x-forwarded-for in
+    // front of the real address. The platform header must win outright.
+    expect(
+      clientIpFromHeaders(
+        h({
+          "x-forwarded-for": "203.0.113.9, 198.51.100.7",
+          "x-vercel-forwarded-for": "198.51.100.7",
+        }),
+      ),
+    ).toBe("198.51.100.7");
+  });
+
+  it("rotating a spoofed x-forwarded-for cannot change the key", () => {
+    const keys = new Set(
+      ["203.0.113.1", "203.0.113.2", "203.0.113.3"].map((spoof) =>
+        clientIpFromHeaders(
+          h({
+            "x-forwarded-for": spoof,
+            "x-vercel-forwarded-for": "198.51.100.7",
+          }),
+        ),
+      ),
+    );
+    expect([...keys]).toEqual(["198.51.100.7"]);
+  });
+
+  it("falls back through x-real-ip to x-forwarded-for", () => {
+    expect(clientIpFromHeaders(h({ "x-real-ip": "198.51.100.4" }))).toBe(
+      "198.51.100.4",
+    );
+    // Local development: no edge in front, so this is all there is.
+    expect(clientIpFromHeaders(h({ "x-forwarded-for": "127.0.0.1" }))).toBe(
+      "127.0.0.1",
+    );
+  });
+
+  it("takes the left-most entry of a list", () => {
+    expect(
+      clientIpFromHeaders(h({ "x-vercel-forwarded-for": " 198.51.100.7 , 10.0.0.1 " })),
+    ).toBe("198.51.100.7");
+  });
+
+  it("returns empty when nothing usable is present", () => {
+    expect(clientIpFromHeaders(h({}))).toBe("");
+    expect(clientIpFromHeaders(h({ "x-forwarded-for": "  ,  " }))).toBe("");
+    expect(clientIpFromHeaders(() => undefined)).toBe("");
+  });
+
+  it("skips a blank higher-trust header rather than giving up", () => {
+    expect(
+      clientIpFromHeaders(
+        h({ "x-vercel-forwarded-for": "", "x-real-ip": "198.51.100.5" }),
+      ),
+    ).toBe("198.51.100.5");
   });
 });

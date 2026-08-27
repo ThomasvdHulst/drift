@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { validateContact, type ContactInput } from "@/lib/contact";
+import {
+  clientIpFromHeaders,
+  validateContact,
+  type ContactInput,
+} from "@/lib/contact";
 import { verifyTurnstile } from "@/lib/turnstile";
 import {
   contactReceiptEmail,
@@ -63,8 +67,8 @@ function throttled(ip: string): boolean {
 }
 
 function clientIp(request: Request): string {
-  const fwd = request.headers.get("x-forwarded-for") ?? "";
-  return (fwd.split(",")[0] ?? "").trim() || "";
+  // Trust order and the reason for it live in lib/contact.ts, next to the tests.
+  return clientIpFromHeaders((name) => request.headers.get(name));
 }
 
 // One shape for every non-error outcome. Bot rejections and real sends are

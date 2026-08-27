@@ -2,23 +2,23 @@
 // Same-origin, resized passthrough for Metropolitan Museum artwork images.
 //
 // WHY THIS IS NOT OPTIONAL. The Art Institute route this replaces was a
-// development convenience with a flag to turn it off. This one is load-bearing,
-// for two independent reasons:
+// development convenience with a flag to turn it off. This one is load-bearing:
+// the museum publishes exactly four derivatives and does no resizing. Its
+// largest "small" one is about 600px, which is soft on a card that occupies
+// ~750 CSS px on a desktop, and the only thing above it is a ~4000px original of
+// several megabytes. Neither is a card image, so the three widths Drift renders
+// (843 card / 1686 zoom / 160 trail thumbnail) have to be made somewhere, and
+// this is where. That reason stands by itself, which is why there is no flag.
 //
-//  1. SIZE. The museum publishes exactly four derivatives and no resizing. The
-//     largest "small" one is about 600px, which is soft on a card that occupies
-//     ~750 CSS px on a desktop, and the only thing above it is a ~4000px
-//     original of several megabytes. Neither is a card image. Resizing here
-//     gives back the arbitrary widths the Art Institute's IIIF server used to
-//     provide (843 card / 1686 zoom / 160 trail thumbnail).
-//
-//  2. CORS. `images.metmuseum.org` sends no `Access-Control-Allow-Origin` at
-//     all, and the trail map draws its nodes with `crossOrigin="anonymous"`.
-//     Measured in a real browser: a hotlinked Met image carrying that attribute
-//     FAILS to load (the same URL without it loads fine), so every artwork in
-//     the trail map would fall back to a monogram. Serving from our own origin
-//     makes the question moot. This is about the map on SCREEN; the exported PNG
-//     omits images entirely by design (lib/export-image.ts, audit B-5).
+// ⚠️ THERE WAS A SECOND REASON HERE AND IT HAS EXPIRED. It said
+// `images.metmuseum.org` sends no `Access-Control-Allow-Origin` at all, so the
+// trail map's `crossOrigin="anonymous"` nodes could not use a hotlinked artwork.
+// Re-measured 27 August 2026, four ways (`web-large` and `original`, with and
+// without an `Origin` header): it now returns `access-control-allow-origin: *`
+// every time. The old measurement was correct when taken; it is simply no longer
+// true, so do not repeat the CORS argument. Nothing about this route changes.
+// (The exported PNG drops images by design either way — lib/export-image.ts,
+// audit B-5 — so the proxy was never about the export.)
 //
 // Licensing: every artwork Drift shows is CC0 under the museum's Open Access
 // policy, which grants use "for any purpose, including commercial and
@@ -36,6 +36,7 @@ import {
   MET_DEPT_RE,
   MET_NAME_RE,
   metUpstreamImageUrl,
+  parseMetImageWidth,
   type MetImageSize,
 } from "@/lib/realms/met";
 import { makeGate, makeBreaker } from "@/lib/upstream";
@@ -57,9 +58,29 @@ export const dynamic = "force-dynamic";
  */
 export const maxDuration = 25;
 
-/** The widest derivative Drift asks for is the zoom. */
-const MAX_WIDTH = 1686;
-const MIN_WIDTH = 16;
+/* ⚠️ WIDTH IS AN ALLOWLIST, NOT A RANGE, AND THAT IS A COST CONTROL.
+ *
+ * This used to accept any integer from 16 to 1686. Every distinct width is its
+ * own CDN cache key and its own origin fetch, and above `SMALL_SOURCE_MAX` each
+ * one drags a multi-megabyte original out of a host that is already slow, runs a
+ * resize, and pins a 30-day `immutable` entry. That made ~1,286 expensive
+ * variants per artwork reachable by anyone, on a route with no auth in front of
+ * it: measured live, widths 701/703/707 each answered `x-vercel-cache: MISS`
+ * with its own upstream fetch. The museum grants ~80 requests per 30 seconds and
+ * shrinks that budget for a day when it is tripped repeatedly, so a for-loop
+ * here is a Gallery outage for every reader plus a bill.
+ *
+ * The list lives in `lib/realms/met.ts` beside the functions that BUILD these
+ * URLs, so the validator cannot drift from what the app generates — and
+ * `MetImageWidth` makes an unlisted width a type error at the call site rather
+ * than a 400 at runtime.
+ *
+ * The width segment must also be spelled CANONICALLY. `Number()` happily reads
+ * "0843", "843.0", "+843" and "8.43e2" as 843, and each spelling is a DIFFERENT
+ * CDN cache key for an identical image — a smaller version of the same
+ * multiplication this allowlist exists to stop. Comparing `String(w)` back to
+ * the raw segment leaves exactly one legal spelling per width.
+ */
 
 /**
  * At or below this width, go straight to `web-large` and never touch the
@@ -132,17 +153,13 @@ export async function GET(
   ctx: { params: Promise<{ dept: string; name: string; width: string }> },
 ) {
   const { dept, name, width } = await ctx.params;
-  const w = Number(width);
+  // Allowlisted AND canonically spelled — see the note above and the tests
+  // beside `parseMetImageWidth`.
+  const w = parseMetImageWidth(width);
   // Anchored patterns on both path components, and the upstream URL is BUILT
   // from them rather than taken from the caller — so this can never be pointed
   // at another host, and a traversal attempt cannot survive the match.
-  if (
-    !MET_DEPT_RE.test(dept) ||
-    !MET_NAME_RE.test(name) ||
-    !Number.isInteger(w) ||
-    w < MIN_WIDTH ||
-    w > MAX_WIDTH
-  ) {
+  if (!MET_DEPT_RE.test(dept) || !MET_NAME_RE.test(name) || w === null) {
     return new Response("bad image request", { status: 400 });
   }
 

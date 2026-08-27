@@ -28,6 +28,13 @@ without them:
    thread they chose, or "drift" if random). No hidden ranking.
 2. **Agency over autoplay** — nothing advances automatically. No autoplay, no infinite
    preloading that teases "just one more." Prefetch **at most 1 card ahead**.
+   ⚠️ *That rule is about what is RENDERED, not about how many upstream calls a request
+   makes.* The discover and random routes deliberately fetch a BATCH of ~20 cards' worth of
+   metadata at a time (`/api/wiki/random`, `lib/discover.ts`) because `generator=random` is
+   Wikimedia's burst-limited endpoint and one-card-at-a-time cost 2-3 requests per drift. No
+   card is ever rendered or teased ahead of the one you are on, which is the thing the
+   principle protects. Do not "fix" the batching to satisfy a literal reading, and do not use
+   it as licence to render ahead.
 3. **Sessions have shape** — beginning (seed) → middle (trail) → end (trail map). The
    reward (the trail map) is placed at the *exit*, not the next swipe.
 4. **Gentle awareness, not guilt** — a quiet "N stops" counter; after ~25 cards a soft,
@@ -51,8 +58,13 @@ without them:
   `docs/backend.md`.
 - **Trail map: hand-built SVG in React** (no d3 for v1 — trails are near-linear chains).
 - **Trail export: SVG → PNG client-side** (`html-to-image`).
-- **AI layer (optional): local Ollama** at `http://localhost:11434`, behind feature flags,
-  always with graceful fallback.
+- **AI layer: NOT BUILT.** Phase 3 (local Ollama at `http://localhost:11434`, feature-flagged
+  thread selection and labelling) is **deferred by choice** and no code implements it — there is
+  no `/api/threads`, no Ollama client, and nothing reads `AI_THREADS` / `AI_REWRITE` /
+  `OLLAMA_MODEL`. `plan.md` has always recorded it as deferred; this file used to describe it in
+  the present tense, which read as shipped surface area and sent a reviewer hunting for a
+  subsystem that does not exist. The design notes for it are kept in §4 and Phase 3 of `plan.md`
+  for whenever it is picked up.
 
 ## 4. Critical technical facts (learned the hard way — do not relearn)
 
@@ -191,8 +203,16 @@ without them:
     `scripts/probe-met-pools.mjs` (hand-run, merges the two passes). That is what keeps a room
     readable while the museum is throttling us. The EU copyright test is deliberately NOT baked: it
     is recomputed per request because the cut-off widens every 1 January.
-- 🎨 **Artwork is ALWAYS served through `/api/img/met/{dept}/{name}/{width}`** (sharp resize), and
-  there is deliberately no flag to disable it. ⚠️ **That route has THREE protections you must not
+- 🎨 **Artwork is served through `/api/img/met/{dept}/{name}/{width}`** (sharp resize), and there
+  is deliberately no flag to disable it. ⚠️ **`width` is an ALLOWLIST of exactly `160 | 843 | 1686`**
+  (`MET_IMAGE_WIDTHS`, `lib/realms/met.ts`), not a range. It accepted any integer 16-1686 until
+  2026-08-27, which is ~1,286 CDN cache keys **per artwork**, each its own multi-megabyte original
+  fetch, reachable by anyone — measured live, widths 701/703/707 each answered `x-vercel-cache: MISS`
+  with a separate upstream fetch. Add a width to that constant, never to the route. One thing is NOT
+  proxied and that is deliberate: `previewUrl` (the ~600px `web-large` placeholder, `metPreviewUrl`)
+  is **hotlinked**, so it appears instantly and costs us no bandwidth. It is a plain decorative
+  `<img>` with no `crossOrigin`. That hotlink is why `/privacy` must name the museum as well as
+  Wikimedia — the reader's browser reaches it directly. ⚠️ **That route has THREE protections you must not
   strip, all added after it 502'd for twenty seconds at a time (2026-08-26):** its own gate and
   breaker on `images.metmuseum.org` (a *different* host from the API, and its failure mode is
   slowness, not 403, so a timeout counts against the breaker); an explicit `maxDuration = 25` with
@@ -201,25 +221,32 @@ without them:
   original will not come**, served with a SHORT cache so a soft picture cannot freeze into the CDN
   for thirty days. Measured on the same artwork: 502 after 20s became 200 with a real image in 10s.
   Also: **a request at or below 400px never touches the original at all.** The trail map asks for
-  160 and was pulling a ~3.4 MB original per node to make a thumbnail; it is now 8 KB in 0.5s. Two structural reasons: the Met publishes only fixed
-  sizes (largest "small" ≈600px, too soft for a card; next is a ~4000px/8MB original), and it sends
-  **no CORS header**, which measurably breaks the trail map's `crossOrigin="anonymous"` thumbnails.
+  160 and was pulling a ~3.4 MB original per node to make a thumbnail; it is now 8 KB in 0.5s. The
+  structural reason the proxy exists: the Met publishes only fixed sizes (largest "small" ≈600px, too
+  soft for a card; next is a ~4000px/8MB original), so arbitrary widths have to be made somewhere.
+  ⚠️ **There used to be a second reason here — "it sends no CORS header, which breaks the trail map's
+  `crossOrigin="anonymous"` thumbnails" — and it has EXPIRED.** Re-measured 2026-08-27 four ways
+  (`web-large` and `original`, with and without an `Origin` header): `images.metmuseum.org` returns
+  `access-control-allow-origin: *` every time. The old measurement was right when taken. Do not quote
+  the CORS argument; the size argument carries the decision alone.
   The URL is rebuilt from two anchored components, never taken from upstream. Note the PNG export
   drops images entirely by design (`export-image.ts`, audit B-5) — that is NOT a reason for the proxy.
-- **Always proxy external calls through Next.js API routes** (`/api/wiki/*`, `/api/threads`),
-  never call Wikipedia/Ollama directly from the browser. Reasons: (a) browsers cannot set
+- **Always proxy external calls through Next.js API routes** (`/api/wiki/*`, `/api/realm/*`),
+  never call Wikipedia directly from the browser. Reasons: (a) browsers cannot set
   the `Api-User-Agent`/`User-Agent` header Wikimedia etiquette requires; (b) it centralizes
   junk-filtering and the dead-endpoint workaround; (c) it keeps all AI logic server-side and
   dodges `localhost:11434` CORS.
 - **Set a descriptive `Api-User-Agent` header** on every Wikimedia request (e.g.
   `Drift/0.1 (local hobby project; contact: <email>)`).
-- **Ollama is installed and running locally** with the needed models: `qwen2.5:14b`
+- **For the deferred Phase 3 only** (nothing below is wired up today — see §3): Ollama is
+  installed and running locally with the needed models: `qwen2.5:14b`
   (LLM default), `gemma3:27b` (optional quality mode), `nomic-embed-text` (768-dim
   embeddings). Chat: `POST /api/chat` with `format:"json"` + `keep_alive:"30m"`.
   Embeddings: `POST /api/embed` → `{ embeddings: [[...768]] }`.
-- **The AI layer must never break the app.** Ollama unreachable / timeout (>6s) / malformed
-  JSON → silently fall back to embedding-only diversity, then to the plain heuristic. The
-  app must work fully with Ollama off.
+- **When the AI layer is built, it must never break the app.** Ollama unreachable / timeout
+  (>6s) / malformed JSON → silently fall back to embedding-only diversity, then to the plain
+  heuristic. The app must work fully with Ollama off. (Stated as a standing design constraint
+  for Phase 3; there is no AI layer to break today.)
 - **Supabase (Phase 9) is the SANCTIONED exception to "proxy everything."** The "never call
   external services directly from the browser" rule exists for Wikipedia/Ollama (the
   `Api-User-Agent` header + junk-filtering + CORS). Supabase is the opposite case: it's
@@ -329,7 +356,8 @@ points outside the project root) and run `npx next dev -p <other-port>` there.
 7. **Prefer plan mode for non-trivial work.** For a new phase or a meaningfully complex
    step, enter plan mode and get sign-off before writing code.
 8. **Keep secrets/config in `.env.local`** (git-ignored). Provide a committed
-   `.env.local.example`. Feature flags: `AI_THREADS`, `AI_REWRITE`, `OLLAMA_MODEL`.
+   `.env.local.example`. (The `AI_THREADS` / `AI_REWRITE` / `OLLAMA_MODEL` flags belong to the
+   deferred Phase 3 and are read by nothing today — see §3.)
 
 ## 9. Success criteria for the experiment (the actual point)
 

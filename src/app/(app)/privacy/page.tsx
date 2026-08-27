@@ -357,21 +357,33 @@ export default function PrivacyPage() {
               opt out of.
             </P>
             {/* Found by measuring rather than by reading the code, which is why
-                it is here: a card's picture is loaded straight from Wikimedia's
-                servers, and Wikimedia sets its own `WMF-Uniq` cookie on its own
+                it is here: a card's picture is loaded straight from the source's
+                servers, and the source sets a cookie of its own on its own
                 domain when it serves one. Drift cannot read it. The alternative
                 is to proxy every image through Drift, which is a real bandwidth
                 decision and is on the owner's list rather than done quietly.
                 Saying "no cookies" without this would be the same species of
-                inaccuracy the audit found at B-3. */}
+                inaccuracy the audit found at B-3.
+
+                ⚠️ BOTH SOURCES, and keep it that way. This named only Wikimedia
+                until 2026-08-27, because it was written before Phase 31 moved
+                the Gallery from the Art Institute to The Metropolitan Museum of
+                Art. Measured on the museum's image host that day: it sets two
+                Incapsula cookies, `visid_incap_*` with a ONE YEAR expiry and a
+                per-session one. That is a second uninvited cookie, longer-lived
+                than the Wikimedia one already disclosed, from a party this
+                paragraph did not mention. If a realm is ever added, re-measure
+                its image host and add it here before it ships. */}
             <P>
-              <Lead>One cookie arrives anyway, and it is not ours. </Lead>Card
-              pictures are loaded straight from the source rather than copied
-              onto our servers, and when your browser asks Wikimedia for one,
-              Wikimedia sets a cookie of its own on its own domain. Drift cannot
-              read it, is not sent it, and gets nothing from it. It only appears
-              once you are reading cards; the public pages of this site set
-              nothing at all.
+              <Lead>Some cookies arrive anyway, and they are not ours. </Lead>
+              Card pictures are loaded straight from the source rather than
+              copied onto our servers. When your browser asks Wikimedia for an
+              article image, or The Metropolitan Museum of Art for an artwork,
+              each sets a cookie of its own on its own domain, and the museum
+              also learns your IP address the way any site you load an image from
+              does. Drift cannot read those cookies, is not sent them, and gets
+              nothing from them. They only appear once you are reading cards; the
+              public pages of this site set nothing at all.
             </P>
             <P>
               To work at all it does keep a few things in your browser&apos;s own

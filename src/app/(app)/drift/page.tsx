@@ -927,6 +927,20 @@ function DriftFeed() {
     };
     // `paramsString` is here so the values read above are the ones this render
     // actually holds; `paramKey` is what decides whether anything happens at all.
+    //
+    // ⚠️ THE SUPPRESSION IS DELIBERATE AND MUST STAY. The rule wants
+    // `fetchDiscoverBatch` and `withDoorBranch` in here. Both are plain function
+    // declarations in the component body, so they are NEW OBJECTS ON EVERY
+    // RENDER and can never be stable: listing them would re-run this effect on
+    // every render, and this is the effect that STARTS A SESSION — it would
+    // reseed the trail, reset `history`, `pos` and `tip`, and call `recordStop`
+    // again, continuously. Wrapping them in `useCallback` would not help either,
+    // since they close over most of the feed's state. The effect is a one-shot
+    // per session key, which is exactly what `paramKey` expresses.
+    //
+    // Disabled explicitly rather than left as a standing warning, so the lint
+    // output is empty and the next real warning is not lost in the noise.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramKey, paramsString]);
 
   // ----- threads for whichever card is displayed (live or a revisited one) -----

@@ -83,7 +83,17 @@ export function cacheControl(p: CacheProfile): string {
 
 /** Cookie names that mean a Supabase session is present. Supabase names its
  *  auth cookie `sb-<project-ref>-auth-token`, sometimes chunked with a `.0`
- *  suffix, so this matches the shape rather than one literal name. */
+ *  suffix, so this matches the shape rather than one literal name.
+ *
+ *  ⚠️ THIS PATTERN MATCHES NOTHING IN DRIFT TODAY, AND THAT IS NOT A BUG — but
+ *  know it before you rely on it. The browser client stores its session in
+ *  localStorage under `drift-auth` (`storageKey`, lib/supabase/client.ts), so no
+ *  auth cookie is ever sent and it is the `authorization` header branch below
+ *  that actually fires. Verified against production: a request carrying one gets
+ *  `x-vercel-cache: BYPASS` and `no-store`, while an anonymous one gets MISS then
+ *  HIT. The pattern is kept as the guard for the day session storage moves to
+ *  cookies — but if it moves to cookies under the CUSTOM key, this regex will not
+ *  see it, so change both together. */
 const SESSION_COOKIE = /(^|;\s*)sb-[a-z0-9-]+-auth-token(\.\d+)?=/i;
 
 /** Whether this request carries anything that identifies a signed-in user. */

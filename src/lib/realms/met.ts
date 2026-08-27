@@ -60,25 +60,81 @@ export function metUpstreamImageUrl(
 }
 
 /**
+ * The ONLY widths `/api/img/met` will serve, and the only ones Drift asks for:
+ * the trail-map thumbnail, the card, and the deep-zoom lightbox.
+ *
+ * ⚠️ THIS IS A COST CONTROL, NOT A TIDY-UP, and it is why the type below is a
+ * union rather than `number`. The route used to accept any integer from 16 to
+ * 1686. Every distinct width is its own CDN cache key AND its own origin fetch,
+ * and above `SMALL_SOURCE_MAX` each one pulls a multi-megabyte original from the
+ * museum, runs a sharp resize and pins a 30-day `immutable` entry. That is ~1,286
+ * expensive variants per artwork that an unauthenticated caller could walk, on a
+ * route with no auth in front of it — measured on the live site, widths 701/703/
+ * 707 each answered `x-vercel-cache: MISS` with a separate upstream fetch. Set
+ * against the museum's ~80 requests per 30 seconds (and the day-long budget
+ * shrink that repeated tripping causes), a for-loop could take the Gallery down
+ * for every reader and bill us for it.
+ *
+ * Keeping the list HERE, next to the functions that build the URLs, is what stops
+ * the route's validator drifting from what the app actually generates: adding a
+ * width means adding it here, which makes it legal in both places at once.
+ */
+export const MET_IMAGE_WIDTHS = [160, 843, 1686] as const;
+
+/** A width the proxy will serve. */
+export type MetImageWidth = (typeof MET_IMAGE_WIDTHS)[number];
+
+/** Whether `w` is one of the three widths the proxy serves. */
+export function isMetImageWidth(w: number): w is MetImageWidth {
+  return (MET_IMAGE_WIDTHS as readonly number[]).includes(w);
+}
+
+/**
+ * Read the `[width]` path segment, or null if it is not one Drift serves.
+ *
+ * The route's whole gate, kept here so it is pure and unit-tested rather than
+ * living as two conditions in a handler.
+ *
+ * ⚠️ IT INSISTS ON A CANONICAL SPELLING, which is the non-obvious half. `Number`
+ * reads "0843", "843.0", "+843", "8.43e2" and " 843" all as 843, and each of
+ * those is a DIFFERENT URL, hence a different CDN cache key, hence another
+ * origin fetch and another 30-day entry for a byte-identical picture. That is a
+ * smaller copy of exactly the multiplication `MET_IMAGE_WIDTHS` exists to stop,
+ * so comparing the number back to the segment it came from leaves precisely one
+ * legal spelling per width.
+ */
+export function parseMetImageWidth(segment: string): MetImageWidth | null {
+  const w = Number(segment);
+  if (String(w) !== segment) return null;
+  return isMetImageWidth(w) ? w : null;
+}
+
+/**
  * The card's image: our own origin, resized to the width asked for.
  *
- * TWO reasons this is a proxy and not a hotlink, and both are load-bearing
- * rather than optimisations (which is why, unlike the Art Institute route it
- * replaces, there is no flag to turn it off):
+ * WHY THIS IS A PROXY AND NOT A HOTLINK. The museum publishes four fixed
+ * derivatives and does no resizing. Its largest "small" one is about 600px,
+ * which is soft on a card that occupies ~750 CSS px on a desktop, and the only
+ * thing above it is a ~4000px original of several megabytes. Neither is a card
+ * image, so the arbitrary widths the Art Institute's IIIF server used to provide
+ * have to come from somewhere, and this is that somewhere. That is load-bearing
+ * on its own, which is why there is no flag to turn the route off.
  *
- *  1. SIZE. The museum publishes four fixed derivatives and no resizing. Its
- *     largest "small" one is about 600px, which is soft on a card that occupies
- *     ~750 CSS px on a desktop, and the only thing above it is a ~4000px
- *     original of several megabytes. Resizing here gives back the arbitrary
- *     widths the Art Institute's IIIF server used to provide.
- *  2. CORS. `images.metmuseum.org` sends no `Access-Control-Allow-Origin` at
- *     all, and the trail map draws its nodes with `crossOrigin="anonymous"`.
- *     Measured in a real browser: a hotlinked Met image with that attribute
- *     FAILS to load outright (without it, it loads). So every artwork in the
- *     trail map would fall back to a monogram. Note this is about what is on
- *     SCREEN — the exported PNG drops images by design, see lib/export-image.ts.
+ * ⚠️ THERE USED TO BE A SECOND REASON HERE AND IT IS NO LONGER TRUE. This
+ * comment said `images.metmuseum.org` sends no `Access-Control-Allow-Origin` at
+ * all, so the trail map's `crossOrigin="anonymous"` nodes could not load a
+ * hotlinked artwork. Re-measured 27 August 2026, four ways (both `web-large` and
+ * `original`, with and without an `Origin` header): it returns
+ * `access-control-allow-origin: *` every time. The original measurement is not
+ * disputed — the header was absent then and is present now — but do not quote
+ * the CORS argument any more. The size argument above carries the decision by
+ * itself. Note also that the exported PNG drops images entirely by design, see
+ * lib/export-image.ts, so the proxy is never about the export.
  */
-export function metImageUrl(ref: MetImageRef, width = 843): string {
+export function metImageUrl(
+  ref: MetImageRef,
+  width: MetImageWidth = 843,
+): string {
   return `/api/img/met/${ref.dept}/${ref.name}/${width}`;
 }
 
@@ -104,7 +160,10 @@ export function metPreviewUrl(ref: MetImageRef): string {
  * safe because we built the URL in the first place; anything else (a Wikipedia
  * thumbnail, an old Art Institute URL) is returned untouched.
  */
-export function artImageAtWidth(url: string | undefined, width: number): string | undefined {
+export function artImageAtWidth(
+  url: string | undefined,
+  width: MetImageWidth,
+): string | undefined {
   if (!url) return undefined;
   const m = url.match(/^\/api\/img\/met\/([^/]+)\/([^/]+)\/\d+$/);
   return m ? `/api/img/met/${m[1]}/${m[2]}/${width}` : url;

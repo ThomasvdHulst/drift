@@ -16,29 +16,54 @@ const URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SECRET = process.env.SUPABASE_SECRET_KEY;
 const PUBLISHABLE =
   process.env.SUPABASE_PUBLISH_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-const EMAIL = process.env.SUPABASE_EMAIL;
-const PASSWORD = process.env.SUPABASE_PASSWORD;
+
+// ⚠️ ALL THREE TEST USERS ARE PROVISIONED HERE AND DELETED AT THE END, and A is
+// deliberately NOT the owner's account any more.
+//
+// This script used to sign A in as SUPABASE_EMAIL / SUPABASE_PASSWORD. That
+// password went stale, so every run died at `sign in: Invalid login
+// credentials` — AFTER creating B and C, which it then never reached the
+// teardown to remove. Two things followed, and both are the reason for this
+// note: the social gate had not actually run in weeks while still being listed
+// as a gate, and each attempt leaked a pair of accounts into the project (one
+// was found dated 2026-08-01, still there on 2026-08-27).
+//
+// A verifier that depends on a hand-maintained password is a verifier that
+// eventually stops verifying, silently. It now creates everything it needs.
 
 let failures = 0;
 const ok = (m) => console.log(`  \x1b[32m✓\x1b[0m ${m}`);
 const bad = (m) => { failures++; console.log(`  \x1b[31m✗\x1b[0m ${m}`); };
 
-if (!URL || !SECRET || !PUBLISHABLE || !EMAIL || !PASSWORD) {
-  console.error("Missing env (need SUPABASE_URL/SECRET_KEY/PUBLISH_KEY/EMAIL/PASSWORD).");
+if (!URL || !SECRET || !PUBLISHABLE) {
+  console.error("Missing env (need SUPABASE_URL / SUPABASE_SECRET_KEY / SUPABASE_PUBLISH_KEY).");
   process.exit(2);
 }
 
 const admin = createClient(URL, SECRET, { auth: { persistSession: false } });
 
+const A_EMAIL = "drift.verify.a@example.com";
 const B_EMAIL = "drift.verify.b@example.com";
 const C_EMAIL = "drift.verify.c@example.com";
 const PW = "drift-verify-pw-123!";
 
+// Delete-then-create, so the password is always the one set in this file. A
+// bare `createUser` on an existing address succeeds WITHOUT setting the
+// password, which is how a leaked account from a previous run could keep the
+// next run failing to sign in. Also stamps `welcomed`, so a verification run can
+// never generate a real welcome email (same reason as scripts/bots).
 async function ensureUser(email, password) {
-  const created = await admin.auth.admin.createUser({ email, password, email_confirm: true });
-  if (created.error && !/already/i.test(created.error.message)) {
-    throw new Error(`create ${email}: ${created.error.message}`);
+  const { data } = await admin.auth.admin.listUsers({ perPage: 1000 });
+  for (const u of data?.users ?? []) {
+    if (u.email === email) await admin.auth.admin.deleteUser(u.id);
   }
+  const created = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    app_metadata: { welcomed: true, verify_script: true },
+  });
+  if (created.error) throw new Error(`create ${email}: ${created.error.message}`);
 }
 
 async function signedInClient(email, password) {
@@ -65,10 +90,10 @@ async function main() {
   if (failures) return;
 
   console.log("\nUsers + profiles:");
-  await ensureUser(EMAIL, PASSWORD);
+  await ensureUser(A_EMAIL, PW);
   await ensureUser(B_EMAIL, PW);
   await ensureUser(C_EMAIL, PW);
-  const A = await signedInClient(EMAIL, PASSWORD);
+  const A = await signedInClient(A_EMAIL, PW);
   const B = await signedInClient(B_EMAIL, PW);
   const C = await signedInClient(C_EMAIL, PW);
   ok("three test users signed in");
@@ -166,10 +191,13 @@ async function main() {
   // Cleanup
   console.log("\nCleanup:");
   await admin.from("friend_requests").delete().in("requester_id", [A.id, B.id, C.id]);
-  await admin.from("profiles").delete().in("id", [B.id, C.id]);
+  await admin.from("profiles").delete().in("id", [A.id, B.id, C.id]);
+  // All three, not two: A is this script's account now, so nothing it created
+  // outlives the run. Deleting the auth user cascades the rest.
+  await admin.auth.admin.deleteUser(A.id);
   await admin.auth.admin.deleteUser(B.id);
   await admin.auth.admin.deleteUser(C.id);
-  ok("removed test rows + extra users");
+  ok("removed test rows + all three test users");
 
   console.log(
     failures

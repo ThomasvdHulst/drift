@@ -7,6 +7,24 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 
 > ## Current status: 2026-08-27
 >
+> **Phase 33D (27 August) is the pre-flyer review**: the repo was read end to end by a reviewer who
+> had not written it, ahead of the beta opening to strangers. Eight findings fixed, one deliberately
+> left. Full entry at the bottom of this file; the report is at
+> <https://claude.ai/code/artifact/f24319a1-9ff1-4936-b7ad-7ccc840a1a2d>.
+>
+> ⚠️ **Two owner actions are outstanding and one of them is a gate:**
+> 1. **Paste `supabase/migrations/0007_write_limits.sql`** into Supabase Studio. Until it is applied,
+>    any signed-in account can write unbounded data straight into the database (measured: an 8 MB row
+>    accepted in 2s, 500 rows in 3s, against a 500 MB free tier). `npm run verify:supabase` fails two
+>    checks until it lands, and names the file.
+> 2. **Set the two Turnstile keys.** The contact form's per-IP throttle no longer keys on a spoofable
+>    header, but Turnstile is the layer the code calls the real defence and it is still off.
+>
+> ⚠️ **Before `NEXT_PUBLIC_SOCIAL` is ever turned back on**, run the two `revoke`s in the Phase 33D
+> entry: friendship can currently be forged by rewriting `requester_id` on a received request, which
+> defeats the friends-only guarantee on `shares`. Harmless while social is hidden; live the moment it
+> is not.
+>
 > **Drift is live** at <https://www.usedrift.org> (Vercel + Supabase) as an installable PWA, in a
 > small friends-and-family beta, now taking real payments for the **supporter unlock** (Phase 32).
 > A refund starts a **seven day wait before that account can buy again** (Phase 32B); migration
@@ -23,7 +41,8 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > what the museum actually grants. Measured after: a 12-card Gallery session is 96 Met requests with
 > zero 403s, zero breaker trips and threads on every card.
 >
-> **Gates:** 1,304 unit tests green, `npm run build` and `npm run lint` clean, `npm run audit:contrast`
+> **Gates:** 1,314 unit tests green, `npm run build` clean, `npm run lint` clean with **zero
+> warnings**, `npm run audit:contrast`
 > PASS (31 views x 2 themes; the node count varies with how much local reading data the instance
 > has, 3,878 on an empty one. Pass `BASE=…` matching your port or it measures nothing and still
 > says PASS). Backend: `npm run verify:supabase`, `verify:social`, `verify:share`, `verify:billing`.
@@ -5083,3 +5102,129 @@ already exists. Not done here: it is a data decision (a 2 MB committed file that
 belongs to the owner.
 
 Gates: 1,304 tests green (78 files), `npm run build` and `npm run lint` clean.
+
+---
+
+## Phase 33D — the pre-flyer review, and the eight things it found (2026-08-27)
+
+The beta is about to stop being friends-and-family: there are flyers. So the repository was read
+end to end by a reviewer who had not written any of it, with one instruction — **verify by running
+things, and label anything unverified as unverified**. The report is an artifact:
+<https://claude.ai/code/artifact/f24319a1-9ff1-4936-b7ad-7ccc840a1a2d>
+
+Two of the seven areas came back clean and are recorded here because "I looked and it is fine" is
+worth as much as a finding: **the anti-slot-machine principles** (the only two `setInterval`s in the
+codebase are a refund countdown and the tour, neither can advance a card; provenance renders on every
+card; `lib/stats.ts` feeds the exit screen, not an engagement metric) and **the embarrassment sweep**
+(25 internal link targets all 2xx/3xx, 6 external all 200, no route 500s under traversal /
+5,000-character queries / null bytes / 500 titles, and the empty states are written rather than
+defaulted). **Graceful degradation was tested rather than trusted**: the whole app was run with
+Supabase, Stripe, Resend and Turnstile blanked — 21 routes 200, all five server routes reporting
+`unconfigured`, the reading loop advancing on desktop and a 390px phone, zero console errors.
+
+### One finding was deliberately NOT fixed
+
+**Friendship can be forged.** `friend_requests`' `respond to request` policy pins only
+`addressee_id`, leaving `requester_id` writable, so anyone who has received a request (trivially
+staged with a second account) can rewrite who it came from and accept on their behalf.
+`are_friends()` then returns true and the `shares` insert policy admits the row — the one thing the
+database is supposed to guarantee. Reproduced end to end against the live project. Two enablers:
+`profiles` is `select using (true)` so every user id is harvestable, and `are_friends()` was never
+revoked from `public`, so **anon** can call it as a friendship oracle.
+
+**The owner's decision was to leave it**, because `NEXT_PUBLIC_SOCIAL` is off: nothing renders an
+inbox, `/friends` and `/inbox` redirect home, and the whole surface is out of scope for the first
+release. ⚠️ **It becomes live the moment that flag is turned on.** The fix is close to a one-liner —
+column privileges are checked alongside RLS, so
+`revoke update (requester_id, addressee_id) on public.friend_requests from authenticated;` plus
+`revoke execute on function public.are_friends(uuid, uuid) from anon;` — and it should be done in the
+same commit that re-enables social, with a regression case in `verify:social`. Note that
+`verify-social.mjs` would not have caught it: it tests that a *non-addressee* cannot accept, not that
+the addressee cannot rewrite the sender.
+
+### What was fixed
+
+**The storage notice covered "Drift onward" on a first visit.** Both are bottom-anchored and the
+notice is `fixed … z-40`, so `elementFromPoint` at the centre of the primary control returned the
+notice at 390, 360 and 1280 px wide: the first tap on the one control the app is about did nothing.
+The notice's own "Got it" is the bigger, greener target, which is why it survived to a review instead
+of being reported. `FeedBottomNav` now sets `data-feed-nav` on the document while the bar is mounted
+(the same shape as the tour's `data-tour-active`) and `globals.css` lifts the notice 5rem clear.
+Raised rather than hidden: the disclosure has to be made, and covering card text is the harmless half
+of the overlap. Re-tested on all three viewports — the hit test lands on the button and the first tap
+advances.
+
+**`/api/img/met` accepted 1,671 widths; the app renders three.** Every distinct width is its own CDN
+cache key *and* its own origin fetch, and above 400px each drags a multi-megabyte original out of a
+slow host, resizes it and pins a 30-day `immutable` entry — ~1,286 expensive variants per artwork,
+walkable by anyone, on a route with no auth. Measured live: 701/703/707 each `x-vercel-cache: MISS`
+with its own upstream fetch. Against the museum's ~80-per-30s budget and the day-long shrink that
+repeated tripping causes, a for-loop was a Gallery outage for every reader. `MET_IMAGE_WIDTHS`
+(`160 | 843 | 1686`) now lives in `lib/realms/met.ts` beside the URL builders, `MetImageWidth` makes
+an unlisted width a **type error at the call site**, and a test asserts every URL the builders can
+produce survives the route's gate.
+
+**The contact throttle keyed on a header the caller writes.** It read
+`x-forwarded-for.split(",")[0]`. Measured locally: eight submissions from one spoofed value throttled
+after five, eight rotating it went through untouched. `clientIpFromHeaders` (in `lib/contact.ts`,
+with tests) now prefers `x-vercel-forwarded-for`, then `x-real-ip`, then the old parse for local dev.
+Re-tested: the rotating attack now throttles at the sixth, and genuinely distinct platform IPs still
+pass. ⚠️ **Turnstile is still not configured**, and it is the layer the code calls the real defence —
+the live `/contact` HTML carries no Turnstile markers. Both keys are an owner action; the code is
+written and fails closed.
+
+**Any confirmed account could write unbounded data to Supabase.** RLS answers "whose row is this"
+and stops. Measured from an ordinary account with nothing but the publishable key: an 8 MB row
+accepted in 2s, 500 rows in 3s. The free tier is 500 MB, so one account could pause the project.
+`0007_write_limits.sql` adds per-row size ceilings (256 KB on `trails.steps`, `user_kv.value` and
+both payload columns — against a largest *real* row of 41 KB) and a per-user row cap of 500 via one
+parameterised trigger. Both are needed: a size cap alone still allows 500 × 256 KB.
+`octet_length(x::text)` rather than `pg_column_size` — the worry was that TOAST compression would let
+a repetitive payload slip under, and although measurement showed it would not (8 MB of one character
+reports 8000027 inside a CHECK), the text length is the thing actually being limited.
+
+**Two of the four backend verifiers had not run in weeks.** `verify:supabase` and `verify:social`
+both died at `sign in: Invalid login credentials` — the `SUPABASE_PASSWORD` in `.env` had gone
+stale. Worse, `verify-social` created users B and C *before* that line, so every failed run **leaked
+a pair of accounts**; one dated 2026-08-01 was still there on 2026-08-27. Both scripts now provision
+and delete every account they use, the way `verify:share` and `verify:billing` already did, and
+`ensureUser` deletes-then-creates so a leftover cannot wedge the next run. `verify:supabase` also
+gained the 0007 write-limit checks, so it is what tells you the migration landed.
+
+### Comments that had become false
+
+`CLAUDE.md` and `lib/realms/met.ts` both gave "`images.metmuseum.org` sends no
+`Access-Control-Allow-Origin`" as one of two load-bearing reasons the image proxy exists. Re-measured
+four ways (both derivatives, with and without an `Origin` header): it returns `*` every time. **The
+proxy stays** — the size argument carries it alone — but the CORS argument must not be quoted again.
+`CLAUDE.md` also described the **Ollama AI layer in the present tense** although no code implements
+it (`plan.md` has always had Phase 3 as deferred); §2.2's "prefetch at most 1 card ahead" now
+distinguishes *rendered* ahead from *fetched in a batch*, so nobody breaks the discover batching to
+satisfy a literal reading; "artwork is ALWAYS proxied" now records that `previewUrl` is deliberately
+hotlinked; and `cache-headers.ts` notes that its session-cookie pattern matches nothing today because
+the session lives in `localStorage` under `drift-auth`.
+
+**Privacy caught up with Phase 31.** `/privacy`'s "one cookie arrives anyway, and it is not ours"
+paragraph named only Wikimedia — it predates the move to The Met. Measured on the museum's image
+host: an Incapsula `visid_incap_*` with a **one year** expiry plus a session cookie, set on every
+Gallery card via the hotlinked `previewUrl`. Both sources are now named, to the reader and in
+`docs/processing-record.md` (as recipients, not processors — they are independent controllers and
+there is no instruction from Drift). If a realm is added, measure its image host before it ships.
+
+**The one standing lint warning is gone**, not silenced blindly: the rule wanted
+`fetchDiscoverBatch` and `withDoorBranch` in the session-start effect's deps, and both are plain
+function declarations recreated every render, so listing them would restart the session on every
+render. Explicitly disabled with the reasoning, so lint output is empty and the next real warning is
+visible.
+
+### Owner actions this leaves
+
+1. **Paste `supabase/migrations/0007_write_limits.sql`** into Studio → SQL Editor → Run. Until then
+   `npm run verify:supabase` fails on two checks, by design, and says so.
+2. **Set the two Turnstile keys** (`NEXT_PUBLIC_TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET_KEY`).
+3. **`SUPABASE_EMAIL` / `SUPABASE_PASSWORD` in `.env` are now unused** and can be deleted.
+4. When social is re-enabled, do the two `revoke`s above first.
+
+Gates: **1,314 tests green** (78 files), `npm run build` clean, `npm run lint` **clean with zero
+warnings**, `npm run audit:contrast` PASS, `verify:social` / `verify:share` / `verify:billing` green,
+`verify:supabase` green except the two checks awaiting the migration above.

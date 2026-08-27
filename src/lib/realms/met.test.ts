@@ -15,7 +15,10 @@ import {
   metToCard,
   metToCandidate,
   MET_DEPT_RE,
+  MET_IMAGE_WIDTHS,
   MET_NAME_RE,
+  isMetImageWidth,
+  parseMetImageWidth,
   type MetObject,
   phraseQuery,
 } from "./met";
@@ -482,5 +485,57 @@ describe("metToCandidate", () => {
     expect(c.facts?.length).toBeGreaterThan(3);
     expect(c.source).toBe("met");
     expect(c.sourceUrl).toBeTruthy();
+  });
+});
+
+describe("MET_IMAGE_WIDTHS — the proxy's cost control", () => {
+  // The point of the allowlist is that /api/img/met cannot be walked for
+  // thousands of distinct cache keys, each costing the museum an original. If
+  // this list grows, that cost grows with it, so the test states the number.
+  it("is exactly the three widths Drift renders", () => {
+    expect([...MET_IMAGE_WIDTHS]).toEqual([160, 843, 1686]);
+  });
+
+  it("accepts every listed width and nothing else", () => {
+    for (const w of MET_IMAGE_WIDTHS) expect(isMetImageWidth(w)).toBe(true);
+    // The widths that were probed live against the old range check, plus the
+    // old boundaries, which are now all refused.
+    for (const w of [16, 15, 0, -1, 400, 701, 703, 707, 842, 844, 1685, 1687, 4000])
+      expect(isMetImageWidth(w)).toBe(false);
+  });
+
+  it("parses only a canonically-spelled listed width", () => {
+    expect(parseMetImageWidth("160")).toBe(160);
+    expect(parseMetImageWidth("843")).toBe(843);
+    expect(parseMetImageWidth("1686")).toBe(1686);
+    // Every one of these is Number()-equal to 843 and would otherwise have been
+    // its own CDN cache key for an identical picture. Verified against the
+    // running route: 200 for "843", 400 for each of these.
+    for (const spelling of ["0843", "00843", "843.0", "+843", "8.43e2", " 843", "843 ", ""])
+      expect(parseMetImageWidth(spelling)).toBeNull();
+    // And the unlisted widths stay unlisted.
+    for (const spelling of ["701", "16", "400", "1685", "99999", "-843", "abc", "NaN"])
+      expect(parseMetImageWidth(spelling)).toBeNull();
+  });
+
+  it("refuses non-integers and junk", () => {
+    for (const w of [843.5, NaN, Infinity, -Infinity])
+      expect(isMetImageWidth(w)).toBe(false);
+  });
+
+  // THE ANTI-DRIFT PROPERTY. Every URL the app can build must survive the gate
+  // the route applies. If someone adds a width to a call site without adding it
+  // to the list, this goes red rather than 400ing in production.
+  it("admits every width the URL builders can produce", () => {
+    const ref = { dept: "ep", name: "DP-42549-001" };
+    const built = [
+      metImageUrl(ref),
+      ...MET_IMAGE_WIDTHS.map((w) => metImageUrl(ref, w)),
+      ...MET_IMAGE_WIDTHS.map((w) => artImageAtWidth(metImageUrl(ref), w)!),
+    ];
+    for (const url of built) {
+      const w = Number(url.split("/").pop());
+      expect(isMetImageWidth(w)).toBe(true);
+    }
   });
 });
