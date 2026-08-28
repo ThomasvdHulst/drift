@@ -107,11 +107,11 @@ export function bucketsFor(realm) {
 // that has nothing to do with the real app.
 // ---------------------------------------------------------------------------
 
-/** Parallel discover calls per refill (drift/page.tsx REFILL_TOPICS). */
+/** Parallel discover calls per refill (drift/useDriftSession.ts REFILL_TOPICS). */
 export const REFILL_TOPICS = 3;
-/** Cards asked for per discover call (drift/page.tsx DISCOVER_LIMIT). */
+/** Cards asked for per discover call (drift/useDriftSession.ts DISCOVER_LIMIT). */
 export const DISCOVER_LIMIT = 4;
-/** Cards in a "Surprise me" seed batch (drift/page.tsx SEED_LIMIT). */
+/** Cards in a "Surprise me" seed batch (drift/useDriftSession.ts SEED_LIMIT). */
 export const SEED_LIMIT = 12;
 
 /**

@@ -121,17 +121,23 @@ describe("load-bot buckets are ones the server will accept", () => {
 describe("load-bot discover constants match the feed's", () => {
   // These decide how often a drift costs a network call, which is most of the
   // difference between the real ~2.4 requests per card and a made-up number.
-  // Read from drift/page.tsx, where they are declared as REFILL_TOPICS,
+  // Read from the session engine, where they are declared as REFILL_TOPICS,
   // DISCOVER_LIMIT and (inside the bucket-seed branch) SEED_LIMIT.
-  const page = new URL("../app/(app)/drift/page.tsx", import.meta.url);
+  //
+  // ⚠️ THE PATH MOVED ONCE AND THIS TEST IS WHY WE NOTICED. They used to live in
+  // `drift/page.tsx`; Phase 1 of the continuous-feed work split that file into a
+  // shell and `useDriftSession.ts`, and this went red the moment they moved,
+  // which is exactly its job. If it goes red again after a refactor, re-point
+  // it — do NOT relax the regex into something that can silently match nothing.
+  const engine = new URL("../app/(app)/drift/useDriftSession.ts", import.meta.url);
 
   it("matches REFILL_TOPICS, DISCOVER_LIMIT and SEED_LIMIT in the feed", async () => {
     const src = await import("node:fs/promises").then((fs) =>
-      fs.readFile(page, "utf8"),
+      fs.readFile(engine, "utf8"),
     );
     const read = (name: string): number => {
       const m = src.match(new RegExp(`const ${name} = (\\d+);`));
-      if (!m) throw new Error(`${name} not found in drift/page.tsx`);
+      if (!m) throw new Error(`${name} not found in useDriftSession.ts`);
       return Number(m[1]);
     };
     expect(REFILL_TOPICS).toBe(read("REFILL_TOPICS"));

@@ -144,7 +144,7 @@ export default function HowItWorksPage() {
 
       <Section title="What Drift does not do">
         <P>
-          No autoplay. No queue of preloaded cards (it fetches at most one
+          No autoplay. No queue of preloaded cards (it shows you at most one
           ahead). No streaks, badges or notifications. After about 25 stops it
           notes that you have been going a while, and you can dismiss that and
           carry on.

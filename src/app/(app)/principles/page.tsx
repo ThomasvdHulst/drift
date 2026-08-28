@@ -47,8 +47,8 @@ export default function PrinciplesPage() {
           partway into view.
         </P>
         <P>
-          <Lead>What this rules out: </Lead>a deep queue. Drift fetches at most
-          one card ahead. That is a deliberate limit rather than a technical one:
+          <Lead>What this rules out: </Lead>a deep queue. Drift shows you at
+          most one card ahead. That is a deliberate limit rather than a technical one:
           a large buffer is what makes a feed feel like there is always more
           waiting, and once twenty cards are ready, stopping starts to feel
           wasteful. One ahead is enough for the next card to appear instantly.

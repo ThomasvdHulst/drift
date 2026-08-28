@@ -15,7 +15,7 @@
 // measuring a configuration nobody deploys. The JWT goes ONLY to Supabase, for
 // `record_stop` and the sync writes, exactly as the app does.
 //
-// The sequence below mirrors src/app/(app)/drift/page.tsx. Where it makes a
+// The sequence below mirrors src/app/(app)/drift/useDriftSession.ts. Where it makes a
 // choice the page makes, the page's line is named, because the value of this
 // driver is entirely in being faithful:
 //

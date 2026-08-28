@@ -13,9 +13,10 @@
 // copies of the app.
 //
 // Driven by KEYBOARD, not by simulated swipes. The feed binds these itself
-// (drift/page.tsx:2147): ArrowDown drifts onward, 1/2/3 pull the first, second
-// or third thread, ArrowUp goes back. They run through exactly the same handlers
-// a gesture does, and they do not depend on hit-testing an animated element,
+// (the keydown effect in drift/page.tsx): ArrowDown drifts onward, 1/2/3 pull
+// the first, second or third thread, ArrowUp goes back. They run through
+// exactly the same handlers a gesture does, and they do not depend on
+// hit-testing an animated element,
 // which is what makes a gesture-driven bot flaky rather than informative.
 // ---------------------------------------------------------------------------
 
@@ -176,7 +177,7 @@ export async function runBrowserBot({
       // cards that were never shown.
       //
       // ⚠️ AND IT HAS TO BE PRESSED AGAIN WHEN NOTHING HAPPENS. Both `advance`
-      // and `onThread` early-return while `busyRef` is set (drift/page.tsx:2076),
+      // and `onThread` early-return while `busyRef` is set (drift/useDriftSession.ts),
       // which it is for the whole of a buffer refill — so a press that lands
       // during one is dropped. A reader sees the loading state and presses
       // again; a bot that waited 30 seconds and gave up recorded the app as
