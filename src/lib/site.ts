@@ -87,12 +87,22 @@ export const PUBLIC_CONTENT_ROUTES = [
 ] as const;
 
 /**
- * Public, but nothing to index. `/auth/confirm` is where confirmation and
- * password-reset links land, so it MUST render signed out (behind the gate it
- * would show the landing page and silently swallow the token), but it is a
- * one-time landing strip with no content, so it stays out of the sitemap.
+ * Public, but deliberately not indexed. Two different reasons live here.
+ *
+ * `/auth/confirm` is where confirmation and password-reset links land, so it
+ * MUST render signed out (behind the gate it would show the landing page and
+ * silently swallow the token), but it is a one-time landing strip with no
+ * content, so it stays out of the sitemap.
+ *
+ * `/start` is where the QR code printed on stickers and flyers lands. It has
+ * real content, but that content is the landing page retold for someone holding
+ * a phone, so indexing it would put a near-duplicate of `/` in search results
+ * and split the one page we actually want ranked. Note it is NOT added to
+ * `robots.ts`: leaving it crawlable and sending `noindex` from the page is the
+ * stronger pair, because robots.txt only asks a crawler not to FETCH a URL, and
+ * a crawler that never fetches never learns the page said noindex.
  */
-export const PUBLIC_UTILITY_ROUTES = ["/auth/confirm"] as const;
+export const PUBLIC_UTILITY_ROUTES = ["/auth/confirm", "/start"] as const;
 
 /**
  * Public share links (Phase 27): `/s/<token>`.

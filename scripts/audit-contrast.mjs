@@ -59,6 +59,12 @@ const ROUTES = [
   // The imprint. Mostly a definition list, which no other page uses.
   { path: "/legal" },
   { path: "/install" },
+  // Where the QR code on a sticker or a flyer lands. It is the page most likely
+  // to be read cold, outdoors, in sunlight, by someone who has never seen Drift,
+  // which is the worst viewing condition any page here gets. It also carries two
+  // shapes no other public page has: the card still (tinted thread chips over a
+  // raised panel) and the numbered step list with serif numerals in accent tint.
+  { path: "/start" },
   // The page that takes money (Phase 32). Signed out it shows the pitch, the
   // price block and the pre-contractual "What you are buying" list, which is a
   // definition-list shape and an accent-tinted panel that appear nowhere else.

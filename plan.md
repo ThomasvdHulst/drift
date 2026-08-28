@@ -31,6 +31,9 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > defeats the friends-only guarantee on `shares`. Harmless while social is hidden; live the moment it
 > is not.
 >
+> **Phase 33H (28 August) added `/start`**, the page a QR code on a sticker or a flyer lands on,
+> plus a stale-credit fix on `/how-it-works`. Entry at the bottom.
+>
 > **Drift is live** at <https://www.usedrift.org> (Vercel + Supabase) as an installable PWA, in a
 > small friends-and-family beta, now taking real payments for the **supporter unlock** (Phase 32).
 > A refund starts a **seven day wait before that account can buy again** (Phase 32B); migration
@@ -5438,3 +5441,89 @@ Gates: **1,358 tests green** (81 files), `npm run build` clean, `npm run lint` *
 warnings**, `npm run audit:contrast` PASS at **32 views x 2 themes, 5,790 nodes** — the first run
 ever to include `/s/<token>`, and the first since Turnstile went on in which all four `/contact` rows
 were measured rather than skipped. `verify:supabase` / `verify:share` / `verify:billing` all green.
+
+
+## Phase 33H — `/start`, the page a QR code lands on (2026-08-28)
+
+Two things, both prompted by taking the printed flyer back to Claude Design for a review against
+the current product.
+
+### The stale credit the review half-found
+
+The reviewer reported that `/install` credited the Art Institute of Chicago in its footer and
+carried a Google AdSense meta tag. **Neither was true**, and both were checked against the live
+HTML of all fourteen public pages: zero AdSense references anywhere (the meta tag is conditional on
+`NEXT_PUBLIC_ADSENSE_CLIENT`, which production does not set), and `/install` credits The Met like
+every other page, because they all share one `PublicFooter`.
+
+But the instinct was right about the wrong page. **`/how-it-works` still said the Gallery was "the
+Art Institute of Chicago's open access collection"**, missed by the Phase 31 pass. Fixed.
+
+The paragraph under it was worse, and nobody had reported it: *"From an article about Monet you can
+step across to his paintings."* The Met catalogues its Impressionists but has not released them.
+Verified against the live API the same day: every one of the 45 Monet records returns
+`isPublicDomain: false` with an empty `primaryImage`, so `usable()` drops all of them and the
+doorway the page promises returns **nothing**. A reader who tries the exact example the page gives
+gets an empty result. Changed to Van Gogh, which is public domain at the Met across the board, with
+a comment saying why it is deliberately not Monet, because Monet is the obvious Impressionist name
+to reach for and this would otherwise be "improved" back. `ArtistSearch.tsx` already carried the
+same note; this page simply never got it.
+
+⚠️ The generalisable bit: **a reviewer reporting the wrong page is not a reviewer reporting nothing.**
+Both claims were false as stated and one of them was still worth the hour.
+
+### `/start`
+
+Stickers have room for a mark, a few words and a QR, and not for install instructions. So the QR
+points at a page that carries them. It is a **new page rather than a redirect to `/` or `/install`**,
+because the person it is for is neither of those pages' reader:
+
+* `/` is a long scroll that argues the case. `/start` has one screen before a thumb closes it.
+* `/install` explains both platforms to someone who already wants Drift. `/start` has to create the
+  wanting first, then install, in that order.
+
+Shape: what Drift is, one primary button, a still of a real card, then three numbered steps with
+the home-screen step carrying live help rather than a link somewhere else.
+
+Four decisions worth keeping:
+
+1. **Public but NOT indexed**, and left OUT of `robots.ts` on purpose. Its content is the landing
+   page retold, so indexing it would put a near-duplicate of `/` in search results and split the one
+   page meant to rank. Crawlable + `noindex` is the stronger pair than a `Disallow`: robots.txt only
+   asks a crawler not to FETCH a URL, and a crawler that never fetches never learns the page said
+   noindex. It joins `PUBLIC_UTILITY_ROUTES`, whose doc comment now covers two different reasons for
+   membership; `site.test.ts` already asserted the invariant generically, so it covered the new route
+   for free (one test title was renamed to stop claiming the list holds only the auth strip).
+2. **The install step is platform-aware, and Chrome gets one tap.** `StartInstall` shows the steps
+   for THIS phone rather than both platforms' worth of reading, and where Chrome offers
+   `beforeinstallprompt` it shows a real button instead. That event usually fires **before React
+   mounts**, so the page carries a small inline script that catches it pre-hydration and parks it on
+   `window`; without that the button appears by luck. Everything degrades: script blocked, JS off, or
+   event never fired all land on the written steps, which are never wrong. The first render lists
+   both platforms and narrows in an effect, because the first client render has to match the
+   server's.
+3. **The signed-in visitor gets the opposite button**, decided in CSS off the pre-paint
+   `data-session` flag rather than a branch. `/start` is public, so someone already signed in reaches
+   it too and needs "Open Drift", not "Create your free account". The session lives in localStorage,
+   so the server cannot know, and branching after hydration would show the wrong button and then swap
+   it. Same mechanism, and same reasoning, as the landing preview.
+4. **Every claim is one the site already makes in the same words.** "Free to read · your trails stay
+   private to your account" is lifted verbatim from the landing hero, including its reason for being
+   phrased that way: free reading has a daily allowance, so the line says only the part that is
+   unconditional. A page that oversells Drift contradicts the one thing Drift is selling (§2).
+
+`/start` was added to `scripts/audit-contrast.mjs`: it is the page most likely to be read cold,
+outdoors, in sunlight, by someone who has never seen Drift, and it carries two shapes no other
+public page has.
+
+⚠️ **`npm run audit:contrast` defaults to `BASE=http://localhost:3111`, not 3000, and it prints
+`PASS` after measuring ZERO nodes when it cannot reach the server.** Two full runs "passed" against
+a dev server on the wrong port before the `0 text nodes measured` line was believed over the `PASS`
+under it. Read the node count, never the verdict alone.
+
+Gates: **1,358 tests green** (81 files), `npm run build` clean, `npm run lint` clean, and
+`npm run audit:contrast` PASS at **3,914 nodes across 32 views x 2 themes**, with `/start` measuring
+43 nodes in each theme. Driven in real browsers with Playwright: iPhone shows only the Safari steps,
+Pixel only the Chrome steps, desktop the "no home screen here" note, the CTA swap flips correctly
+with `drift-auth` in localStorage, the page sends `noindex`, there is no horizontal overflow, and
+the console is clean.

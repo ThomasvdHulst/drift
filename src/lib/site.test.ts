@@ -45,7 +45,7 @@ describe("what search engines are pointed at", () => {
     }
   });
 
-  it("keeps the one-time auth landing strip out of the sitemap", () => {
+  it("keeps every public-but-unindexed route out of the sitemap", () => {
     for (const r of PUBLIC_UTILITY_ROUTES) {
       expect(isPublicRoute(r), `${r} must render signed out`).toBe(true);
       expect([...INDEXABLE_ROUTES], `${r} has nothing to index`).not.toContain(r);
