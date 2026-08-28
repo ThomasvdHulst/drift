@@ -106,15 +106,24 @@ export default function HowItWorksPage() {
       <Section title="Realms">
         <P>
           There are two, and you can cross between them.{" "}
-          <Lead>Encyclopedia </Lead>is Wikipedia. <Lead>Gallery </Lead>is the Art
-          Institute of Chicago&apos;s open access collection: public domain
-          paintings, prints and objects, zoomable, with the museum&apos;s own
-          label.
+          <Lead>Encyclopedia </Lead>is Wikipedia. <Lead>Gallery </Lead>is The
+          Metropolitan Museum of Art&apos;s open access collection: public
+          domain paintings, prints and objects, zoomable, with the museum&apos;s
+          own label.
         </P>
+        {/* The example artist is deliberately NOT Monet, which is the obvious
+            Impressionist name to reach for and was what this said until the
+            Gallery moved museums. The Met catalogues its Impressionists but has
+            not released them: every Monet record comes back `isPublicDomain:
+            false` with an empty `primaryImage`, so `usable()` drops all of them
+            and the doorway this paragraph promises returns nothing. Verified
+            against the live API on 28 August 2026. Van Gogh is public domain at
+            the Met across the board, so the example a reader tries actually
+            works. See CLAUDE.md §4 and the same note in ArtistSearch.tsx. */}
         <P>
           When a card has a counterpart in the other realm, a doorway appears.
-          From an article about Monet you can step across to his paintings, and
-          from a Hokusai print to the article.
+          From an article about Van Gogh you can step across to his paintings,
+          and from a Hokusai print to the article.
         </P>
       </Section>
 
