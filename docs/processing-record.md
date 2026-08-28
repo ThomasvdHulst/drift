@@ -102,7 +102,7 @@ never a task**, which the earlier version of this file got wrong.
 | Vercel | ✅ In force | Pre-signed addendum: "shall become legally binding upon Customer entering into the Agreement". The SCCs inside it are signed by deeming: "Data Exporter is deemed to have signed these Standard Contractual Clauses". |
 | Resend | ✅ In force | Same construction, same wording, binding on acceptance of the Terms of Service. |
 | Supabase | ⚠️ To confirm | A DPA is published and surfaced under Organisation → Legal Documents. Whether the account has it incorporated or awaiting an action has not been checked. |
-| Cloudflare | ❌ Not in force | Cloudflare's DPA is **not** automatic: it takes effect "from the date on which Customer signed or the parties otherwise agreed to this DPA". Only needed if Turnstile is enabled, which it is not. |
+| Cloudflare | 🔴 **Required, and not in force** | Cloudflare's DPA is **not** automatic: it takes effect "from the date on which Customer signed or the parties otherwise agreed to this DPA". This row used to end "only needed if Turnstile is enabled, which it is not" — **Turnstile was switched on in production in August 2026**, so it is needed now. Sign it, or turn Turnstile off. |
 | Google | ❌ Not in force | The Ads Data Processing Terms are accepted inside the AdSense account. **[BEFORE ADS]** |
 | Stripe | ⚠️ To confirm | Stripe's DPA forms part of the Services Agreement accepted when the account is created, so it should be in force on sign-up. **Confirm when the account exists**, and save it dated alongside Vercel's and Resend's. |
 
@@ -116,8 +116,16 @@ never a task**, which the earlier version of this file got wrong.
 - **DPF certification has not been checked per provider** at <https://www.dataprivacyframework.gov/list>.
   Until it is, treat the "Transfer basis" column above as the position that *will* apply, not the
   position that has been evidenced. Write the date checked in here.
-- **VAT.** No VAT identification number is published, on the basis that Drift carries on no
-  VAT-liable activity. That changes when advertising runs.
+- **VAT.** ⚠️ This entry used to read "no VAT identification number is published, on the basis that
+  Drift carries on no VAT-liable activity. That changes when advertising runs." **Both halves were
+  out of date, and in a way this same file contradicted**: row 10 above already describes selling
+  the supporter unlock and refers to "the VAT record". The trigger was **Phase 32 (the paid unlock),
+  not advertising**, and it has already fired: Drift sells a €7 product with Stripe Tax enabled
+  (`automatic_tax: { enabled: true }` in `/api/billing/checkout`), and the webhook logs a warning
+  when a payment arrives carrying no tax, precisely because the BTW inside it is still owed.
+  Drift **is** VAT-registered. What is still open is publication: `/legal` shows no VAT number,
+  and Article 3:15d(1)(f) BW wants it "insofar as" the service is VAT-liable, which it now is.
+  One line on that page once the number is to hand. See `docs/owner-actions.md`.
 
 ---
 

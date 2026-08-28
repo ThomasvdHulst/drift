@@ -63,14 +63,25 @@ without them:
    Access collection). AI may summarize, label, and curate; it must **never invent facts**.
    ⚠️ **A THIRD SOURCE IS BUILT AND SWITCHED OFF, AND TURNING IT ON IS NOT A ONE-LINER.**
    The Papers realm reads **arXiv** and is gated behind `NEXT_PUBLIC_REALM_PAPERS`, which is
-   `0`. Nothing is wrong while it stays `0`, but arXiv appears in **none** of the four places
-   that have to name a source: `/sources`, `/privacy`, `/colophon`, and
-   `docs/processing-record.md`. Flipping the flag without updating all four makes two
-   published legal documents wrong at once. The licence *position* is already decided and is
-   fine: arXiv per-paper licences vary, so `lib/licenses.ts` deliberately makes **no** licence
-   claim for that source (`licenceFor` returns null) and the card shows a plain "arXiv"
-   credit. It is the four documents that are missing, not the thinking. Update them **first**,
-   then flip the flag.
+   `0`. arXiv appears in **none** of the four places that have to name a source: `/sources`,
+   `/privacy`, `/colophon`, and `docs/processing-record.md`. Flipping the flag without
+   updating all four makes two published legal documents wrong at once. The licence *position*
+   is already decided and is fine: arXiv per-paper licences vary, so `lib/licenses.ts`
+   deliberately makes **no** licence claim for that source (`licenceFor` returns null) and the
+   card shows a plain "arXiv" credit. It is the four documents that are missing, not the
+   thinking. Update them **first**, then flip the flag.
+
+   ⚠️ **THIS PARAGRAPH USED TO OPEN "Nothing is wrong while it stays `0`", AND THAT WAS FALSE
+   FOR AS LONG AS IT SAID SO.** The flag was read in the CLIENT realm registry only
+   (`lib/realms/index.ts`), where it removes Papers from the realm tabs. The SERVER registry
+   registered `papers` unconditionally, so `/api/realm/papers/discover` and `.../summary` were
+   answering anyone on the internet with live arXiv abstracts while the flag read `0` and this
+   file said the realm was off. Measured against production on 27 August 2026, found by the
+   Phase 33G review, and fixed in `serverRealm()` — the one door all three
+   `/api/realm/[realm]/*` routes come through — with `realms/server/index.test.ts` pinning the
+   flag from both sides. The lesson generalises past this realm: **a flag read in one of two
+   registries is not a flag**, and "the UI does not offer it" is never the same claim as "it is
+   not served".
 
 ## 3. Tech stack
 

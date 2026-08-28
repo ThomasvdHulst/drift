@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { wikiQuery, wikiUserAgent } from "@/lib/wiki-server";
-import { firstPage } from "@/lib/wiki";
+import { firstPage, isValidWikiTitle } from "@/lib/wiki";
 import { topicByOresKey } from "@/lib/topics";
 import { cacheHeaders, CACHE_STABLE, NO_STORE } from "@/lib/cache-headers";
 
@@ -21,7 +21,12 @@ const THRESHOLD = 0.5;
 
 export async function GET(request: Request) {
   const title = new URL(request.url).searchParams.get("title");
-  if (!title) {
+  // `isValidWikiTitle` as well as a presence check: this title goes into the
+  // Action API's `titles`, where a `|` would silently make it a list of pages
+  // (see the note beside that function). Nothing it refuses could have named a
+  // real article, so this costs no legitimate lookup and saves a certain miss
+  // against the shared rate budget.
+  if (!title || !isValidWikiTitle(title)) {
     return NextResponse.json(
       { error: "missing title" },
       { status: 400, headers: NO_STORE },

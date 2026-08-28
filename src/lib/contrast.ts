@@ -86,13 +86,6 @@ export function ratio(fgHex: string, bgHex: string, alpha = 1): number {
   return contrastRatio(fg, bg);
 }
 
-/** CSS `color-mix(in srgb, a P%, b)`, so a derived colour can be checked here
- *  and rendered there without the two drifting apart. */
-export function mixSrgb(aHex: string, bHex: string, portion: number): RGB {
-  const [a, b] = [parseHex(aHex), parseHex(bHex)];
-  return a.map((v, i) => v * portion + b[i] * (1 - portion)) as RGB;
-}
-
 // ---------------------------------------------------------------------------
 // WCAG 2.2 thresholds.
 // ---------------------------------------------------------------------------

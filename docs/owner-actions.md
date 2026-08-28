@@ -35,34 +35,49 @@ Two things worth holding on to while you read:
 
 ---
 
-## 0. Added 27 August 2026 by the pre-flyer review — do these before the flyers
+## 0. Added 27 August 2026 by the two pre-flyer reviews — do these before the flyers
 
-The review is at <https://claude.ai/code/artifact/f24319a1-9ff1-4936-b7ad-7ccc840a1a2d> and its
-Phase 33D entry in `plan.md` explains each of these. Everything else it found is already fixed in
-code; these two need you, and the first one is the one that matters.
+Two reviews ran that day. The first is at
+<https://claude.ai/code/artifact/f24319a1-9ff1-4936-b7ad-7ccc840a1a2d> (Phase 33D in `plan.md`), the
+second at <https://claude.ai/code/artifact/2c69da8c-4905-4e6a-b8c3-024e66e68929> (Phase 33G).
+Everything they found is fixed in code. **The items below are the ones that need a human**, and both
+of the original two are now done: they are kept, marked, rather than deleted, because a to-do list
+that quietly drops finished work teaches you not to trust it.
 
-**1. Paste one migration. Two minutes.**
+**1. ✅ DONE — the write-limit migrations are applied.**
 
-Open Supabase Studio → SQL Editor → paste `supabase/migrations/0007_write_limits.sql` → Run. Then
-`npm run verify:supabase`, which checks it landed and currently fails two checks on purpose.
+`0007_write_limits.sql` is in, and so are `0008_user_kv_row_cap.sql` and
+`0009_share_payload_immutable.sql`. `npm run verify:supabase` proves it against the live project: an
+8 MB trail and an 8 MB `user_kv` blob are both refused, and invented `user_kv` keys are capped at 20.
 
-Why it matters: Row-Level Security answers "whose row is this?" and nothing else. Until this is
-applied, any signed-in account can write as much data as it likes straight into the database.
-Measured against your live project from an ordinary account: an 8 MB row accepted in 2 seconds, 500
-rows in 3 seconds. Your free tier is 500 MB, so one unfriendly signup could fill it and pause the
-project. The migration caps a row at 256 KB (your largest real trail is 41 KB) and an account at 500
-rows. No honest reader will ever meet either.
+Why it mattered: Row-Level Security answers "whose row is this?" and nothing else. Before this, any
+signed-in account could write as much as it liked straight into the database. Measured from an
+ordinary account: an 8 MB row accepted in 2 seconds, 500 rows in 3 seconds, against a 500 MB free
+tier. A row is now capped at 256 KB (your largest real trail is 41 KB) and an account at 500 rows.
+No honest reader will ever meet either.
 
-**2. Switch Turnstile on. Ten minutes.**
+**2. ✅ DONE — Turnstile is on. What is left is Cloudflare's DPA.**
 
-Create a Cloudflare Turnstile widget and set `NEXT_PUBLIC_TURNSTILE_SITE_KEY` and
-`TURNSTILE_SECRET_KEY` in Vercel. The code is already written and already fails closed.
+`NEXT_PUBLIC_TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` are set in Vercel and the widget is live
+(verified 27 August 2026 by finding the site key and `challenges.cloudflare.com/turnstile` in the
+deployed client bundle). `/api/contact` now has its real defence: it sends two emails per
+submission, one of them to an address the sender chose, from your domain.
 
-Why it matters: `/api/contact` sends two emails per submission, one of them to an address the sender
-chose, from your domain. The throttle in front of it used to key on a header the sender controls;
-that is fixed, but Turnstile is the layer the code itself calls the real defence, and it is off.
-Note this adds Cloudflare as a processor — `/privacy` and `docs/processing-record.md` already have
-the conditional wording, so nothing else needs writing.
+🔴 **The consequence that is still open.** This made Cloudflare an active processor of readers' IP
+addresses and browser signals. `/privacy` handles that by itself, because its Turnstile wording is
+conditional on the same flag and production renders it. The **contract** does not: Cloudflare's DPA
+is not automatic, it takes effect only once signed, so right now a processor is running without the
+Article 28(3) contract that must be in place before it processes anything. Sign it in the Cloudflare
+dashboard and save it dated alongside Vercel's and Resend's, or turn Turnstile back off.
+`docs/processing-record.md` §Article 28(3) has been corrected to say this.
+
+**3. Publish the BTW number on `/legal`. Two minutes, once you have the number to hand.**
+
+Set `NEXT_PUBLIC_VAT_ID` in Vercel. The page is already conditional on it: with the number set it
+explains that Drift carries on a VAT-liable activity and shows it, which is what Article 3:15d(1)(f)
+BW asks for now that the supporter unlock is selling. Until it is set, the page no longer claims a
+reason (it used to say Drift "takes no payment, shows no advertising and earns nothing", which stayed
+on a live legal page for a while after Phase 32 made it untrue).
 
 **Also, while you are in there:** `SUPABASE_EMAIL` and `SUPABASE_PASSWORD` in `.env` are now unused
 and can be deleted. The verify scripts used to sign in as your own account with them, that password
@@ -248,10 +263,13 @@ Ignore this section entirely unless §2 changed your mind. In order:
       you are 16 or older, so it cannot tell 16 from 18. Either a second declaration gets added or
       the certified platform handles it. Not built, because it needs an API that cannot be tested
       without an approved account.
-- [ ] **Ask an accountant about VAT** before the first advert renders. Advertising revenue is a
-      VAT-relevant economic activity, and there is a small-business scheme (KOR) worth asking about.
-      Once you have a BTW number, `/legal` needs one line added: it currently publishes no VAT number
-      and explains why, which is accurate only while Drift earns nothing.
+- [ ] ⚠️ **VAT is no longer an ads question, and this item was stale.** It used to read "ask an
+      accountant about VAT before the first advert renders", which dated the trigger to advertising.
+      The trigger was **Phase 32**: Drift has been selling the €7 unlock with Stripe Tax on since
+      then, and Drift is VAT-registered. So the only thing outstanding is **publishing the BTW
+      number on `/legal`**, which shows none today and explains why in wording that was accurate
+      only while Drift earned nothing (Article 3:15d(1)(f) BW wants it "insofar as" the service is
+      VAT-liable). One line, once the number is to hand. Advertising would not change this.
 - [ ] Only then set `NEXT_PUBLIC_ADS_ENABLED=1`. Nothing needs changing in Vercel today: the switch
       is off there, and off is what the code now requires before anything from Google can load.
 

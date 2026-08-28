@@ -83,12 +83,20 @@ export default function LegalPage() {
             requires the number insofar as such an activity is carried on.
           </P>
         ) : (
+          /* ⚠️ THIS BRANCH USED TO STATE A REASON, AND THE REASON WENT FALSE.
+             It read "because Drift carries on no VAT-liable activity: it takes
+             no payment, shows no advertising and earns nothing" — written before
+             Phase 32, and left standing on a live legal page after the supporter
+             unlock started taking money. A legal page asserting something untrue
+             about the business is worse than one that says less, so the reason
+             is gone and only the rule remains, which is true in every state.
+             The fix for the missing number itself is to set NEXT_PUBLIC_VAT_ID;
+             see docs/owner-actions.md. */
           <P>
-            No VAT identification number is published for Drift because Drift
-            carries on no VAT-liable activity: it takes no payment, shows no
-            advertising and earns nothing. Article 3:15d(1)(f) BW requires the
-            number only insofar as such an activity is carried on. If that
-            changes, this page changes first.
+            No VAT identification number is shown here. Article 3:15d(1)(f) BW
+            requires one insofar as a VAT-liable activity is carried on. If you
+            need Drift&rsquo;s VAT details, the email address above reaches the
+            person who can give them to you.
           </P>
         )}
       </Section>

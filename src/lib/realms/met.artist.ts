@@ -101,7 +101,6 @@ export function rankArtists(
 
 /** How far from the artist a drift has wandered. Two rings, see the header. */
 export type MetArtistRing = 0 | 1;
-export const MAX_ARTIST_RING: MetArtistRing = 1;
 
 /** What the server worked out about an artist, by tallying a sample of their
  *  own public-domain works. Ring 1 widens into these; either may be absent, and

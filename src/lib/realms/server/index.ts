@@ -79,7 +79,34 @@ const REALMS: Partial<Record<RealmId, ServerRealm>> = {
   papers,
 };
 
-/** The server adapter for a realm, or null if the realm isn't known/wired. */
+/**
+ * Realms that only exist while their flag is on.
+ *
+ * ⚠️ A FLAG READ IN ONLY ONE OF THE TWO REGISTRIES IS NOT A FLAG. `PAPERS_ENABLED`
+ * lived in the CLIENT registry alone (`realms/index.ts`), where it removes Papers
+ * from the realm tabs — so the feature looked switched off while
+ * `/api/realm/papers/discover` and `/api/realm/papers/summary` went on answering
+ * anyone on the internet with live arXiv abstracts. Measured against production on
+ * 27 August 2026: `bucket=ml&limit=2` returned two real papers with their arXiv
+ * URLs. Nothing in the UI reached it, which is exactly why nobody noticed.
+ *
+ * That is not merely an unused endpoint. CLAUDE.md §2.5 requires arXiv to be named
+ * in `/sources`, `/privacy`, `/colophon` and `docs/processing-record.md` BEFORE the
+ * realm serves anything, and it is named in none of them — so the live site was
+ * redistributing a third source that two published legal documents say is not there.
+ *
+ * The gate belongs here rather than in each route: `serverRealm` is the one door
+ * all three generic `/api/realm/[realm]/*` routes come through, so a realm that is
+ * off is simply not known, and every route answers its existing "unknown realm"
+ * 400 with no new branch to keep in sync.
+ */
+const FLAGGED: Partial<Record<RealmId, boolean>> = {
+  papers: process.env.NEXT_PUBLIC_REALM_PAPERS === "1",
+};
+
+/** The server adapter for a realm, or null if the realm isn't known/wired/enabled. */
 export function serverRealm(realm: string): ServerRealm | null {
-  return REALMS[realm as RealmId] ?? null;
+  const id = realm as RealmId;
+  if (FLAGGED[id] === false) return null;
+  return REALMS[id] ?? null;
 }

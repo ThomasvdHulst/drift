@@ -41,6 +41,8 @@ import {
   type MetImageSize,
 } from "@/lib/realms/met";
 import { makeGate, makeBreaker } from "@/lib/upstream";
+import { clientIpFromHeaders } from "@/lib/contact";
+import { imageLimiter } from "@/lib/ratelimit";
 
 export const dynamic = "force-dynamic";
 
@@ -124,6 +126,26 @@ const UA =
   process.env.MET_USER_AGENT ||
   "Drift/1.0 (https://www.usedrift.org; thomasvdhulst03@gmail.com)";
 
+/**
+ * Why one derivative could not be fetched.
+ *
+ * ⚠️ THE STATUS IS CARRIED OUT OF HERE ON PURPOSE, because the caller has to
+ * tell "there is no such picture" from "we could not look" — the same
+ * distinction `searchIds({rethrow})` and `UpstreamError.status` exist for on the
+ * API host (CLAUDE.md §4). A 404 from both derivatives is a settled answer about
+ * a made-up name and may be cached; a timeout or a 5xx is the museum having a
+ * bad minute and must not be.
+ */
+class DerivativeError extends Error {
+  /** The HTTP status, or 0 when the fetch never produced one (timeout, reset). */
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "DerivativeError";
+    this.status = status;
+  }
+}
+
 /** One derivative, through the gate and the breaker. Throws on any failure. */
 async function fetchDerivative(
   ref: { dept: string; name: string },
@@ -133,33 +155,76 @@ async function fetchDerivative(
   const url = metUpstreamImageUrl(ref, size);
   imageBreaker.guard(url);
   await imageGate.next((ms) => new Promise((r) => setTimeout(r, ms)));
+
+  let res: Response;
   try {
-    const res = await fetch(url, {
+    res = await fetch(url, {
       headers: { "User-Agent": UA },
       signal: AbortSignal.timeout(timeoutMs),
     });
-    // A timeout is the failure that actually happens here, so unlike the API
-    // host's breaker this one counts slowness, not just refusals.
-    //
-    // ⚠️ But NOT a 404. This used to be `record(!res.ok)`, which let four
-    // requests for made-up artwork names — a free path segment, no auth — open
-    // the circuit and take every Met image down for thirty seconds, on repeat.
-    // `isMetImageHostFailure` carries that rule and the measurement behind it.
-    // The throw below is unchanged: a missing derivative still falls back to
-    // `web-large`, it just no longer counts against the host.
-    imageBreaker.record(isMetImageHostFailure(res.status));
-    if (!res.ok) throw new Error(`image ${size} responded ${res.status}`);
+  } catch (err) {
+    // The request never came back. A timeout is the failure that actually
+    // happens on this host, so unlike the API host's breaker this one counts
+    // slowness, not just refusals. Status 0 says we learned nothing about
+    // whether the picture exists.
+    imageBreaker.record(true);
+    throw new DerivativeError(String(err), 0);
+  }
+
+  // A 404 must not count against the breaker: four requests for made-up names
+  // would otherwise open the circuit and take every Met image down for thirty
+  // seconds, and the name is a free path segment with no auth in front of it.
+  // `isMetImageHostFailure` carries that rule and the measurement behind it.
+  //
+  // ⚠️ WHY THE RESPONSE IS HANDLED OUTSIDE THE `try` ABOVE. It used to be one
+  // block, so the throw below was caught by its own `catch`, which then called
+  // `record(true)` a second time for the same response. On a 404 that was
+  // harmless — `record(false)` resets the counter before the catch increments
+  // it, so it could never accumulate, and the guarantee above always held. On a
+  // GENUINE failure it was not: a 503 recorded twice, so `threshold: 4` behaved
+  // like 2 and the circuit opened after two responses instead of four. Splitting
+  // the fetch from the response makes each response count exactly once, which is
+  // also what lets the status be carried out to the caller. Measured both ways
+  // and pinned in route.test.ts.
+  imageBreaker.record(isMetImageHostFailure(res.status));
+  if (!res.ok) {
+    throw new DerivativeError(`image ${size} responded ${res.status}`, res.status);
+  }
+
+  try {
     return Buffer.from(await res.arrayBuffer());
   } catch (err) {
+    // The body died mid-read: a real host failure, and not an answer about the
+    // picture either.
     imageBreaker.record(true);
-    throw err;
+    throw new DerivativeError(String(err), 0);
   }
 }
 
+/** Did this attempt settle the question of whether the picture exists? */
+function isSettledMiss(err: unknown): boolean {
+  return err instanceof DerivativeError && err.status === 404;
+}
+
 export async function GET(
-  _req: Request,
+  req: Request,
   ctx: { params: Promise<{ dept: string; name: string; width: string }> },
 ) {
+  // ⚠️ ONE INBOUND REQUEST IS TWO OUTBOUND ONES when the picture is not there,
+  // and `name` is free text within its allowlist, so unlimited distinct requests
+  // are cheap to send and never hit the edge cache. Measured 27 August 2026:
+  // five junk names cost ten requests to `images.metmuseum.org`, and forty of
+  // them in flight took a REAL artwork from 0.32 s to 8.66 s, because they all
+  // queue on the same `imageGate` a reader's card image uses. Hence a per-caller
+  // bucket, sized around the trail map's burst (see lib/ratelimit.ts).
+  const gate = imageLimiter.take(clientIpFromHeaders((n) => req.headers.get(n)));
+  if (!gate.ok) {
+    return new Response("too many image requests", {
+      status: 429,
+      headers: { "Cache-Control": "no-store", "Retry-After": String(gate.retryAfterSec) },
+    });
+  }
+
   const { dept, name, width } = await ctx.params;
   // Allowlisted AND canonically spelled — see the note above and the tests
   // beside `parseMetImageWidth`.
@@ -185,6 +250,8 @@ export async function GET(
       // Not fatal any more. A soft picture is worth more to a reader than a
       // broken one, and this is the difference between a Gallery card that looks
       // finished and one that looks abandoned (§4: degrade, never break).
+      // Its outcome deliberately does NOT decide the cache below: `web-large` is
+      // the fallback and therefore the last word on whether the name exists.
       console.warn("[api/img/met] original unavailable, falling back", err);
     }
   }
@@ -194,12 +261,43 @@ export async function GET(
     try {
       source = await fetchDerivative(ref, "web-large", FALLBACK_TIMEOUT_MS);
     } catch (err) {
+      // The deciding attempt. A 404 here means the museum has no picture under
+      // this name, whatever the original did; anything else means we could not
+      // find out.
+      const settledMiss = isSettledMiss(err);
       console.error("[api/img/met]", err);
-      return new Response("image unavailable", {
-        status: 502,
-        // Never cache a failure: the next reader should get a real attempt.
-        headers: { "Cache-Control": "no-store" },
-      });
+
+      // ⚠️ THIS USED TO BE A FLAT 502 WITH `no-store`, AND THAT COMBINATION IS
+      // WHAT MADE THE ROUTE WORTH ATTACKING. Every request for a made-up name
+      // cost two fetches to a host the museum already deprioritises, and nothing
+      // ever got cheaper on repeat, so a shell loop was a Gallery outage for
+      // every reader plus a bill. The old comment said "never cache a failure:
+      // the next reader should get a real attempt", which is right about an
+      // OUTAGE and wrong about a NAME THAT DOES NOT EXIST.
+      //
+      // So the two are now separated, the same way the API host separates them
+      // (CLAUDE.md §4: a 404 is a settled answer, a 403 is not):
+      //
+      //   both derivatives 404  → the name is wrong, and will still be wrong
+      //                            tomorrow. 404, cached an hour, so a loop
+      //                            stops reaching the museum after one pass.
+      //   anything else        → we could not look. 502, cached one minute:
+      //                            long enough to blunt a hammer, short enough
+      //                            that a real outage heals almost immediately.
+      //
+      // Neither is `immutable`, and neither is long, because an artwork can be
+      // added to the museum's open-access set at any time.
+      return settledMiss
+        ? new Response("no such image", {
+            status: 404,
+            headers: {
+              "Cache-Control": "public, max-age=0, s-maxage=3600, stale-while-revalidate=3600",
+            },
+          })
+        : new Response("image unavailable", {
+            status: 502,
+            headers: { "Cache-Control": "public, max-age=0, s-maxage=60" },
+          });
     }
   }
 

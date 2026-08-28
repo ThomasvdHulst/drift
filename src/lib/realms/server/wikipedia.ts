@@ -23,6 +23,7 @@ import {
   actionPageToCard,
   selectCardBatch,
   topicSearch,
+  isValidWikiTitle,
   type ActionPage,
 } from "@/lib/wiki";
 import { fileKey } from "@/lib/imagecredit";
@@ -70,6 +71,10 @@ async function leadBridges(
 
 /** morelike related candidates for a title (client selects the diverse 3). */
 export async function wikiRelated(title: string): Promise<RelatedCandidate[]> {
+  // Refused before it reaches the Action API: see `isValidWikiTitle`. `|` here
+  // would turn one title into a list of them, and nothing that fails this check
+  // could ever have named a page, so no legitimate lookup is lost.
+  if (!isValidWikiTitle(title)) return [];
   const raw = await wikiQuery({
     generator: "search",
     gsrsearch: `morelike:${title}`,
@@ -114,6 +119,7 @@ export async function wikiSummary(
   title: string,
   opts: { full?: boolean } = {},
 ): Promise<Card | null> {
+  if (!isValidWikiTitle(title)) return null;
   const props = { ...CARD_PROPS };
   if (opts.full) delete (props as Record<string, string>).exsentences;
   const raw = await wikiQuery({ titles: title, redirects: "1", ...props });
@@ -147,6 +153,7 @@ const MAX_SECTIONS = 4; // the lead + up to 3 body sections
 const MIN_BLOCK_PARAGRAPHS = 2; // fewer than this and we do not trust the parse
 
 export async function wikiExtended(title: string): Promise<ExtendedBody | null> {
+  if (!isValidWikiTitle(title)) return null;
   try {
     const rich = await wikiExtendedBlocks(title);
     if (rich) return rich;

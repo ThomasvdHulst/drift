@@ -63,11 +63,11 @@ const ROUTES = [
   // price block and the pre-contractual "What you are buying" list, which is a
   // definition-list shape and an accent-tinted panel that appear nowhere else.
   { path: "/supporter" },
-  { path: "/contact" },
+  { path: "/contact", settle: 1500 },
   // The DSA Article 16 branch of the contact form: extra fields, a checkbox and
   // its label, and the anonymity note. None of it renders in the default mode,
   // so without this row it would never be measured.
-  { path: "/contact", selectReport: true },
+  { path: "/contact", selectReport: true, settle: 1500 },
   { path: "/drift" },
   { path: "/drift?title=Mohs%20scale&seed=Mohs%20scale", expand: true },
   // The end screen (Phase 28). Everything it now holds — the quoted bridge
@@ -232,6 +232,7 @@ for (const {
   endTrail,
   walkDoor,
   branchInFeed,
+  settle,
 } of ROUTES) {
   const label = keepModal
     ? `${route} [welcome modal]`
@@ -251,10 +252,20 @@ for (const {
       // page is still fetching long after an ordinary route has settled — and
       // an upstream that is throttling us pushes `networkidle` past a 30s
       // budget, which skipped the row rather than failing it.
+      // ⚠️ `networkidle` IS NOT REACHABLE ON EVERY PAGE, and a page that cannot
+      // reach it is SKIPPED rather than failed — so a widget that holds a
+      // connection open silently removes a route from the audit. That is what
+      // happened to /contact the moment Turnstile was configured: Cloudflare's
+      // script keeps talking, the page never goes idle, and three of the four
+      // /contact rows reported "timed out, skipped" on a run where nothing was
+      // wrong with them. A view can therefore opt out of idle and settle on a
+      // fixed pause instead; contrast is a property of painted pixels, so `load`
+      // plus a moment is all this measurement has ever needed.
       res = await page.goto(BASE + route, {
-        waitUntil: "networkidle",
+        waitUntil: settle ? "load" : "networkidle",
         timeout: endTrail || branchInFeed ? 60000 : 30000,
       });
+      if (settle) await page.waitForTimeout(settle);
     } catch {
       console.log(`  ?  ${theme.padEnd(5)} ${label}  (timed out, skipped)`);
       continue;

@@ -80,6 +80,60 @@ export function isJunkPage(page: ActionPage): boolean {
   });
 }
 
+/**
+ * MediaWiki's own limit on a page title, in bytes.
+ *
+ * Anything longer cannot name a page that exists, so sending it upstream buys
+ * nothing and spends the shared rate budget (docs/beta-readiness.md) on a
+ * certain miss.
+ */
+const TITLE_MAX = 255;
+
+/**
+ * Characters MediaWiki forbids in a page title.
+ *
+ * ⚠️ `|` IS THE ONE THAT MATTERED, and it is why this function exists rather
+ * than a length check. The Action API takes up to 50 pages in one call and
+ * separates them with `|`, so a title carrying one stops being a title and
+ * becomes a LIST. Reproduced 27 August 2026 against a local instance:
+ *
+ *     /api/realm/encyclopedia/summary?id=Main%20Page%7CFoo   →  a card for "Foobar"
+ *
+ * Two things are wrong there. The reader is handed a page nobody asked for,
+ * which is a quiet lie in an app whose first principle is that you can always
+ * see why a card appeared; and one request gets to name up to fifty pages, which
+ * is an amplifier on a budget every reader shares. It is not a way into other
+ * parameters: `URLSearchParams` encodes `&` and `=`, so only the separator
+ * escapes, but the separator is enough.
+ *
+ * The rest of the set comes from MediaWiki's own rules (`#<>[]{}`), so refusing
+ * them rejects nothing that could ever have resolved. A space and an underscore
+ * are both legal and both left alone.
+ */
+const ILLEGAL_TITLE_CHARS = /[|#<>[\]{}]/;
+
+/**
+ * Could this string name a Wikipedia page at all?
+ *
+ * A guard rather than a sanitiser on purpose: silently stripping the `|` would
+ * turn "Main Page|Foo" into a request for some third page, which is the same
+ * class of quiet wrong answer. Refusing lets the caller answer "not found",
+ * which is true.
+ */
+export function isValidWikiTitle(title: string): boolean {
+  const t = title.trim();
+  if (!t) return false;
+  // TextEncoder rather than Buffer: this module is imported from the browser as
+  // well as the server, and Buffer does not exist there.
+  if (new TextEncoder().encode(t).length > TITLE_MAX) return false;
+  if (ILLEGAL_TITLE_CHARS.test(t)) return false;
+  // Control characters cannot appear in a title, and are worth refusing on their
+  // own account before anything is interpolated into a URL. Written as escapes
+  // rather than literals so the source stays readable.
+  if (/[\u0000-\u001f\u007f]/.test(t)) return false;
+  return true;
+}
+
 /** The first page from an Action API `query.pages` array (or null). */
 export function firstPage(raw: unknown): ActionPage | null {
   const pages = (raw as { query?: { pages?: ActionPage[] } })?.query?.pages;

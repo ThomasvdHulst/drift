@@ -19,10 +19,47 @@ import type { EntitlementRow } from "./withdrawal";
 // only thing that stops working is buying, which is correct.
 // ---------------------------------------------------------------------------
 
+/**
+ * ⚠️ WHICH STRIPE ACCOUNT IS THIS DEV SERVER POINTED AT?
+ *
+ * `.env` holds the TEST key (and is what `npm run verify:billing` reads, via
+ * `--env-file=.env`), while `.env.local` may hold the LIVE one so the real
+ * product and price can be checked. Next loads `.env.local` AHEAD of `.env`, so
+ * whatever is in `.env.local` wins and `npm run dev` can quietly be talking to
+ * the live account. `returnOrigin` allows localhost by design, so the flow
+ * completes: pressing Buy on a dev server opens a real, chargeable checkout, and
+ * a refund of it starts the seven day cooldown on that account (Phase 32B).
+ *
+ * That is a legitimate thing to want, so this does not refuse it. It says so,
+ * once per process, where the person who will be surprised is looking. Silence
+ * would be the wrong answer in both directions: a blocked live test is annoying,
+ * and an unannounced live charge is worse.
+ */
+let warnedAboutLiveKey = false;
+function warnIfLiveKeyOffProduction(key: string): void {
+  if (warnedAboutLiveKey) return;
+  if (!key.startsWith("sk_live")) return;
+  // ⚠️ NOT `NODE_ENV`. `next start` sets it to "production", so keying on it
+  // would stay silent for a LOCAL production run against the live account,
+  // which is exactly one of the cases worth warning about. `VERCEL_ENV` is set
+  // by the platform and is "production" only on a real production deployment,
+  // so this stays quiet where it should and speaks up on a laptop and on a
+  // preview deploy alike.
+  if (process.env.VERCEL_ENV === "production") return;
+  warnedAboutLiveKey = true;
+  console.warn(
+    "[billing] ⚠️  LIVE Stripe key in a non-production process. Checkout here " +
+      "takes REAL money. `.env.local` overrides `.env`, so this is usually a " +
+      "live key sitting in .env.local. Swap in STRIPE_SECRET_KEY_TEST (and the " +
+      "matching STRIPE_PRICE_ID_TEST) to go back to test mode.",
+  );
+}
+
 /** The Stripe client, or null when `STRIPE_SECRET_KEY` is absent. */
 export function stripeClient(): Stripe | null {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) return null;
+  warnIfLiveKeyOffProduction(key);
   return new Stripe(key, {
     // Named so a reader can tell which integration a request came from in the
     // Stripe dashboard's logs, which matters the first time something is wrong.

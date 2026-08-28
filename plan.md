@@ -7,18 +7,24 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 
 > ## Current status: 2026-08-27
 >
-> **Phase 33D (27 August) is the pre-flyer review**: the repo was read end to end by a reviewer who
-> had not written it, ahead of the beta opening to strangers. Eight findings fixed, one deliberately
-> left. Full entry at the bottom of this file; the report is at
-> <https://claude.ai/code/artifact/f24319a1-9ff1-4936-b7ad-7ccc840a1a2d>.
+> **Phase 33G (27 August) is the second pre-flyer review and its fixes**: the repo was read end to
+> end again by a reviewer who had not written it, ten findings raised, and every one of them is now
+> closed. Full entry at the bottom of this file; the report is at
+> <https://claude.ai/code/artifact/2c69da8c-4905-4e6a-b8c3-024e66e68929>.
+> (Phase 33D, earlier the same day, was the first such pass. Its entry is also at the bottom.)
 >
-> ⚠️ **Two owner actions are outstanding and one of them is a gate:**
-> 1. **Paste `supabase/migrations/0007_write_limits.sql`** into Supabase Studio. Until it is applied,
->    any signed-in account can write unbounded data straight into the database (measured: an 8 MB row
->    accepted in 2s, 500 rows in 3s, against a 500 MB free tier). `npm run verify:supabase` fails two
->    checks until it lands, and names the file.
-> 2. **Set the two Turnstile keys.** The contact form's per-IP throttle no longer keys on a spoofable
->    header, but Turnstile is the layer the code calls the real defence and it is still off.
+> ✅ **The two owner actions this block used to list are DONE.** They are recorded here rather than
+> deleted because this block is the first thing every session reads, and for a while it was telling
+> everyone that a live defence was off and a migration unapplied when neither was true:
+> 1. `0007_write_limits.sql` **is applied** (along with `0008_user_kv_row_cap.sql` and
+>    `0009_share_payload_immutable.sql`). `npm run verify:supabase` proves it against the live
+>    project: an 8 MB trail and an 8 MB `user_kv` blob are both refused, and invented `user_kv` keys
+>    are capped at 20.
+> 2. **Turnstile is configured in Vercel and live in production.** Verified by finding the site key
+>    and `challenges.cloudflare.com/turnstile` in the deployed client bundle.
+>    ⚠️ One consequence has NOT been settled and is now the open item: Cloudflare is an active
+>    processor, and `docs/processing-record.md` still records no Article 28(3) contract with them.
+>    See "Open owner items" below.
 >
 > ⚠️ **Before `NEXT_PUBLIC_SOCIAL` is ever turned back on**, run the two `revoke`s in the Phase 33D
 > entry: friendship can currently be forged by rewriting `requester_id` on a received request, which
@@ -41,11 +47,12 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > what the museum actually grants. Measured after: a 12-card Gallery session is 96 Met requests with
 > zero 403s, zero breaker trips and threads on every card.
 >
-> **Gates:** 1,314 unit tests green, `npm run build` clean, `npm run lint` clean with **zero
-> warnings**, `npm run audit:contrast`
-> PASS (31 views x 2 themes; the node count varies with how much local reading data the instance
-> has, 3,878 on an empty one. Pass `BASE=…` matching your port or it measures nothing and still
-> says PASS). Backend: `npm run verify:supabase`, `verify:social`, `verify:share`, `verify:billing`.
+> **Gates:** 1,358 unit tests green (81 files), `npm run build` clean, `npm run lint` clean with
+> **zero warnings**, `npm run audit:contrast` PASS (**32** views x 2 themes, 5,790 nodes on a
+> production build with reading data; the count varies with how much local data the instance has, so
+> compare the PASS, not the number. Pass `BASE=…` matching your port or it measures nothing and still
+> says PASS, and pass `AUDIT_SHARE_TOKEN=…` or `/s/<token>` is skipped). Backend:
+> `npm run verify:supabase`, `verify:social`, `verify:share`, `verify:billing`.
 > Update these numbers when they change.
 >
 > ### The compliance audit is fully implemented and closed out
@@ -95,8 +102,15 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 >   only worked in the browser you signed up in was fixed in code, but the fix lives in the templates
 >   in `supabase/email-templates/` and they must be pasted into Supabase (Auth, Emails, Templates).
 >   Unverified either way from here. See the 2026-07-27 bug-fix entry below.
-> - **Turnstile is optional and not configured.** The contact form's other anti-spam layers work
->   without it. Setting both keys makes it fail-closed, and it would add Cloudflare as a processor.
+> - **Sign Cloudflare's DPA, or turn Turnstile off.** Turnstile is now configured and live, which is
+>   what the contact form wanted, and it made Cloudflare an active processor of readers' IP addresses
+>   and browser signals. Cloudflare's DPA is **not** automatic (it takes effect only once signed), so
+>   until it is, a processor is running without the Article 28(3) contract that has to be in place
+>   before it processes anything. `docs/processing-record.md` §Article 28(3) now says this instead of
+>   the old "only needed if Turnstile is enabled, which it is not".
+> - **Publish the BTW number on `/legal`.** Drift is VAT-registered and has been selling since Phase
+>   32, so Article 3:15d(1)(f) BW wants the number shown. `/legal` publishes none today because the
+>   page was written when there was no VAT-liable activity. One line, once the number is to hand.
 >
 > ### ▶ Next
 >
@@ -5228,3 +5242,199 @@ visible.
 Gates: **1,314 tests green** (78 files), `npm run build` clean, `npm run lint` **clean with zero
 warnings**, `npm run audit:contrast` PASS, `verify:social` / `verify:share` / `verify:billing` green,
 `verify:supabase` green except the two checks awaiting the migration above.
+
+---
+
+## Phase 33G — the second pre-flyer review, and its fixes (2026-08-27)
+
+A second end-to-end read of the repository by a reviewer who had not written it, run the same day as
+33D and immediately before the beta opens to strangers. **Ten findings, all ten now closed.** The
+report, with the measurements behind each one, is at
+<https://claude.ai/code/artifact/2c69da8c-4905-4e6a-b8c3-024e66e68929>.
+
+Every gate was green before the review started, which is the useful part: none of what follows was
+found by a gate, and all of it lived where no gate was looking.
+
+### The one that mattered: arXiv was live in production
+
+`NEXT_PUBLIC_REALM_PAPERS` was read in the CLIENT realm registry only
+(`src/lib/realms/index.ts:144`), where it removes Papers from the realm tabs. The SERVER registry
+registered `papers` unconditionally, so `/api/realm/papers/discover` and `.../summary` were public,
+unauthenticated endpoints on the live site, returning real arXiv abstracts to anyone who asked.
+Measured against production:
+
+```
+$ curl "https://www.usedrift.org/api/realm/papers/discover?bucket=ml&limit=2"
+  → 2 cards, "VBVR-Pro: A Scalable and Verifiable Suite for Native Visual Reasoning",
+    source: arxiv, https://arxiv.org/abs/2608.26105v1
+```
+
+Nothing in the UI reached it, which is exactly why nobody noticed. That is not merely an unused
+endpoint: CLAUDE.md §2.5 requires arXiv to be named in `/sources`, `/privacy`, `/colophon` and
+`docs/processing-record.md` **before** the realm serves anything, and it is named in none of them,
+so the live site was redistributing a third source that two published legal documents say is absent.
+
+**The gate now lives in `serverRealm()`**, which is the single door all three generic
+`/api/realm/[realm]/*` routes come through, so a realm that is off is simply not known and every
+route answers its existing "unknown realm" 400 with no new branch to keep in sync.
+`src/lib/realms/server/index.test.ts` pins the flag from both sides, including that only `"1"`
+counts, so the two registries cannot disagree again. Verified after: all three papers routes answer
+400, both shipping realms unaffected.
+
+### The two amplifiers, and why only two routes carry a limiter
+
+The content routes are public on purpose (no user data, so the CDN can cache them, which is the
+scaling lever) and `AuthGate` is a client component, so **signing up gates nothing** and there is no
+`middleware.ts`. For most routes that is fine: the gate in `upstream.ts` already bounds what reaches
+the source at one call per request, 300 ms apart. It stops being enough where ONE inbound request
+becomes SEVERAL outbound ones, because then the attacker's cost and the source's cost come apart.
+Measured with `scripts/bots/upstream-count.mjs`:
+
+| route | inbound | upstream | |
+|---|---|---|---|
+| `/api/wiki/links` | 3 | **18** en.wikipedia.org | six to one |
+| `/api/img/met/…` | 5 | **10** images.metmuseum.org | two to one |
+| `/api/doorway` | 5 | 5 collectionapi | one to one, needs nothing |
+
+Both multipliers also defeat the edge cache trivially by varying a free-text parameter. The effect
+on a real reader was measured, not assumed: twelve concurrent `wiki/links` calls took a card fetch
+from **0.47 s to 7.53 s** and its threads to **12.41 s**; forty junk image requests took a real
+artwork from **0.32 s to 8.66 s**, because they queue on the same gate a reader's card image uses.
+
+`src/lib/ratelimit.ts` is a pure token bucket, per warm instance, keyed on the address
+`clientIpFromHeaders` already works out (an empty key always passes, same rule and same reason as
+the contact throttle). A bucket rather than a counter because real reading is bursty and abuse is
+sustained. Two buckets, sized from what the real callers do:
+
+- **`wiki/links`: burst 12, 12/min.** `UnopenedPage` fires it once when a trail exit opens and never
+  during a drift, so twelve is far past anything a person does. Measured after: 12 through, then
+  429 with an honest `Retry-After`, and 12 upstream requests across a 20-request loop instead of 120.
+- **`/api/img/met`: burst 150, 150/min**, deliberately loose. It is the backstop, not the fix, and
+  the failure it could cause (a refused image is a visibly broken card, and several readers share
+  one address behind any NAT) is worse than the one it prevents, which `imageGate` and `imageBreaker`
+  already bound.
+
+`roundsFor()` also charges `wiki/links` by what was actually asked for: `pllimit=max` returns 500
+links across the whole result, so a single junk title now costs two upstream calls instead of six,
+while the real caller's eight titles still get five. Measured after: 3 single-title calls = 3
+requests; a real 8-title exit call = 5.
+
+### The image proxy: a settled miss and an outage are different answers
+
+The real fix for a loop over invented names was never a limiter, it was the cache. Both failures
+used to be a flat 502 with `no-store`, so nothing ever got cheaper on repeat. They are now split the
+way the API host already splits them (CLAUDE.md §4: a 404 is a settled answer, a 403 is not):
+
+- both derivatives 404 → **404, `s-maxage=3600`**. The name is wrong and will still be wrong
+  tomorrow, so the edge absorbs the repeat instead of the museum.
+- anything else → **502, `s-maxage=60`**. Long enough to blunt a hammer, short enough that a real
+  outage heals almost immediately. Neither is `immutable`: an artwork can join the open-access set
+  at any time.
+
+⚠️ **And a real bug came out of writing the test for it.** `fetchDerivative` handled the fetch and
+the response in one `try`, so the `throw` for a non-ok response was caught by its own `catch`, which
+called `record(true)` a second time for the same response. On a 404 that was harmless — the
+`record(false)` resets the counter before the catch increments it, so it could never accumulate, and
+the "a 404 must not open the circuit" guarantee always held. **On a genuine failure it was not: a
+503 was counted twice, so `threshold: 4` behaved like 2** and the circuit opened after two responses
+instead of four. Splitting the fetch from the response makes each response count exactly once.
+Measured both ways, and `route.test.ts` distinguishes them: three failing requests make 2 upstream
+calls under the old shape and 4 under the new one. The test was confirmed to fail on the old code
+before being kept.
+
+*(The first draft of that finding claimed 404s had been opening the circuit. Writing the test
+disproved it. The comment in the route now says only what was measured.)*
+
+### A pipe in a title was a list of titles
+
+`/api/realm/encyclopedia/summary?id=Main%20Page%7CFoo` returned a card for **Foobar**. The `id` went
+straight into the Action API's `titles`, where `|` is the separator, so the caller decided how many
+pages one request asked for (up to 50) and got back a page nobody named. Not a break-out —
+`URLSearchParams` encodes `&` and `=` — but a quiet wrong answer in an app whose first principle is
+that you can always see why a card appeared.
+
+`isValidWikiTitle` (`lib/wiki.ts`) is a guard, not a sanitiser: stripping the `|` would turn
+"Main Page|Foo" into a request for some third page, which is the same class of wrong. It refuses the
+characters MediaWiki itself forbids (`|#<>[]{}`), control characters, and anything over 255 **bytes**,
+so it rejects nothing that could ever have resolved. Applied at `wikiSummary`, `wikiRelated`,
+`wikiExtended`, `/api/wiki/topics` and `/api/wiki/links`. Verified after: the pipe case is a plain
+404 and `?id=Octopus` is untouched.
+
+### Documentation that had gone false
+
+Load-bearing comments and status blocks are the point of this repository's style, so a stale one is
+a defect, not tidiness.
+
+1. **This file's own status block** listed two outstanding owner actions, one marked a gate. Both
+   were already done: `0007` (and `0008`, `0009`) are applied, and Turnstile is live in Vercel.
+   Confirmed against the live project and the deployed bundle. It is corrected rather than deleted,
+   because it is the first thing every session reads and for a while it was telling everyone a live
+   defence was off.
+2. **Cloudflare's DPA.** `docs/processing-record.md` said it was not in force and "only needed if
+   Turnstile is enabled, which it is not". Turnstile **is** enabled, so an active processor is
+   recorded as having no Article 28(3) contract. `/privacy` is fine (its Turnstile wording is
+   conditional on the same flag and production renders it) — the gap is the contract, and it is now
+   an open owner item rather than a settled line.
+3. **VAT.** The same file said Drift "carries on no VAT-liable activity. That changes when
+   advertising runs", while row 10 of that very table already described selling the unlock and
+   referred to "the VAT record". The trigger was Phase 32, not advertising, and Drift is
+   VAT-registered. Corrected here and in `docs/owner-actions.md`, which framed it the same stale way.
+4. **`/legal` said it out loud, on a live legal page.** Its no-VAT-number branch explained that Drift
+   "takes no payment, shows no advertising and earns nothing". The conditional mechanism was already
+   right (the copy follows `NEXT_PUBLIC_VAT_ID`), so the fix is to set that variable; until it is
+   set, the branch no longer asserts a reason that is untrue. **Setting `NEXT_PUBLIC_VAT_ID` is an
+   open owner item.**
+
+### Smaller things
+
+- **The Stripe live key in `.env.local` beats the test key in `.env`**, because Next loads
+  `.env.local` first, and `returnOrigin` allows localhost by design — so a Buy press on `npm run dev`
+  opens a real chargeable checkout, and refunding it starts the seven day cooldown. That is a
+  legitimate thing to do on purpose, so it is not refused; `stripeClient()` now logs one loud warning
+  per process when a live key is used outside production, and `.env.local.example` explains which
+  file wins.
+- **Dead code removed:** `mixSrgb` (`lib/contrast.ts`) and `MAX_ARTIST_RING` (`lib/realms/met.artist.ts`),
+  each of which appeared exactly once in the whole repository, at its own definition. A full scan
+  found only those two; the other nine unreferenced exports are legitimately test-only or documented
+  as deliberately kept, `CACHE_SHORT` among them (its "nothing uses this today" comment is still true).
+- **The share page is now measured, and `/contact` measures again.** `audit:contrast` had never
+  covered `/s/<token>`, the one page a stranger reaches with real content on it, because it needs a
+  real token and a run without one only printed a warning. It has now been run with one: 61 nodes in
+  each theme, PASS. Doing that surfaced a second gap — ⚠️ **turning Turnstile on had silently removed
+  `/contact` from the audit.** The harness waits for `networkidle`, Cloudflare's widget keeps a
+  connection open, and a view that times out is SKIPPED rather than failed, so three of the four
+  `/contact` rows had quietly stopped being measured with nothing wrong with them. A view can now opt
+  out of idle and settle on a fixed pause (`settle: 1500`), which is all a contrast measurement of
+  painted pixels ever needed. All four rows measure again.
+
+### Verified clean, and worth recording as such
+
+Checked and found nothing wrong: no server-only key reaches the client bundle (every non-`NEXT_PUBLIC_`
+value searched across all 111 files in `.next/static`; the two hits were byte-identical public
+aliases and supabase-js's own key-format validator); no table has a write policy it should not; both
+JWT-verifying routes resolve the caller before acting and act only on that id; `returnOrigin` is
+allowlisted; the image proxy resists traversal, encoded traversal and non-canonical widths; the app
+runs fully with Supabase, Resend, Stripe and Turnstile all blanked, and degrades to the landing page
+rather than hanging when Supabase is configured but unreachable; no Google or analytics script of any
+kind is served; the EU public-domain filter is on every Met card path; erasure is pinned against the
+real migration SQL; and production answers 22 routes with no 500s and 27 unique links all 200.
+
+**The anti-slot-machine principles were measured, not read.** One advance makes exactly two API
+calls, both for the card you are ON; exactly one `<h1>` is in the DOM at rest; the provenance chip
+changed from "STARTING POINT" to "GO DEEPER · CEPHALOPOD" when a thread was pulled; the counter went
+"1 stop" to "2 stops"; no timer advances a card; and a source-wide search for streaks, badges,
+leaderboards and push notifications returns only the copy on `/principles` and `/about` promising
+there are none. Zero console errors throughout.
+
+### Still for a human
+
+1. **Sign Cloudflare's DPA** (or turn Turnstile off). A processor is live without its Article 28(3)
+   contract.
+2. **Set `NEXT_PUBLIC_VAT_ID`** so `/legal` publishes the BTW number, per Article 3:15d(1)(f) BW.
+3. The three items 33D left: email templates, `SUPABASE_EMAIL`/`SUPABASE_PASSWORD` cleanup, and the
+   two `revoke`s before social is re-enabled.
+
+Gates: **1,358 tests green** (81 files), `npm run build` clean, `npm run lint` **clean with zero
+warnings**, `npm run audit:contrast` PASS at **32 views x 2 themes, 5,790 nodes** — the first run
+ever to include `/s/<token>`, and the first since Turnstile went on in which all four `/contact` rows
+were measured rather than skipped. `verify:supabase` / `verify:share` / `verify:billing` all green.

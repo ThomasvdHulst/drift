@@ -12,6 +12,7 @@ import {
   isListLikeTitle,
   topicSearch,
   LIST_TITLE_PHRASES,
+  isValidWikiTitle,
   type ActionPage,
 } from "./wiki";
 
@@ -295,5 +296,70 @@ describe("candidateToCard", () => {
     expect(card.sourceUrl).toBe("https://en.wikipedia.org/wiki/Deep_sea");
     expect(card.imageUrl).toBe("https://x/960px-D.jpg");
     expect(card.extract).toContain("deep sea");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Title validity (pre-flyer review, finding 08).
+//
+// The `|` case is the reason this exists: the Action API separates up to 50
+// titles with it, so a title carrying one silently became a LIST and the route
+// answered with a page nobody asked for. Reproduced against a local instance on
+// 27 August 2026: `?id=Main Page|Foo` returned a card for "Foobar".
+// ---------------------------------------------------------------------------
+
+describe("isValidWikiTitle", () => {
+  it("refuses the separator that turns one title into fifty", () => {
+    expect(isValidWikiTitle("Main Page|Foo")).toBe(false);
+    expect(isValidWikiTitle("|")).toBe(false);
+    expect(isValidWikiTitle("Octopus|")).toBe(false);
+  });
+
+  it("refuses the other characters MediaWiki forbids", () => {
+    for (const bad of ["a#b", "a<b", "a>b", "a[b", "a]b", "a{b", "a}b"]) {
+      expect(isValidWikiTitle(bad), bad).toBe(false);
+    }
+  });
+
+  it("refuses control characters and the empty string", () => {
+    expect(isValidWikiTitle("")).toBe(false);
+    expect(isValidWikiTitle("   ")).toBe(false);
+    expect(isValidWikiTitle("a\u0000b")).toBe(false);
+    expect(isValidWikiTitle("a\nb")).toBe(false);
+  });
+
+  it("refuses a title longer than MediaWiki allows, counted in BYTES", () => {
+    expect(isValidWikiTitle("a".repeat(255))).toBe(true);
+    expect(isValidWikiTitle("a".repeat(256))).toBe(false);
+    // Multi-byte characters count for what they weigh, not what they look like.
+    expect(isValidWikiTitle("\u00e9".repeat(128))).toBe(false);
+    expect(isValidWikiTitle("\u00e9".repeat(127))).toBe(true);
+  });
+
+  // The half that matters most: it must reject nothing a reader could reach.
+  it("accepts the real titles the app actually asks for", () => {
+    for (const good of [
+      "Octopus",
+      "Main Page",
+      "Main_Page",
+      "Foo (disambiguation)",
+      "Saint-\u00c9tienne",
+      "\u30a2\u30cb\u30e1",
+      "C++",
+      "R\u00e9sum\u00e9",
+      "AT&T",
+      "1,000,000",
+      "Nineteen Eighty-Four",
+      "M\u00fcnchen",
+      "\u00c6thelred the Unready",
+      "Q*bert",
+      "50% (song)",
+      'Say "Hello"',
+      "Rock 'n' Roll",
+      "A/B testing",
+      "Category talk: not a namespace here, just a colon",
+    ]) {
+      expect(isValidWikiTitle(good), good).toBe(true);
+    }
   });
 });
