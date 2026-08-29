@@ -508,6 +508,59 @@ uncommitted ever reaches `seen` (it is written in exactly two places, both commi
 `overflow: hidden` freeze preserves `scrollTop` in Chromium (2,521 px across the toggle), so §8.1's
 parenthetical "(and restoring `scrollTop`)" is not a thing this code has to do. WebKit unverified.
 
+### 4.11 What the iPhone found (29 August, reported by the owner, measured after)
+
+25. **⚠️ ON AN IPHONE THE FEED TOOK TWO TO FOUR SWIPES PER CARD, AND THE CAUSE WAS A SENTENCE IN
+    A COMMENT.** Phase 7 deleted `resolveSwipe`, `edgesOf` and `isWheelReadingScroll` — the
+    helpers that decided "reading, or overscrolling to advance?" — and `gesture.ts` recorded
+    why: *"the feed is a native scroll-snap scroller now and the browser answers that
+    question."* Chrome and Firefox do. **WebKit does not**, and says so itself
+    ([WebKit's scrolling docs](https://trac.webkit.org/wiki/Scrolling)): during one scroll
+    interaction only one scrollable area moves, and hitting its extent rubber-bands rather than
+    chaining, so *"the user has to start a new gesture"*. That is two gestures at best; the
+    rubber-band and momentum settling under the returning thumb, plus mandatory snap springing
+    back a short flick, make it three or four.
+
+    **This was every card, not a corner.** Measured on a phone-sized production build, every
+    collapsed Encyclopedia card overflows its reading region — 18 of 18 across three viewports,
+    by 175 to 685px (table in §8.11). So §8.11's "make the collapsed card fit the viewport" was
+    not merely unbuilt, it was **never true**, and the plan that rested on it was unsound from
+    the start.
+
+    Two things were measured on the way and are worth keeping:
+    - **Chromium's chaining is reliable when the article is genuinely at its bottom**, and only
+      then: with a residual gap <=1px, a 140px pull inside the region advanced 6/6; with 37px
+      and 75px of gap left it did nothing, 2/2. A drag started in the 16px gutter advanced
+      10/10 from as little as 60px, which is why the owner found "swiping beside the card always
+      works" before anyone found the cause.
+    - **`overscroll-behavior-y: contain` injected on the reading region makes Chromium refuse to
+      chain**, which is close enough to WebKit's latching to be a test rig. `verify:feed`'s new
+      SCROLL HANDOFF section uses exactly that, and it is a real gate: with the polyfill
+      disabled (thresholds raised to 1e9, rebuilt, re-run) the two polyfill checks fail and the
+      two stand-down checks still pass, 71/73.
+    - **A DESKTOP CARD USUALLY FITS AND A PHONE CARD NEVER DOES**, which is one fact with two
+      faces and it caught the new checks out. The "reading does not advance you" check needs a
+      card with more left to read than the drag covers; at 1280 wide the collapsed article fits
+      the 554px reading column outright (0px of overflow, four cards running), so the check
+      failed for the correct reason — a card that fits reports both edges at once and SHOULD
+      hand off. It opens the article with "Read more" now (0 → ~2,000px at either viewport)
+      rather than hunting for a long one, which is deterministic and tests the case where an
+      accidental advance would cost the reader most.
+    - ⚠️ **AND THE SETUP FOR A CHAINING CHECK CANNOT ITSELF BE A GESTURE.** "Read to the end of
+      the article, then pull" was written as a sequence of drags, which is what a reader does —
+      and with native chaining live the drag that FINISHES the article chains straight on. It
+      moved the reader five cards and left the pull to be measured on a fresh article at its
+      top, which cannot advance and correctly did not. Both stand-down checks failed on the
+      phone with nothing wrong in the code. Park the article programmatically (`parkAtEnd`) and
+      keep the gesture for the thing under test.
+
+    Fixed with `edgePull` in `lib/gesture.ts` — a polyfill, not a replacement, that stands down
+    the moment it sees the outer scroller move on its own. **The lesson is the mirror of §4.9
+    finding 20 and of `CLAUDE.md §2.5`'s Papers flag: those are about a rule enforced in one of
+    two code paths. This one is about a rule handed to a platform that only some of the platform
+    implements.** "The browser does it" is a claim about every engine you ship to, and it is
+    worth a measurement before it is worth a deletion.
+
 
 **Sources**
 - [MDN: `scroll-snap-stop`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/scroll-snap-stop) and [MDN: CSS scroll snap](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Scroll_snap)
@@ -951,16 +1004,66 @@ The card has an inner scroll region (`[data-drift-scroll]`) whose edges `lib/ges
 to tell "scroll to read" from "overscroll to advance". With a native outer scroller this
 becomes real nested scrolling and it is the most delicate part of the build.
 
-The recommended posture:
-- Keep `overscroll-behavior-y: contain` on the reading region. Reaching the end of an expanded
-  article must **not** chain you into the next card: falling out of an article you were reading
-  is the worst possible accidental advance.
-- Make the *collapsed* card fit the viewport, so most cards have no scrollable region at all
-  (`edgesOf` already reports `atTop && atBottom` for these) and the outer snap scroll works from
-  anywhere on the card.
-- Keep a small wheel handler for desktop: at the region's bottom edge, accumulated overscroll
-  programmatically scrolls the outer scroller by one snap point. This reuses
-  `isWheelReadingScroll` rather than replacing it.
+⚠️ **THIS SECTION CALLED IT "the most delicate part" AND THEN GOT TWO OF ITS THREE
+RECOMMENDATIONS WRONG. It was rewritten on 29 August after the feature shipped and the owner
+reported the phone feeling stuck** (§4.11, finding 25). The superseded posture is kept below
+rather than deleted, because each line reads as sensible and each would be re-derived:
+
+- ~~"Keep `overscroll-behavior-y: contain` on the reading region"~~ — the build shipped `auto`
+  instead, deliberately (a trapped gesture leaves a long article with no way onward), and that
+  was the right call: `auto` is what makes Chrome and Android chain natively, which is the path
+  the handoff below defers to. **Do not change it.**
+- ~~"Make the *collapsed* card fit the viewport, so most cards have no scrollable region at
+  all"~~ — **measurably false, and it never held.** Measured across three phone viewports on a
+  production build, **every** collapsed Encyclopedia card overflows, 18 of 18:
+
+  | viewport | reading region | card content | overflow |
+  |---|--:|--:|--:|
+  | 375x667 (SE) | 583px | 948-1268px | **365-685px** |
+  | 390x844 (13/14/15) | 760px | 987-1299px | **227-539px** |
+  | 430x932 (15 Pro Max) | 848px | 1023-1210px | **175-362px** |
+
+  At 390x844 the content is hero 287px (34dvh), chip row 32-40, description 20, title 38 (75
+  when it wraps), extract 286, read-more and licence 52, threads 216-265, the scroll cue 20,
+  plus 96 of gaps and 40 of padding. Making that fit needs roughly **310px of content removed**
+  (extract down to three lines, hero down to 20dvh), which is a different and worse product,
+  and it does nothing for a card with "Read more" open, which is exactly when the region is
+  longest. Widening the seam was costed too: a 44px thumb gutter each side takes 23% of a 390px
+  screen and a line from ~40 characters to ~31. **Both were rejected. The card stays as it is.**
+- ~~"Keep a small wheel handler for desktop"~~ — never built, and the reason it was needed was
+  misdiagnosed as a desktop convenience. It is the same bug as the touch one, on the same
+  engine.
+
+**What is actually true, and what the code does now.** Whether reaching the end of the inner
+region hands the gesture to the outer one is not a CSS question, it is an ENGINE question:
+
+> Latching describes the fact that during a single scroll interaction, only one scrollable area
+> moves. If, in one gesture, you hit the scrollable extent, we don't start scrolling the
+> containing scroller in that gesture. Instead, we'll rubber-band, and **the user has to start a
+> new gesture** to get the enclosing scroller to scroll.
+>
+> — [WebKit's own scrolling documentation](https://trac.webkit.org/wiki/Scrolling)
+
+Chrome and Firefox chain. WebKit latches, for touch and for trackpad alike. So on an iPhone the
+pull past the end of an article did nothing, and with the card always overflowing it took two to
+four gestures per card. `lib/gesture.edgePull` is a **polyfill** for the missing chaining,
+driven from `ContinuousFeed`'s touch and wheel handlers:
+
+- The budget accrues only while the region is pinned at the edge being travelled towards, and a
+  reversal discards it. Reading never advances anyone.
+- It is driven by `touchmove`, so iOS momentum after `touchend` produces no events and cannot
+  advance anyone. That is the same protection the deleted `atBottomStart` rule gave, obtained
+  structurally rather than by measuring at gesture start.
+- ⚠️ **It stands down the instant the outer scroller moves** (`CHAIN_SLACK`), because that means
+  the browser is chaining and two mechanisms driving one scroller skips a card. This is what
+  makes it inert on Chrome and Android, and it is the guard to check first if the feed ever
+  jumps two.
+- The wheel path adds a quiet-gap reset, because trackpad momentum *does* keep firing `wheel`
+  after the fingers lift.
+
+`PULL_THRESHOLD` (96px past the edge) is the one number to tune on a device. It is stricter than
+the old feed's 50px because that measured from a standing start; this accrues only after the
+edge is reached. See its comment for the trade and for the two ways to back it off.
 
 ### 8.12 Mobile viewport stability
 Snap feeds jitter when the URL bar collapses and `dvh` changes mid-scroll. **Drift is already
@@ -995,7 +1098,11 @@ positions.
 7. The queue length never exceeds `stopsRemaining`, and the meter still **fails open**
    (`meter === null` means unmetered).
 8. Discarding a queued card **releases its pending id** so it can be served again later.
-9. Nothing advances without a gesture. No timers, ever.
+9. Nothing advances without a gesture. No timers, ever. **The scroll handoff (§8.11) does not
+    weaken this and must not be allowed to**: it is driven by `touchmove`, so a finger must be
+    down for a single pixel of it to accrue, and iOS momentum after `touchend` fires no events
+    at all. Anything that ever advances the feed from a `scroll` event, a timer or a
+    `touchend` delta is a different feature and breaks this line.
 10. The scroller ends at the last queued item. There is always a visible floor — or the ending
     card, which is the floor made explicit.
 11. **The feed moves on its own in exactly ONE place**: carrying the reader onto the ending. It is
@@ -1022,6 +1129,12 @@ positions.
     fresh object every render and not all of it reads refs — a memoised callback that captures it
     is holding one moment's `threads`, `current` and `history` forever (§4.8 finding 11). Go
     through `sRef`.
+18. **The scroll handoff stands down when the outer scroller moves.** It is a polyfill for the
+    chaining WebKit does not do, not a second way to drive the feed; on Chrome and Android
+    native chaining starts within ~20px of the region pinning and `CHAIN_SLACK` must see it and
+    withdraw. Two mechanisms moving one scroller skips a card, which is a phantom stop in the
+    trail — the exact dishonesty the two-phase model exists to prevent (§4.10 finding 23).
+    `verify:feed`'s SCROLL HANDOFF section checks both sides.
 
 ---
 

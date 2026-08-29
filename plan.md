@@ -13,13 +13,19 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > 1:1 with your finger, with a bounded three-card queue below the reader and an ending you scroll
 > into. Built over eight phases on the `continuous-feed` branch and finished 29 August.
 > `docs/continuous-feed.md` is the reference — the research, the rate-limit arithmetic, and
-> **seventeen invariants** that the design rests on. `CLAUDE.md §12` is the short map, and `§2.2`
+> **eighteen invariants** that the design rests on. `CLAUDE.md §12` is the short map, and `§2.2`
 > records the principle it reversed: "prefetch at most 1 card ahead" is no longer true, by
 > decision, and the constraint that replaced it is a queue the scroller physically ends at.
 >
-> **Gate it with `npm run verify:feed`** (136 checks over a real Chromium at two viewports).
+> **Gate it with `npm run verify:feed`** (146 checks over a real Chromium at two viewports).
 > ⚠️ Never alongside `audit:contrast` — both cross into the Gallery, and locally there is no CDN
 > in front of The Met's bucket. ⚠️ **iOS is still unverified**: nobody here has a device.
+>
+> **The scroll handoff (29 August) is the first fix reported from a real iPhone.** A card is two
+> nested scrollers, and WebKit will not hand a gesture from the inner one to the outer one: it
+> latches, so reaching the end of an article and pulling further did nothing and it took two to
+> four swipes a card. `edgePull` in `lib/gesture.ts` polyfills the chaining Chrome already does,
+> and stands down the moment it sees the browser doing it. Full entry at the bottom of this file.
 >
 > **Phase 33G (27 August) is the second pre-flyer review and its fixes**: the repo was read end to
 > end again by a reviewer who had not written it, ten findings raised, and every one of them is now
@@ -5719,3 +5725,74 @@ the scroller.
 
 Gates: **1,394 tests green** (83 files), `npm run build` clean, `npm run lint` clean with zero
 warnings, `npm run verify:feed` **136/136** at two viewports, `npm run audit:contrast` PASS.
+
+---
+
+## The scroll handoff — nested scrolling on WebKit (29 August 2026)
+
+**Reported from a real iPhone, which is the first time anything in this feed has been.** Swiping
+inside a card that has text below the fold took two to four gestures before the feed moved on;
+swiping in the gutter beside the card worked first time, every time.
+
+**The cause was a sentence in a comment.** Phase 7 deleted `resolveSwipe`, `edgesOf` and
+`isWheelReadingScroll` — the helpers that decided "reading, or overscrolling to advance?" — and
+recorded why in `gesture.ts`: *"the feed is a native scroll-snap scroller now and the browser
+answers that question."* Chrome and Firefox do. **WebKit does not**, and documents it plainly
+([WebKit's scrolling docs](https://trac.webkit.org/wiki/Scrolling)): during one scroll interaction
+only one scrollable area moves, and hitting its extent rubber-bands rather than chaining, so *"the
+user has to start a new gesture"*. Two gestures at best; the rubber-band settling under a returning
+thumb and mandatory snap springing back a short flick make it three or four.
+
+**And it was every card, not a corner.** Measured on a phone-sized production build, **every**
+collapsed Encyclopedia card overflows its reading region — 18 of 18 across three viewports, by 175
+to 685px. So `docs/continuous-feed.md` §8.11's "make the collapsed card fit the viewport, so most
+cards have no scrollable region at all" was not merely unbuilt; it was **never true**, and the
+posture that rested on it was unsound from the start. §8.11 is rewritten with the numbers.
+
+**The fix is a polyfill, not a replacement.** `edgePull` in `lib/gesture.ts` accrues finger travel
+only while the reading region is pinned at the edge being travelled towards, and hands the feed one
+snap point when it passes `PULL_THRESHOLD` (96px). Three properties matter:
+
+- ⚠️ **It stands down the instant the outer scroller moves** (`CHAIN_SLACK`). On Chrome and Android
+  native chaining starts within ~20px of the region pinning, so the budget can never fill and
+  nothing here fires. Two mechanisms driving one scroller skips a card, which is a phantom stop in
+  the trail. This is now invariant 18.
+- **It cannot bring back the bug the old `atBottomStart` rule fixed.** It is driven by `touchmove`,
+  so iOS momentum after `touchend` fires no events at all; reading never accrues, because a region
+  that can still move in the gesture's direction is not pinned; and a reversal discards the budget.
+- **`touchend` re-issues an ABSOLUTE slot** if the feed has not moved a pixel since we asked, which
+  covers WebKit refusing a programmatic scroll while a touch is latched. Absolute, so it can never
+  turn one card into two.
+
+The wheel path is the same function with a quiet-gap reset, because macOS Safari latches trackpad
+scrolls the same way and trackpad momentum *does* keep firing `wheel` after the fingers lift. No
+CSS changed: the region keeps `overscroll-behavior-y: auto`, which is the native path being
+deferred to.
+
+**Costed and rejected: making the card smaller**, which was the owner's own first idea. Making a
+collapsed card fit a 390x844 phone needs roughly 310px of content removed (extract down to three
+lines, hero down to 20dvh), and it does nothing for a card with "Read more" open, which is exactly
+when the region is longest. A 44px thumb gutter each side takes 23% of a 390px screen and a line
+from ~40 characters to ~31.
+
+**The gate is real, and it was proved to be.** Chromium chains, so it would pass these checks with
+the polyfill deleted; injecting `overscroll-behavior-y: contain` on the reading region makes it
+refuse to chain, which is close enough to WebKit's latching to serve as a rig. `verify:feed`'s new
+SCROLL HANDOFF section (the only touch-driven section in the file, via CDP) checks the polyfill
+path with chaining off, the stand-down with it on at 300px and 600px, that a swipe ending
+mid-article moves nothing, and the wheel. **Control run**: thresholds raised to 1e9 and rebuilt,
+the two polyfill checks fail and the two stand-down checks still pass, 71/73.
+
+**The lesson generalises, and it is the mirror of the one `CLAUDE.md §2.5` draws about the Papers
+flag.** That one is about a rule enforced in one of two code paths. This one is about a rule handed
+to a platform that only some of the platform implements: "the browser does it" is a claim about
+every engine you ship to, and it is worth a measurement before it is worth a deletion.
+
+⚠️ **Still unverified: the iPhone itself.** Two things need a device — whether WebKit honours a
+programmatic scroll of the outer scroller while a touch is still latched to the inner one (the
+`touchend` net covers it if not), and whether the finger lifting judders as the rubber-band returns
+under the snap. `PULL_THRESHOLD` is the number to tune there; its comment carries the trade and the
+two ways to back it off.
+
+Gates: **1,411 tests green** (83 files), `npm run build` clean, `npm run lint` clean,
+`npm run verify:feed` **146/146** at two viewports.

@@ -160,10 +160,10 @@ export function TourOverlay({
   // Set the stage for "swipe up to drift on".
   //
   // Drifting onward is deliberately an OVERSCROLL: you swipe up at the END of a
-  // card, so reading never advances you by accident. (That used to be decided in
-  // JS by `lib/gesture`'s `edgesOf`; since Phase 7 the feed is a native
-  // scroll-snap scroller and `overscroll-behavior` on the reading region decides
-  // it, but the rule the reader feels is unchanged.) A card opens at the top, and
+  // card, so reading never advances you by accident. (Decided in JS by
+  // `lib/gesture`'s `edgesOf` and `edgePull` — briefly left to the browser after
+  // Phase 7, which is a thing only some engines do; see the header of that file.
+  // The rule the reader feels has never changed.) A card opens at the top, and
   // since the reading area grew (the threads moved into the scroll flow on
   // phones) that end can be a long way down. So the tour was telling people to
   // swipe up while they were mid-text, where swiping up correctly does nothing at

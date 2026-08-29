@@ -57,7 +57,7 @@ without them:
    physically ENDS at the last queued card, `scroll-snap-stop: always` means a fling cannot
    blur past a card, and nothing advances without a gesture except one guarded auto-snap onto
    the ending card. An uncommitted card is not in the trail, not in `seen`, and not counted by
-   the meter. Invariants 1-17 in `docs/continuous-feed.md` §9 are the enforceable version of
+   the meter. Invariants 1-18 in `docs/continuous-feed.md` §9 are the enforceable version of
    this principle; read them before touching feed code.
    ⚠️ *And the separate, older warning still stands: the rule is about what is RENDERED, not
    about how many upstream calls a request makes.* The discover and random routes deliberately
@@ -371,6 +371,27 @@ npm run bots:teardown             # delete every load_bot account
 
 (Keep this section accurate as scripts are added.)
 
+**Testing on a real phone.** Two ways, and neither needs a staging environment:
+
+- **A Vercel preview deployment**, for anything that needs HTTPS (PWA install, OAuth) or a real
+  CDN in front of the museum. Every pull request gets its own preview URL automatically
+  (`docs/deploy.md`), and Supabase's redirect allowlist already covers
+  `https://*-<scope>.vercel.app/**`, so you can sign in on it normally. Nothing touches
+  `usedrift.org`.
+- **The Mac's own LAN address**, for a seconds-long edit-and-reload loop. `next start` already
+  binds every interface, so a build served on the desk is reachable from the phone on the same
+  Wi-Fi with no flags at all — verified `http://192.168.0.105:3106/drift` → 200:
+
+  ```bash
+  NEXT_PUBLIC_SUPABASE_URL= NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY= npm run build
+  NEXT_PUBLIC_SUPABASE_URL= NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY= npx next start -p 3106
+  # then on the phone: http://<ipconfig getifaddr en0>:3106/drift?realm=encyclopedia
+  ```
+
+  Blanking the cloud vars is what skips the login gate, which is what makes plain HTTP usable.
+  ⚠️ Use the **Encyclopedia**: there is no CDN in front of The Met's bucket here (§4). And note
+  the `next build` warning below — do not rebuild while that `next start` is serving.
+
 **Testing the app in a browser while another dev server is running.** The hosted app is
 login-gated whenever Supabase env is present. To exercise the feed without signing in,
 launch an isolated instance with the cloud vars blanked (shell env wins over `.env`):
@@ -529,7 +550,7 @@ The feed is a **CSS scroll-snap scroller**, one card per screen, 1:1 with your f
 replaced the card-at-a-time swipe, and the reversal it forced in §2.2 is recorded there.
 
 **Read `docs/continuous-feed.md` before touching feed code.** It holds the research, the
-measurements, the rate-limit arithmetic and — most importantly — **seventeen invariants** (§9)
+measurements, the rate-limit arithmetic and — most importantly — **eighteen invariants** (§9)
 that the whole design rests on. What follows is only the map.
 
 - **The engine and the shell are separate, and stay separate.**
@@ -558,7 +579,23 @@ that the whole design rests on. What follows is only the map.
   `npm test`, exactly like `audit:contrast`. ⚠️ **Never run the two together**: both cross into
   the Gallery, and locally there is no CDN in front of the museum's bucket. When a Gallery check
   fails, read the server log before reading the code.
-- **Still unverified: iOS.** No device here. `scroll-snap-stop: always` is the mitigation for
-  WebKit's historic hard-flick, and `commitAt` keeps the trail honest even if it does not hold.
-  Watch also for WebKit's cached snap positions going stale when children change; the queue adds
-  and removes them constantly. Symptoms and workarounds are in `docs/continuous-feed.md` §4.9.
+- ⚠️ **A CARD IS TWO NESTED SCROLLERS, AND WEBKIT WILL NOT HAND THE GESTURE FROM ONE TO THE
+  OTHER.** The card's reading region (`[data-drift-scroll]`) scrolls inside the feed's scroller,
+  and reaching the end of an article and pulling further chains you onward in Chrome and Firefox
+  but **latches** in WebKit ("the user has to start a new gesture" —
+  [WebKit's own docs](https://trac.webkit.org/wiki/Scrolling)), for touch and trackpad alike.
+  Reported as the iPhone feeling stuck at two to four swipes a card, and it was **every** card:
+  measured, 18 of 18 collapsed Encyclopedia cards overflow a phone viewport, by 175 to 685px.
+  `edgePull` in `lib/gesture.ts` is a **polyfill** for the missing chaining, and the thing to
+  understand before touching it is that **it stands down the instant the outer scroller moves on
+  its own** — that is what keeps it inert on the engines that chain, and two mechanisms driving
+  one scroller skips a card. Do NOT change the region's `overscroll-behavior-y: auto`; that is
+  the native path being deferred to. Do NOT "fix" this by shrinking the card: making a collapsed
+  card fit needs ~310px of content cut, and a thumb-sized gutter costs 23% of the screen width.
+  Both were costed and rejected. `docs/continuous-feed.md` §8.11 and §4.11 have the numbers.
+- **Still unverified: iOS.** No device here, so everything above about WebKit is from its
+  documentation and from a Chromium rig with chaining forced off, not from a phone.
+  `scroll-snap-stop: always` is the mitigation for WebKit's historic hard-flick, and `commitAt`
+  keeps the trail honest even if it does not hold. Watch also for WebKit's cached snap positions
+  going stale when children change; the queue adds and removes them constantly. Symptoms and
+  workarounds are in `docs/continuous-feed.md` §4.9.

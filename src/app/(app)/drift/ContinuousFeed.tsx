@@ -40,7 +40,15 @@ import type { Card, Thread, TrailStep } from "@/lib/types";
 import { cardId } from "@/lib/card";
 import { candidateToCard } from "@/lib/wiki";
 import { focusName } from "@/lib/focus";
-import { resolveHorizontalSwipe } from "@/lib/gesture";
+import {
+  NO_PULL,
+  WHEEL_QUIET_MS,
+  WHEEL_THRESHOLD,
+  edgePull,
+  edgesOf,
+  resolveHorizontalSwipe,
+  type PullState,
+} from "@/lib/gesture";
 import {
   COMMIT_RATIO,
   COMMIT_SETTLE_MS,
@@ -881,12 +889,25 @@ export function ContinuousFeed() {
   // Native key scrolling moves about 40px and mandatory snap drags it straight
   // back, so arrows would look dead without this. One key, one card — the same
   // promise the gesture makes.
+  //
+  // Returns the slot it moved to, which the scroll handoff below needs: an
+  // ABSOLUTE destination is the only thing safe to re-issue, and re-issuing is
+  // how that handler survives an engine that ignores a programmatic scroll
+  // while a touch is still down.
   const stepBy = useCallback(
     (delta: number) => {
       const el = scrollerRef.current;
-      if (!el) return;
+      if (!el) return null;
       const at = Math.round(el.scrollTop / el.clientHeight);
-      scrollToSlot(Math.max(0, at + delta), true);
+      // Clamped at BOTH ends, from the DOM rather than from `slots`, so this
+      // needs no dependency on a list that changes every commit.
+      const last = Math.max(
+        0,
+        Math.round((el.scrollHeight - el.clientHeight) / el.clientHeight),
+      );
+      const to = Math.min(last, Math.max(0, at + delta));
+      scrollToSlot(to, true);
+      return to;
     },
     [scrollToSlot],
   );
@@ -923,25 +944,166 @@ export function ContinuousFeed() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // ----- the horizontal realm cross -----
+  // ----- touch: the realm cross, and the scroll handoff -----
   //
   // `touch-action: pan-y` on the scroller means the browser claims the vertical
-  // axis and leaves horizontal drags to us, which is the only reason this can
-  // coexist with native scrolling at all. Same reasoning as the reading region's
-  // own `touch-pan-y` — see the comment in CardView.
-  const touchRef = useRef<{ x: number; y: number } | null>(null);
+  // axis and leaves horizontal drags to us, which is the only reason the cross
+  // can coexist with native scrolling at all. Same reasoning as the reading
+  // region's own `touch-pan-y` — see the comment in CardView.
+  //
+  // ⚠️ THE VERTICAL HALF IS A POLYFILL FOR SCROLL CHAINING, AND IT EXISTS
+  // BECAUSE WEBKIT DOES NOT HAVE ANY. A card is two nested scrollers: this feed,
+  // and the card's own reading region. Reaching the bottom of the inner one and
+  // pulling further hands the gesture to the outer one in Chrome and Firefox;
+  // WebKit LATCHES, moving only the scroller it picked when the finger went
+  // down, so on an iPhone that pull did nothing and it took two to four separate
+  // gestures to move on. Measured: every collapsed Encyclopedia card overflows
+  // its region on a phone, so this was every card, not a corner. The decision
+  // lives in `lib/gesture.edgePull`; the guard that makes it safe is that it
+  // stands down the instant the outer scroller moves on its own, so on a
+  // chaining engine nothing here fires. See docs/continuous-feed.md §8.11.
+  //
+  // This is the same fix `stepBy` above already is, for the same disease: a
+  // small scroll of a mandatory-snap scroller gets dragged straight back, so the
+  // move has to be made as one whole card or not at all.
+  const touchRef = useRef<{
+    x: number;
+    y: number;
+    lastY: number;
+    /** The active card's reading region, when the touch began inside it. The
+     *  marker is rendered only on the active card, so a hit here already means
+     *  "in the card being read" — the gutter, a peeking neighbour, the terminus
+     *  and the zoom overlay all give null and leave the browser to it. */
+    region: HTMLElement | null;
+    pull: PullState;
+    /** Where a handoff sent the reader, and where the feed stood when it did. */
+    target: number | null;
+    firedAt: number | null;
+  } | null>(null);
+
   function onTouchStart(e: React.TouchEvent) {
+    const t = e.changedTouches[0];
+    const region =
+      e.target instanceof Element
+        ? e.target.closest<HTMLElement>("[data-drift-scroll]")
+        : null;
     touchRef.current = {
-      x: e.changedTouches[0].clientX,
-      y: e.changedTouches[0].clientY,
+      x: t.clientX,
+      y: t.clientY,
+      lastY: t.clientY,
+      region,
+      pull: NO_PULL,
+      target: null,
+      firedAt: null,
     };
   }
+
+  function onTouchMove(e: React.TouchEvent) {
+    const g = touchRef.current;
+    const el = scrollerRef.current;
+    if (!g || !g.region || !el) return;
+    if (g.pull.fired) return;
+    // The tour's "look around" freeze is `overflow: hidden`, which stops a
+    // finger but not a programmatic scroll — so it has to be refused here.
+    if (s.holdNav) return;
+    const t = e.changedTouches[0];
+    const dy = g.lastY - t.clientY; // + = finger travelling up = onward
+    g.lastY = t.clientY;
+    // ⚠️ MEASURED FRESH EVERY MOVE, NOT CACHED AT `touchstart`. The obvious
+    // optimisation is to read the region's height once, since a finger is only
+    // down for a moment — but "Read more" fetches the rest of an article
+    // asynchronously, so a body that lands mid-gesture grows this region under
+    // the reader. Cached, we would still believe they were at the bottom and
+    // hand them to the next card with the article they just opened unread.
+    const edges = edgesOf({
+      scrollTop: g.region.scrollTop,
+      clientHeight: g.region.clientHeight,
+      scrollHeight: g.region.scrollHeight,
+    });
+    const { next, action } = edgePull(g.pull, {
+      dy,
+      atTop: edges.atTop,
+      atBottom: edges.atBottom,
+      outerTop: el.scrollTop,
+      totalX: t.clientX - g.x,
+      totalY: g.y - t.clientY,
+    });
+    g.pull = next;
+    if (action === "none") return;
+    g.firedAt = el.scrollTop;
+    g.target = stepBy(action === "forward" ? 1 : -1);
+  }
+
   function onTouchEnd(e: React.TouchEvent) {
     const start = touchRef.current;
-    if (!start || !s.crossEnabled) return;
+    if (!start) return;
+    const el = scrollerRef.current;
+    // ⚠️ THE SAFETY NET FOR THE ONE THING THAT CANNOT BE TESTED WITHOUT AN
+    // IPHONE: whether WebKit honours a programmatic scroll of the outer scroller
+    // while a touch is still latched to the inner one. If it did not, the feed
+    // has not moved a pixel since we asked, and asking again now that the finger
+    // is up costs nothing. It re-issues the ABSOLUTE slot rather than another
+    // relative step, so it can never turn one card into two.
+    if (start.target !== null && start.firedAt !== null && el) {
+      if (Math.abs(el.scrollTop - start.firedAt) < 4) scrollToSlot(start.target, true);
+      return; // a handoff and a realm cross are never the same gesture
+    }
+    if (!s.crossEnabled) return;
     const deltaX = e.changedTouches[0].clientX - start.x;
     const deltaY = start.y - e.changedTouches[0].clientY;
     if (resolveHorizontalSwipe({ deltaX, deltaY }) === "cross") onCross();
+  }
+
+  // ----- wheel: the same handoff, for macOS Safari -----
+  //
+  // WebKit latches trackpad scrolls exactly as it latches touch, so a Mac reader
+  // meets the same dead pull at the end of an article. Chrome and Firefox chain
+  // natively and the stand-down guard keeps this inert there.
+  //
+  // ⚠️ THE ONE THING TOUCH DOES NOT NEED: trackpad momentum keeps firing `wheel`
+  // events after the fingers lift, which is exactly the false advance the old
+  // feed's "measure the edge at the START of the gesture" rule existed to
+  // prevent. A burst that has gone quiet therefore starts a fresh budget.
+  //
+  // That reset is deliberately conservative, and one case is knowingly left on
+  // the table: a DISCRETE mouse wheel in Safari, notched slowly enough that
+  // every notch starts a new burst, may never accrue `WHEEL_THRESHOLD` and so
+  // never hand off. That is exactly what Safari does today with no handler at
+  // all, so the worst case here is "no better", never "worse" — which is the
+  // right way round for an engine nobody here can test on.
+  const wheelRef = useRef<{ pull: PullState; at: number }>({
+    pull: NO_PULL,
+    at: 0,
+  });
+
+  function onWheel(e: React.WheelEvent) {
+    const el = scrollerRef.current;
+    if (!el || s.holdNav) return;
+    const region =
+      e.target instanceof Element
+        ? e.target.closest<HTMLElement>("[data-drift-scroll]")
+        : null;
+    if (!region) return;
+    const w = wheelRef.current;
+    const now = Date.now();
+    if (now - w.at > WHEEL_QUIET_MS) w.pull = NO_PULL;
+    w.at = now;
+    if (w.pull.fired) return;
+    const edges = edgesOf({
+      scrollTop: region.scrollTop,
+      clientHeight: region.clientHeight,
+      scrollHeight: region.scrollHeight,
+    });
+    // A wheel has no axis to lock, so `totalX`/`totalY` are left off.
+    const { next, action } = edgePull(w.pull, {
+      dy: e.deltaY, // + = scrolling down the page = onward
+      atTop: edges.atTop,
+      atBottom: edges.atBottom,
+      outerTop: el.scrollTop,
+      threshold: WHEEL_THRESHOLD,
+    });
+    w.pull = next;
+    if (action !== "none") stepBy(action === "forward" ? 1 : -1);
   }
 
   if (s.dayDone) {
@@ -956,8 +1118,13 @@ export function ContinuousFeed() {
     <div
       className="flex h-dvh flex-col overflow-hidden bg-paper"
       data-realm={s.realm}
+      // React attaches `touchstart`, `touchmove` and `wheel` PASSIVELY at the
+      // root, and none of these calls `preventDefault`, so listening here cannot
+      // cost the scroll a frame.
       onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
+      onWheel={onWheel}
     >
       <FeedTopBar
         steps={s.path.map((i) => s.history[i])}
