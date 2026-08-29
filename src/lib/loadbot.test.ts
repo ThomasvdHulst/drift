@@ -22,6 +22,7 @@ import {
   summaryUrl as appSummaryUrl,
 } from "./realms";
 import { randomOffset as appRandomOffset } from "./discover";
+import { QUEUE_AHEAD as appQueueAhead } from "./feedqueue";
 import { TOPICS } from "./topics";
 import { MET_BUCKETS } from "./realms/met.buckets";
 import {
@@ -35,6 +36,7 @@ import {
   REFILL_TOPICS,
   DISCOVER_LIMIT,
   SEED_LIMIT,
+  QUEUE_AHEAD,
 } from "../../scripts/bots/urls.mjs";
 
 // Titles chosen to exercise the encoding: a space, an ampersand, a slash, a
@@ -121,22 +123,41 @@ describe("load-bot buckets are ones the server will accept", () => {
 describe("load-bot discover constants match the feed's", () => {
   // These decide how often a drift costs a network call, which is most of the
   // difference between the real ~2.4 requests per card and a made-up number.
-  // Read from drift/page.tsx, where they are declared as REFILL_TOPICS,
+  // Read from the session engine, where they are declared as REFILL_TOPICS,
   // DISCOVER_LIMIT and (inside the bucket-seed branch) SEED_LIMIT.
-  const page = new URL("../app/(app)/drift/page.tsx", import.meta.url);
+  //
+  // ⚠️ THE PATH MOVED ONCE AND THIS TEST IS WHY WE NOTICED. They used to live in
+  // `drift/page.tsx`; Phase 1 of the continuous-feed work split that file into a
+  // shell and `useDriftSession.ts`, and this went red the moment they moved,
+  // which is exactly its job. If it goes red again after a refactor, re-point
+  // it — do NOT relax the regex into something that can silently match nothing.
+  const engine = new URL("../app/(app)/drift/useDriftSession.ts", import.meta.url);
 
   it("matches REFILL_TOPICS, DISCOVER_LIMIT and SEED_LIMIT in the feed", async () => {
     const src = await import("node:fs/promises").then((fs) =>
-      fs.readFile(page, "utf8"),
+      fs.readFile(engine, "utf8"),
     );
     const read = (name: string): number => {
       const m = src.match(new RegExp(`const ${name} = (\\d+);`));
-      if (!m) throw new Error(`${name} not found in drift/page.tsx`);
+      if (!m) throw new Error(`${name} not found in useDriftSession.ts`);
       return Number(m[1]);
     };
     expect(REFILL_TOPICS).toBe(read("REFILL_TOPICS"));
     expect(DISCOVER_LIMIT).toBe(read("DISCOVER_LIMIT"));
     expect(SEED_LIMIT).toBe(read("SEED_LIMIT"));
+  });
+
+  // QUEUE_AHEAD is the one the continuous feed added, and it is the most
+  // consequential of the four: it decides how many cards a thread pull hands back
+  // to the buffer and how far ahead the threads lookahead runs, so getting it
+  // wrong moves requests-per-card in both directions at once.
+  //
+  // Imported rather than scraped, because unlike the three above it lives in
+  // `src/lib` and vitest can simply read it. A direct comparison cannot silently
+  // match nothing, which is the failure mode the regex above has to guard against
+  // by hand.
+  it("matches QUEUE_AHEAD in the feed queue", () => {
+    expect(QUEUE_AHEAD).toBe(appQueueAhead);
   });
 
   it("aligns offsets exactly as the app does", () => {

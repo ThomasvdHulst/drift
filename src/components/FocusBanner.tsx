@@ -35,10 +35,20 @@ export function FocusBanner({
         {proximity && (
           <span className="text-accent-strong">· {proximity}</span>
         )}
+        {/* ⚠️ NO RESTING TINT ON THIS BUTTON, and it is a contrast rule rather
+            than a style preference. The pill around it is already `bg-accent/12`;
+            a second `bg-accent/10` inside it put this label on roughly accent/21
+            over paper, and "Drift freely" measured **4.42:1** against the 4.5
+            bar. That is the tint-stacking failure CLAUDE.md §10 warns static
+            token maths cannot catch — and it survived until Phase 7 only because
+            the contrast audit's route list rendered no view with a focus banner
+            at all. 1.4.11 wants no 3:1 boundary here: the button carries a
+            visible text label, which is what identifies it. The hover tint stays;
+            hover is not a resting state. */}
         <button
           type="button"
           onClick={onRelease}
-          className="ml-0.5 inline-flex min-w-0 items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 font-semibold transition hover:bg-accent/20"
+          className="ml-0.5 inline-flex min-w-0 items-center gap-1 rounded-full px-2 py-0.5 font-semibold transition hover:bg-accent/20"
         >
           <span className="truncate">{releaseLabel}</span>
           <svg

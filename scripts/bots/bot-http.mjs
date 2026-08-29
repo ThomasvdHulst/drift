@@ -15,21 +15,33 @@
 // measuring a configuration nobody deploys. The JWT goes ONLY to Supabase, for
 // `record_stop` and the sync writes, exactly as the app does.
 //
-// The sequence below mirrors src/app/(app)/drift/page.tsx. Where it makes a
-// choice the page makes, the page's line is named, because the value of this
-// driver is entirely in being faithful:
+// The sequence below mirrors src/app/(app)/drift/useDriftSession.ts and the
+// scroller in drift/ContinuousFeed.tsx. Where it makes a choice the app makes,
+// the reason is named, because the value of this driver is entirely in being
+// faithful:
 //
 //   seed ("Surprise me")   REFILL_TOPICS discover calls in parallel; first card
-//                          opens, the rest fill the buffer            (page:868)
-//   every card displayed   related + doorway, fired together        (page:941-947)
-//   drift onward           free from the buffer; a refill costs
-//                          REFILL_TOPICS discover calls again       (page:1443-1450)
-//   thread pull            NO fetch — the candidate is already in hand
-//   "Read more"            one extended summary                      (CardView:773)
+//                          opens, the rest fill the buffer
+//   the QUEUE              QUEUE_AHEAD cards are materialised below the reader,
+//                          taken from the buffer (a refill costs REFILL_TOPICS
+//                          discover calls). Materialising costs a discover slot
+//                          and NOTHING else.
+//   threads + doorway      for the card being READ and the head of the queue —
+//                          one ahead, never for the whole queue. Cached per card
+//                          id, so arriving on a prepared card is free.
+//   thread pull / cross    the queue is VOID: its cards go back to the buffer,
+//                          but the lookahead already fetched for the card at its
+//                          head is spent.
+//   "Read more"            one extended summary
 //
-// The buffer is why a drift is usually free, and it is the single biggest
-// influence on requests-per-card. Getting it wrong would not fail; it would just
-// quietly produce a different number.
+// ⚠️ THE QUEUE IS WHY THIS FILE WAS REWRITTEN IN PHASE 7, and the numbers say why
+// it mattered. Measured against the real feed over 11 stops: 1.36 `/related` and
+// 1.36 `/doorway` per card, not 1.00 — the excess is lookahead the reader never
+// reached, and it amortises with session length (1.15 over 26 cards). Discover
+// went the other way, 0.27 against the old feed's ~0.5, because a thread pull now
+// hands three cards BACK to the buffer instead of leaving them unfetched. A model
+// still fetching exactly one of each per card would have reported a feed nobody
+// is running, and the report would have looked healthy while doing it.
 // ---------------------------------------------------------------------------
 
 import {
@@ -43,6 +55,7 @@ import {
   REFILL_TOPICS,
   DISCOVER_LIMIT,
   SEED_LIMIT,
+  QUEUE_AHEAD,
 } from "./urls.mjs";
 import {
   dwellMs,
@@ -83,8 +96,9 @@ export async function runHttpBot({
     backs: 0,
     readMores: 0,
     refills: 0,
-    // The HTTP driver never needs to re-press: it calls the API directly and
-    // has no `busyRef` to be blocked by. Kept at 0 so the column lines up.
+    // The HTTP driver never needs to re-press: it calls the API directly, so it
+    // is never waiting on a queue that has not refilled yet. Kept at 0 so the
+    // column lines up against the browser driver's, where the number is real.
     retries: 0,
     requests: 0,
     errors: [],
@@ -154,7 +168,7 @@ export async function runHttpBot({
       return batch[0];
     }
     // Encyclopedia alone falls back to the random endpoint; the other realms
-    // rely on discover (page:865-878).
+    // rely on discover (the seed branch of useDriftSession's session-load effect).
     if (realm !== "encyclopedia") return null;
     const r = await get(RANDOM_URL, 10000);
     const cards = Array.isArray(r.body) ? r.body : [];
@@ -183,6 +197,101 @@ export async function runHttpBot({
     });
   }
 
+  // ----- the queue -----
+  //
+  // Materialised cards below the reader, exactly as the scroller holds them.
+  // They are NOT in the trail and cost nothing but the discover slot that
+  // produced them, which is what makes voiding the queue on a thread pull cheap.
+  const queue = [];
+  // The threads and doorway already fetched for a card, by id. The app's
+  // `threadCache` plus `threadsFor`'s one-request-in-flight map: arriving on a
+  // card whose chips were prepared costs nothing at all, which is the entire
+  // reason the lookahead is free rather than double.
+  const chips = new Map();
+
+  const isSpokenFor = (c) =>
+    seen.has(cardId(c)) || queue.some((q) => cardId(q) === cardId(c));
+
+  /** Take one servable card out of the buffer, refilling it if it runs dry. */
+  async function takeFromBuffer() {
+    let next = buffer.shift();
+    while (next && isSpokenFor(next)) next = buffer.shift();
+    if (next) return next;
+    stats.refills++;
+    buffer.push(...(await discoverBatch()));
+    next = buffer.shift();
+    while (next && isSpokenFor(next)) next = buffer.shift();
+    return next ?? null;
+  }
+
+  /**
+   * Top the queue up to QUEUE_AHEAD.
+   *
+   * ⚠️ MATERIALISING COSTS A DISCOVER SLOT AND NOTHING ELSE. No threads, no
+   * doorway — those are fetched for the card being read and one ahead only. All
+   * N would take a Gallery screenful from ~9 Met requests to ~45 against a bucket
+   * of ~80 per 30 seconds, and modelling it wrongly here would report that as
+   * fine (docs/continuous-feed.md §7.2).
+   */
+  async function fillQueue() {
+    while (queue.length < QUEUE_AHEAD) {
+      const next = await takeFromBuffer();
+      if (!next) return; // the source has nothing: the feed ends on a terminus
+      queue.push(next);
+    }
+  }
+
+  /**
+   * The chips for one card: related + doorway, fired together, once per card id.
+   *
+   * `await`ed for the card being READ and fired without waiting for the head of
+   * the queue, because that is what the app does — the reader must not wait on a
+   * card they have not reached.
+   */
+  async function ensureChips(c) {
+    const id = cardId(c);
+    const have = chips.get(id);
+    if (have) return have;
+    // Claim the id before the awaits, so the reader arriving on a card the
+    // lookahead is still fetching adopts that request instead of starting a
+    // second identical one. Without this the preparation is pure waste: measured
+    // on the real feed, 14 `/related` and 15 `/doorway` over 13 cards where 12
+    // and 12 were needed.
+    const pending = (async () => {
+      const [rel, door] = await Promise.all([
+        get(relatedUrl(realm, c.pageTitle), 12000),
+        get(doorwayUrl(realm, c.pageTitle), 12000),
+      ]);
+      const out = (Array.isArray(rel.body) ? rel.body : [])
+        .filter((x) => x?.pageTitle)
+        .slice(0, 3);
+      // At most three in-realm threads (lib/threads.ts caps there) plus a
+      // doorway when there is one.
+      const dc = door.body?.candidate;
+      if (dc?.pageTitle) out.push(dc);
+      return out;
+    })();
+    chips.set(id, pending);
+    return pending;
+  }
+
+  /** The chips a reader can actually pull: never one already on their trail. */
+  const pullable = (list) => list.filter((c) => !seen.has(cardId(c)));
+
+  /**
+   * A thread pull or a realm cross voids the queue.
+   *
+   * The cards go BACK to the buffer rather than being thrown away — they cost
+   * real upstream requests, and returning them is the difference between a
+   * thread pull being free and it costing three cards of the Met's daily budget
+   * (lib/feedqueue.invalidateQueue). What is genuinely spent is the lookahead
+   * already fetched for the card at the head, which is cached against its id and
+   * is only wasted if that card is never served again.
+   */
+  function voidQueue() {
+    buffer.unshift(...queue.splice(0));
+  }
+
   const target = sessionLength(rng);
   let card = null;
 
@@ -201,69 +310,58 @@ export async function runHttpBot({
       stats.cards++;
       recordStop();
 
-      // Threads and the cross-realm doorway, fired together inside this card's
-      // window (page:941-947). The doorway is best-effort: a miss just means no
-      // doorway chip.
-      const native = card.pageTitle;
-      const [rel, door] = await Promise.all([
-        get(relatedUrl(realm, native), 12000),
-        get(doorwayUrl(realm, native), 12000),
-      ]);
-      const candidates = (Array.isArray(rel.body) ? rel.body : []).filter(
-        (c) => c?.pageTitle && !seen.has(cardId(c)),
-      );
-      const doorCandidate = door.body?.candidate;
+      // The queue hangs under the reader and is topped up as they move.
+      await fillQueue();
+
+      // This card's chips, and the next card's — one ahead, fired but not waited
+      // on, so the reader's dwell is never spent on a card they have not reached.
+      const mine = pullable(await ensureChips(card));
+      if (queue[0]) void ensureChips(queue[0]);
 
       if (shouldReadMore(rng)) {
         stats.readMores++;
-        await get(summaryUrl(realm, native, { extended: true }), 15000);
+        await get(summaryUrl(realm, card.pageTitle, { extended: true }), 15000);
       }
 
       stats.cardLatencies.push(Date.now() - cardStarted);
       await sleep(dwellMs(rng, speed), signal);
       if (signal.aborted || Date.now() >= deadline) break;
 
-      // The chips a reader actually sees: at most three in-realm threads plus a
-      // doorway when there is one (lib/threads.ts caps at 3).
-      const chips = candidates.slice(0, 3);
-      if (doorCandidate?.pageTitle && !seen.has(cardId(doorCandidate))) {
-        chips.push(doorCandidate);
-      }
-
-      const move = chips.length ? chooseMove(rng) : "drift";
+      const move = mine.length ? chooseMove(rng) : "drift";
       if (move === "back") {
         stats.backs++;
-        // Going back costs nothing: the page serves it from its own thread cache
-        // (page:511-513). Modelled as a pause, then the loop moves on.
+        // Scrolling back up costs nothing: the card is already rendered and its
+        // chips are already cached. It also stops the queue being refilled at
+        // all, since only the TIP may fill it — modelled as a pause, which is
+        // what it is.
         await sleep(Math.round(dwellMs(rng, speed) * 0.4), signal);
         continue;
       }
-      if (move === "thread" && chips.length) {
+      if (move === "thread" && mine.length) {
         stats.threads++;
-        card = pick(rng, chips);
+        voidQueue();
+        card = pick(rng, mine);
         continue;
       }
 
+      // A drift is scrolling onto the card already waiting below. It costs
+      // nothing at the moment it happens; the cost was the discover slot that
+      // materialised it, and the next `fillQueue` is what pays for the one after.
       stats.drifts++;
-      let next = buffer.shift();
-      while (next && seen.has(cardId(next))) next = buffer.shift();
-      if (!next) {
-        stats.refills++;
-        const refill = await discoverBatch();
-        buffer.push(...refill);
-        next = buffer.shift();
+      const next = queue.shift();
+      if (next) {
+        card = next;
+        continue;
       }
-      if (!next) {
-        // Both discover and the buffer are dry. The page falls back to an
-        // untapped thread rather than hammering /api/wiki/random, which is the
-        // endpoint Wikimedia burst-limits first (page:1758-1762).
-        if (!chips.length) {
-          stats.endedBecause = "ran dry";
-          break;
-        }
-        next = pick(rng, chips);
+      // The queue is empty, so discover and the buffer are both dry. The feed
+      // falls back to an untapped thread of the card on screen rather than
+      // hammering /api/wiki/random, which is the endpoint Wikimedia burst-limits
+      // first; with nothing there either it places an ending and stops.
+      if (!mine.length) {
+        stats.endedBecause = "ran dry";
+        break;
       }
-      card = next;
+      card = pick(rng, mine);
     }
   } catch (err) {
     if (!signal.aborted) {

@@ -6,9 +6,9 @@ import { adsenseReady, type AdsConfig } from "@/lib/ads";
 // A single, calm, clearly-labeled ad shown as its own "stop" every ~N drifts
 // (Phase 21). Styled like a knowledge card so it fits the reading room, but it is
 // never a knowledge card: it carries no threads/reactions and is never saved to a
-// trail. No autoplay: the user leaves it with the normal advance gesture (scroll /
-// swipe / Drift onward), same as any card. Placeholder mode needs no AdSense and
-// sets no cookies; the AdSense branch renders only when the ids are configured.
+// trail. No autoplay: you leave it by scrolling on, the same way you leave any
+// card. Placeholder mode needs no AdSense and sets no cookies; the AdSense branch
+// renders only when the ids are configured.
 
 declare global {
   interface Window {

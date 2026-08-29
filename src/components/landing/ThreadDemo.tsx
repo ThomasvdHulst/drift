@@ -8,10 +8,19 @@ import { DEMO_START_ID, demoCardById } from "./data";
 
 // The interactive centerpiece: a tiny, self-contained rabbit hole a visitor can
 // actually steer before signing up. Tapping a thread slides the next card in
-// diagonally (the app's signature "pulled sideways" move, mirroring the /drift
-// cardVariants + spring); a breadcrumb grows so the "sessions have shape" idea is
-// felt, not told. Nothing moves on its own — that's the whole point (§2.2). All
-// content is bundled (lib/landing/data) — no network. Honors reduced motion.
+// diagonally; a breadcrumb grows so the "sessions have shape" idea is felt, not
+// told. Nothing moves on its own — that's the whole point (§2.2). All content is
+// bundled (lib/landing/data) — no network. Honors reduced motion.
+//
+// ⚠️ THIS USED TO CALL THE DIAGONAL SLIDE "the app's signature 'pulled sideways'
+// move, mirroring the /drift cardVariants + spring", AND /drift NO LONGER MOVES
+// LIKE THAT. The feed is a native scroll-snap scroller since Phase 7: every move
+// is the same vertical scroll, and `cardVariants` went with the card-at-a-time
+// shell (CLAUDE.md §6 records the reversal). /how-it-works dropped the matching
+// sentence from its prose in the same change. The demo's own motion was left
+// alone deliberately — it is a diagram of "you chose this direction" rather than
+// a promise about the feed's animation — but do not re-derive the feed's motion
+// from it, and do not describe it as mirroring anything.
 
 type Arrival =
   | { mode: "start" }
@@ -20,7 +29,8 @@ type Arrival =
 
 const spring = { type: "spring", stiffness: 260, damping: 30 } as const;
 
-// "thread" = diagonal pull, "drift" = a softer vertical advance. Mirrors /drift.
+// "thread" = diagonal pull, "drift" = a softer vertical advance. A distinction
+// the DEMO makes, not one the feed makes any more — see the ⚠️ above.
 type Dir = "thread" | "drift";
 
 export function ThreadDemo() {

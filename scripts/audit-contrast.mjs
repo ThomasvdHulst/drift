@@ -37,6 +37,11 @@ const THEMES = themeArg ? [themeArg] : ["light", "dark"];
 // Phase 26's tables (caption band, header row, zebra rows, the "showing 10 of 84
 // rows" footer) and the infobox rows in the Details disclosure. The Mohs scale is
 // pinned as the expanded page because it reliably carries a real data table.
+/** The reading feed's scroller. Focused before any arrow key, because the keys
+ *  are bound on `window` and a click on a card can leave focus somewhere that
+ *  swallows them. */
+const SCROLLER = '[aria-label="Your drift"]';
+
 const ROUTES = [
   { path: "/", keepModal: true },
   { path: "/" },
@@ -96,6 +101,13 @@ const ROUTES = [
   // are mid-feed text that no other row reaches: the end-screen rows measure the
   // branch only after it has been drawn on the map.
   { path: "/drift?title=Volcano&seed=Volcano", branchInFeed: true },
+  // ⚠️ A FOCUS BANNER. The route list rendered no view with one until Phase 7,
+  // which is exactly why a real AA failure lived in it undetected: "Drift freely"
+  // measured 4.42:1 against a 4.5 bar, because the release button's own tint
+  // stacked on the banner pill's. That is the class of bug CLAUDE.md §10 says
+  // static token maths cannot catch and only the rendered composite can, so a
+  // view that renders one has to be in the list.
+  { path: "/drift?focus=field&bucket=architecture" },
   { path: "/drift?realm=gallery" },
   { path: "/drift?realm=papers" },
   { path: "/trails" },
@@ -323,17 +335,25 @@ for (const {
         await chip.click().catch(() => {});
         await page.waitForTimeout(2500);
       }
-      const back = page.getByRole("button", { name: "Previous stop" });
-      for (let i = 0; i < 2; i++) {
-        await back.click().catch(() => {});
-        await page.waitForTimeout(1200);
-      }
+      // ⚠️ GOING BACK IS SCROLLING UP. This used to click "Previous stop" in the
+      // feed's bottom bar, which the scroller does not render at all — so each
+      // call burned a 30 s Playwright timeout and the row measured a feed that
+      // had never moved. Three of those per view per theme is most of why the
+      // audit once ran for twenty minutes and proved less than it looked like.
+      // ArrowUp moves the real scroller by exactly one snap point.
+      const up = async (n) => {
+        await page.locator(SCROLLER).focus().catch(() => {});
+        for (let i = 0; i < n; i++) {
+          await page.keyboard.press("ArrowUp");
+          await page.waitForTimeout(1200);
+        }
+      };
+      await up(2);
       const chip = page.locator('[data-tour="card-threads"] button:visible').first();
       if (await chip.count()) {
         await chip.click().catch(() => {});
         await page.waitForTimeout(2800);
-        await back.click().catch(() => {});
-        await page.waitForTimeout(1500);
+        await up(1);
       }
     }
 
@@ -361,6 +381,7 @@ for (const {
         if (await door.count()) {
           await door.click().catch(() => {});
           await page.waitForTimeout(4000);
+          await page.locator(SCROLLER).focus().catch(() => {});
           await page.keyboard.press("ArrowDown");
           await page.waitForTimeout(3000);
           await page.locator('[data-tour="end-trail"]').click().catch(() => {});

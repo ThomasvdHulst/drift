@@ -1,5 +1,5 @@
 // Client-side realm registry: metadata + URL builders + the per-realm "how do I
-// discover the next drift card" strategy. The feed (drift/page.tsx) is
+// discover the next drift card" strategy. The feed (drift/useDriftSession.ts) is
 // realm-agnostic — it asks the descriptor here instead of hard-coding Wikipedia.
 //
 // Server-side fetching lives in realms/server/*; this module is import-safe from

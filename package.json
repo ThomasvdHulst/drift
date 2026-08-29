@@ -14,6 +14,7 @@
     "verify:share": "node --env-file=.env scripts/verify-publicshare.mjs",
     "verify:billing": "node --env-file=.env scripts/verify-billing.mjs",
     "audit:contrast": "node scripts/audit-contrast.mjs",
+    "verify:feed": "node scripts/verify-feed.mjs",
     "bots:seed": "node --env-file=.env scripts/bots/seed-accounts.mjs",
     "bots:teardown": "node --env-file=.env scripts/bots/seed-accounts.mjs --teardown",
     "bots:run": "node --env-file=.env scripts/bots/run.mjs"

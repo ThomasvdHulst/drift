@@ -35,15 +35,19 @@ import { MathText } from "./MathText";
 function ReactionButtons({
   reaction,
   onReact,
+  tourTarget,
 }: {
   reaction?: Reaction;
   onReact: (signal: Reaction) => void;
+  /** Carry the tour's marker. Only the card the reader is ON may — see
+   *  `active` on CardView. */
+  tourTarget: boolean;
 }) {
   const base =
     "flex h-8 w-8 items-center justify-center rounded-full border transition focus-ring";
   return (
     <div
-      data-tour="card-reactions"
+      {...(tourTarget ? { "data-tour": "card-reactions" } : {})}
       className="flex shrink-0 items-center gap-1.5"
     >
       <button
@@ -148,15 +152,20 @@ function ShareButton({ onShare }: { onShare: () => void }) {
 function OrbitButton({
   onOrbit,
   active,
+  tourTarget,
 }: {
   onOrbit: () => void;
+  /** ⚠️ This one means "the session is orbiting this page", NOT "this is the
+   *  card on screen". The two were briefly conflated and the tour marker then
+   *  appeared only while orbiting. */
   active: boolean;
+  tourTarget: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onOrbit}
-      data-tour="card-orbit"
+      {...(tourTarget ? { "data-tour": "card-orbit" } : {})}
       aria-label={
         active ? "Stop drifting around this page" : "Drift around this page"
       }
@@ -288,7 +297,30 @@ function ModeChip({
   );
 }
 
-function ImagePanel({ card, onZoom }: { card: Card; onZoom?: () => void }) {
+function ImagePanel({
+  card,
+  onZoom,
+  heavy = true,
+}: {
+  card: Card;
+  onZoom?: () => void;
+  /**
+   * May this card fetch the full-size image yet?
+   *
+   * ⚠️ THIS IS A BUDGET CONTROL, NOT A PERFORMANCE TWEAK. In the continuous feed
+   * four cards are on screen at once, and a Gallery card's sharp-resized image
+   * comes through `/api/img/met/…` — OUR proxy, which fetches a multi-megabyte
+   * original per card behind its own gate and breaker (CLAUDE.md §4). Rendering
+   * four of those the moment the Gallery opens is four concurrent resizes where
+   * the old feed asked for one, and it is what "the Gallery was slow to load"
+   * turned out to be.
+   *
+   * `false` is not a missing picture: the hotlinked `previewUrl` (the museum's
+   * own ~600px derivative) is laid out identically and already renders first, so
+   * deferring only delays the SHARPENING. A card with no preview keeps its blur.
+   */
+  heavy?: boolean;
+}) {
   // Progressive reveal: something stands in behind the full-size image and fades
   // out once it loads — no layout shift, a calm reveal. Two shapes of stand-in:
   // `blurDataUrl` is a tiny base64 blur (Wikipedia), `previewUrl` is a real small
@@ -333,6 +365,13 @@ function ImagePanel({ card, onZoom }: { card: Card; onZoom?: () => void }) {
   }
   const blur = card.blurDataUrl;
   const preview = card.previewUrl;
+  // Deferral applies only to images WE serve. A Wikipedia thumbnail is hotlinked
+  // straight from `upload.wikimedia.org` by the reader's browser, so it costs us
+  // nothing and there is nothing to save by holding it back. The test is on the
+  // URL rather than on the realm, so it stays right if another proxied source is
+  // ever added — the same rule `warmImage` uses in useDriftSession.
+  const ours = !!card.imageUrl?.startsWith("/api/");
+  const showHeavy = heavy || !ours;
   // Art gets shown whole (never cropped) on a soft ground — a gallery wall, not a
   // full-bleed hero. Everything else fills the panel.
   const isArt = isArtSource(card.source);
@@ -361,14 +400,16 @@ function ImagePanel({ card, onZoom }: { card: Card; onZoom?: () => void }) {
             />
           )
         )}
-        <img
-          src={card.imageUrl}
-          alt={alt}
-          onLoad={() => setLoaded(true)}
-          onError={() => setFailed(true)}
-          className={`relative max-h-full max-w-full object-contain shadow-md transition-opacity duration-700 ${loaded ? "opacity-100" : "opacity-0"}`}
-          draggable={false}
-        />
+        {showHeavy && (
+          <img
+            src={card.imageUrl}
+            alt={alt}
+            onLoad={() => setLoaded(true)}
+            onError={() => setFailed(true)}
+            className={`relative max-h-full max-w-full object-contain shadow-md transition-opacity duration-700 ${loaded ? "opacity-100" : "opacity-0"}`}
+            draggable={false}
+          />
+        )}
       </>
     );
     const groundCls =
@@ -417,14 +458,16 @@ function ImagePanel({ card, onZoom }: { card: Card; onZoom?: () => void }) {
           draggable={false}
         />
       )}
-      <img
-        src={card.imageUrl}
-        alt={alt}
-        onLoad={() => setLoaded(true)}
-        onError={() => setFailed(true)}
-        className="relative h-full w-full object-cover"
-        draggable={false}
-      />
+      {showHeavy && (
+        <img
+          src={card.imageUrl}
+          alt={alt}
+          onLoad={() => setLoaded(true)}
+          onError={() => setFailed(true)}
+          className="relative h-full w-full object-cover"
+          draggable={false}
+        />
+      )}
       <ImageCreditChip credit={card.imageCredit} />
     </div>
   );
@@ -571,6 +614,7 @@ function ThreadsSection({
   revisiting,
   ways,
   onWay,
+  tourTarget,
 }: {
   threads: Thread[];
   threadsLoading: boolean;
@@ -583,6 +627,7 @@ function ThreadsSection({
   revisiting?: boolean;
   ways?: Way[];
   onWay?: (index: number) => void;
+  tourTarget: boolean;
 }) {
   const CLASSES = {
     pinned:
@@ -599,7 +644,10 @@ function ThreadsSection({
           a way-switch button answering to it would be read as a direction
           onward, which is the one thing it is not. */}
       {ways && onWay && <WaysFromHere ways={ways} onWay={onWay} />}
-      <div data-tour="card-threads" className="flex flex-col gap-3">
+      <div
+        {...(tourTarget ? { "data-tour": "card-threads" } : {})}
+        className="flex flex-col gap-3"
+      >
         <p className="text-xs font-medium uppercase tracking-widest text-ink-soft">
           {/* Standing on a stop you already left, a chip does not continue the
               line, it starts a new one. Phase 29 made that true and nothing said
@@ -648,6 +696,9 @@ export function CardView({
   onShare,
   onOrbit,
   orbiting = false,
+  active = true,
+  heavyImage = true,
+  scrollChaining = "contain",
   flow = false,
   revisiting = false,
   ways,
@@ -667,6 +718,36 @@ export function CardView({
   /** True while the session is orbiting THIS card's page, so the control can
    *  show it (see OrbitButton). */
   orbiting?: boolean;
+  /**
+   * Whether reaching the end of the reading region hands the gesture on to
+   * whatever scrolls outside it.
+   *
+   * `contain` (the default) is right for the card-at-a-time feed, where the
+   * feed's own handler reads this region's edges and decides. `auto` is for the
+   * continuous scroller: on a phone an expanded article is most of the screen,
+   * so trapping the gesture would let you read to the end of a piece with no way
+   * onward. Chaining only ever fires once the article is actually finished.
+   */
+  scrollChaining?: "contain" | "auto";
+  /**
+   * Is this the card the reader is actually on?
+   *
+   * ⚠️ IT GATES THE `data-tour` AND `data-drift-scroll` MARKERS, and that is the
+   * whole reason it exists. The card-at-a-time feed renders one card, so
+   * `document.querySelector('[data-tour="card-threads"]')` could only ever mean
+   * one thing. The continuous feed keeps four cards in the DOM, all of them laid
+   * out and all of them matching — so the tour spotlighted the topmost card
+   * rather than the one being read, and its "swipe up" step scrolled the wrong
+   * card's reading region to the end. Marking only the active card fixes every
+   * card-scoped tour step at once, and makes the load bots' `.first()` resolve
+   * to the right card too.
+   *
+   * Defaults to true, so the other shell and the page-flow card are unchanged.
+   */
+  active?: boolean;
+  /** Passed through to the image panel. See `heavy` there: it is a budget
+   *  control for the museum, not a performance tweak. */
+  heavyImage?: boolean;
   /**
    * Render as part of a scrolling PAGE rather than as a fixed-height card that
    * scrolls inside itself.
@@ -831,13 +912,26 @@ export function CardView({
           flow ? "md:self-stretch md:min-h-[26rem]" : "md:h-full"
         }`}
       >
-        <ImagePanel key={card.imageUrl ?? card.pageTitle} card={card} onZoom={onZoom} />
+        <ImagePanel
+          key={card.imageUrl ?? card.pageTitle}
+          card={card}
+          onZoom={onZoom}
+          heavy={heavyImage}
+        />
       </div>
 
       {/* Reading side: one scroll region + a pinned threads bar. The whole
-          reading side scrolls (image included on phones), and the feed's gesture
-          handler reads this region's edges (via [data-drift-scroll]) to tell
-          "scroll to read" from "overscroll to drift on" — see lib/gesture. */}
+          reading side scrolls (image included on phones), and `overscroll-behavior`
+          on it decides whether reaching its end chains on to the next card in the
+          feed's scroller (see `scrollChaining` below).
+
+          ⚠️ THIS USED TO SAY "the feed's gesture handler reads this region's edges
+          (via [data-drift-scroll]) to tell scroll-to-read from overscroll-to-drift
+          — see lib/gesture", AND THAT HANDLER IS GONE. `edgesOf`, `resolveSwipe`
+          and `isWheelReadingScroll` were deleted with the card-at-a-time shell in
+          Phase 7: the feed is a native scroll-snap scroller now and the browser
+          answers that question. The marker is still needed — the guided tour looks
+          it up to scroll the card to its end — but nothing in JS reads its edges. */}
       {/* `min-w-0` matters as much as `min-h-0` here, and for the mirror-image
           reason. A flex item defaults to `min-width: auto`, i.e. "never narrower
           than my content", so ONE wide child sizes this whole column: with a wide
@@ -854,18 +948,30 @@ export function CardView({
             drags are left to the feed's own handler, which is the only thing
             that wants them (there is nothing to scroll sideways). Most visible
             during the guided tour, where the coach card pushes your thumb into
-            the middle of the prose. drift/page.tsx also handles `touchcancel`,
-            as a fallback for a genuinely diagonal drag. */}
+            the middle of the prose.
+
+            ⚠️ THIS USED TO ADD "drift/page.tsx also handles `touchcancel`, as a
+            fallback for a genuinely diagonal drag", AND THERE IS NO SUCH HANDLER
+            ANY MORE. `drift/page.tsx` is a Suspense boundary since Phase 7 and the
+            scroller only listens for touchstart/touchend. `touch-pan-y` here is
+            what keeps the browser from claiming the drag in the first place, which
+            is the half that was actually doing the work. */}
         <div
           // Only the feed's card owns a scroll region. In flow mode the marker
-          // is absent too, deliberately: `lib/gesture` and the tour both look it
-          // up to find "the thing that scrolls", and pointing them at a div that
-          // does not scroll would be worse than finding nothing.
-          {...(flow ? {} : { "data-drift-scroll": true })}
+          // is absent too, deliberately: the guided tour looks it up to find "the
+          // thing that scrolls" (it scrolls the card to its end before telling you
+          // to swipe up), and pointing it at a div that does not scroll would be
+          // worse than finding nothing. `lib/gesture` used to be the other reader
+          // of this marker; it no longer reads the DOM at all (Phase 7).
+          {...(flow || !active ? {} : { "data-drift-scroll": true })}
           className={`flex min-w-0 flex-col gap-3 px-6 pb-4 pt-6 sm:px-8 sm:pt-8 md:px-10 md:pt-10 lg:px-12 lg:pt-12 ${
             flow
               ? ""
-              : "min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain"
+              : `min-h-0 flex-1 touch-pan-y overflow-y-auto ${
+                  scrollChaining === "auto"
+                    ? "overscroll-y-auto"
+                    : "overscroll-y-contain"
+                }`
           }`}
         >
           {/* Phone-only hero, full-bleed to the card's rounded top; it scrolls
@@ -878,7 +984,12 @@ export function CardView({
               flow ? "h-52" : "h-[34dvh]"
             }`}
           >
-            <ImagePanel key={card.imageUrl ?? card.pageTitle} card={card} onZoom={onZoom} />
+            <ImagePanel
+              key={card.imageUrl ?? card.pageTitle}
+              card={card}
+              onZoom={onZoom}
+              heavy={heavyImage}
+            />
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-paper-raised/70 to-transparent" />
           </div>
 
@@ -891,9 +1002,11 @@ export function CardView({
             <ModeChip via={arrivedVia} realmLabel={getRealm(realm).label} />
             <div className="flex shrink-0 items-center gap-1.5">
               {onReact && (
-                <ReactionButtons reaction={reaction} onReact={onReact} />
+                <ReactionButtons reaction={reaction} onReact={onReact} tourTarget={active} />
               )}
-              {onOrbit && <OrbitButton onOrbit={onOrbit} active={orbiting} />}
+              {onOrbit && (
+                <OrbitButton onOrbit={onOrbit} active={orbiting} tourTarget={active} />
+              )}
               {onShare && <ShareButton onShare={onShare} />}
             </div>
           </div>
@@ -1029,7 +1142,7 @@ export function CardView({
             </div>
           )}
           <div
-            data-tour="card-readmore"
+            {...(active ? { "data-tour": "card-readmore" } : {})}
             className="flex flex-wrap items-center gap-4"
           >
             {/* Only offered when there is something to open. `hasBody` is absent
@@ -1135,6 +1248,7 @@ export function CardView({
             revisiting={revisiting}
             ways={ways}
             onWay={onWay}
+            tourTarget={active}
           />
 
           {/* A quiet, static wayfinding cue for the overscroll-to-advance
@@ -1205,6 +1319,7 @@ export function CardView({
             revisiting={revisiting}
             ways={ways}
             onWay={onWay}
+            tourTarget={active}
           />
         )}
       </div>

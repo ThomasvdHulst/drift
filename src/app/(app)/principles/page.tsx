@@ -42,16 +42,23 @@ export default function PrinciplesPage() {
       </Section>
 
       <Section title="2. Agency over autoplay">
+        {/* The exception is stated rather than glossed, because the app states
+            it too: the ending card says "the feed has just moved on its own for
+            the only time it ever will", and a principles page that flatly denied
+            it would be contradicted by the product two screens away. It is the
+            one guarded auto-scroll in the feed (docs/continuous-feed.md,
+            invariant 11): it fires only for a reader already standing on the
+            last card, never for one scrolled up re-reading, and never for a
+            source that is merely quiet. */}
         <P>
-          Nothing advances on its own. No autoplay, no timers, no card sliding
-          partway into view.
+          Nothing advances on its own. No autoplay, no timers. Every card you
+          reach is one you moved to. The single exception is the end of a
+          session: when there is nothing left to show you, the feed carries you
+          the last step onto the card that says so.
         </P>
         <P>
-          <Lead>What this rules out: </Lead>a deep queue. Drift fetches at most
-          one card ahead. That is a deliberate limit rather than a technical one:
-          a large buffer is what makes a feed feel like there is always more
-          waiting, and once twenty cards are ready, stopping starts to feel
-          wasteful. One ahead is enough for the next card to appear instantly.
+          <Lead>What this rules out: </Lead>anything that decides for you when
+          you are finished with a card.
         </P>
       </Section>
 
