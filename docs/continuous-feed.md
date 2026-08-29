@@ -432,6 +432,13 @@ every future load report.
     the feed misbehaves on an iPhone. Workarounds, in order of bluntness: force a layout read
     (`offsetHeight`) after a queue change, or toggle `scroll-snap-type` off and back on.
 
+    ⚠️ **THE PHONE TEST HAPPENED AND THIS WAS NOT THE CAUSE — DO NOT REACH FOR IT FIRST.** Note
+    how closely one symptom above ("snapping only on a second gesture") matches what was actually
+    reported, and it was a red herring: the cause was WebKit's scroll LATCHING between two nested
+    scrollers (§4.11), and the handoff fixed it. This hazard is neither confirmed nor ruled out —
+    it has still never been probed on a device — but it is no longer the first thing to suspect,
+    and a matching symptom is not a diagnosis.
+
 ### 4.10 And what the independent audit found (measured, 29 August, after Phase 7)
 
 Phase 7 shipped every gate green: 1,394 tests, `verify:feed` 130/130, `audit:contrast` PASS. So
@@ -555,7 +562,19 @@ parenthetical "(and restoring `scrollTop`)" is not a thing this code has to do. 
       keep the gesture for the thing under test.
 
     Fixed with `edgePull` in `lib/gesture.ts` — a polyfill, not a replacement, that stands down
-    the moment it sees the outer scroller move on its own. **The lesson is the mirror of §4.9
+    the moment it sees the outer scroller move on its own.
+
+    ✅ **CONFIRMED ON THE IPHONE, same day, on a Vercel preview deployment.** The handoff works,
+    no judder was reported as the rubber-band returns under the snap, and `PULL_THRESHOLD` was
+    kept at **96 unchanged** after that testing — so it rests on a device now, not on the
+    reasoning in its comment. ⚠️ What the test did NOT show is which half is doing the work: a
+    WebKit that honours the mid-gesture programmatic scroll and one that only obeys the
+    `touchend` re-issue look identical from outside. Both stay for that reason.
+
+    ⚠️ And note what is still untouched by any of this: §4.9 finding 20 (WebKit's cached snap
+    positions going stale as the queue adds and removes children) and the hard-flick hazard have
+    **never** been probed on a device. "The feed was read on an iPhone and felt right" is not the
+    same claim as "those two are fine", and this document should not be read as making it. **The lesson is the mirror of §4.9
     finding 20 and of `CLAUDE.md §2.5`'s Papers flag: those are about a rule enforced in one of
     two code paths. This one is about a rule handed to a platform that only some of the platform
     implements.** "The browser does it" is a claim about every engine you ship to, and it is

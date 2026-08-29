@@ -1038,12 +1038,19 @@ export function ContinuousFeed() {
     const start = touchRef.current;
     if (!start) return;
     const el = scrollerRef.current;
-    // ⚠️ THE SAFETY NET FOR THE ONE THING THAT CANNOT BE TESTED WITHOUT AN
-    // IPHONE: whether WebKit honours a programmatic scroll of the outer scroller
-    // while a touch is still latched to the inner one. If it did not, the feed
-    // has not moved a pixel since we asked, and asking again now that the finger
-    // is up costs nothing. It re-issues the ABSOLUTE slot rather than another
-    // relative step, so it can never turn one card into two.
+    // The safety net for the thing nothing here can observe: whether WebKit
+    // honours a programmatic scroll of the outer scroller while a touch is still
+    // latched to the inner one. If it did not, the feed has not moved a pixel
+    // since we asked, and asking again now that the finger is up costs nothing.
+    // It re-issues the ABSOLUTE slot rather than another relative step, so it can
+    // never turn one card into two.
+    //
+    // ⚠️ THE HANDOFF IS CONFIRMED WORKING ON AN IPHONE (29 August) AND THIS STILL
+    // STAYS. What that test showed is that the PAIR works; it did not show which
+    // half did it, because a successful mid-gesture scroll and a successful net
+    // look identical from outside. Deleting either on the grounds that "the other
+    // one must be doing the work" would be a guess, and the losing side of it is
+    // the feature not moving at all on the only engine that needs it.
     if (start.target !== null && start.firedAt !== null && el) {
       if (Math.abs(el.scrollTop - start.firedAt) < 4) scrollToSlot(start.target, true);
       return; // a handoff and a realm cross are never the same gesture

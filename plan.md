@@ -19,7 +19,9 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 >
 > **Gate it with `npm run verify:feed`** (146 checks over a real Chromium at two viewports).
 > ⚠️ Never alongside `audit:contrast` — both cross into the Gallery, and locally there is no CDN
-> in front of The Met's bucket. ⚠️ **iOS is still unverified**: nobody here has a device.
+> in front of The Met's bucket. **iOS is now PARTLY verified**: the feed and the scroll handoff
+> were read on a real iPhone on 29 August and work; WebKit's hard-flick and stale-snap-position
+> hazards have still never been probed on one (`CLAUDE.md §12`).
 >
 > **The scroll handoff (29 August) is the first fix reported from a real iPhone.** A card is two
 > nested scrollers, and WebKit will not hand a gesture from the inner one to the outer one: it
@@ -5788,11 +5790,15 @@ flag.** That one is about a rule enforced in one of two code paths. This one is 
 to a platform that only some of the platform implements: "the browser does it" is a claim about
 every engine you ship to, and it is worth a measurement before it is worth a deletion.
 
-⚠️ **Still unverified: the iPhone itself.** Two things need a device — whether WebKit honours a
-programmatic scroll of the outer scroller while a touch is still latched to the inner one (the
-`touchend` net covers it if not), and whether the finger lifting judders as the rubber-band returns
-under the snap. `PULL_THRESHOLD` is the number to tune there; its comment carries the trade and the
-two ways to back it off.
+✅ **CONFIRMED ON AN IPHONE by the owner, 29 August, on a Vercel preview deployment** — the first
+time anything in this feed has been checked on the device it was built for. The handoff works, and
+no judder was reported as the rubber-band returns under the snap. **`PULL_THRESHOLD` was kept at 96
+unchanged after that testing**, so the number now rests on a device rather than on the reasoning in
+its comment; do not retune it without one.
+
+⚠️ **One thing is still NOT known and both halves therefore stay**: whether WebKit honoured the
+mid-gesture programmatic scroll, or whether the `touchend` net did the work. Only that the pair of
+them does. Removing either on the grounds that "the other one must be doing it" would be a guess.
 
 Gates: **1,411 tests green** (83 files), `npm run build` clean, `npm run lint` clean,
 `npm run verify:feed` **146/146** at two viewports.

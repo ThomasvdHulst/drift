@@ -593,9 +593,12 @@ that the whole design rests on. What follows is only the map.
   the native path being deferred to. Do NOT "fix" this by shrinking the card: making a collapsed
   card fit needs ~310px of content cut, and a thumb-sized gutter costs 23% of the screen width.
   Both were costed and rejected. `docs/continuous-feed.md` §8.11 and §4.11 have the numbers.
-- **Still unverified: iOS.** No device here, so everything above about WebKit is from its
-  documentation and from a Chromium rig with chaining forced off, not from a phone.
-  `scroll-snap-stop: always` is the mitigation for WebKit's historic hard-flick, and `commitAt`
-  keeps the trail honest even if it does not hold. Watch also for WebKit's cached snap positions
-  going stale when children change; the queue adds and removes them constantly. Symptoms and
-  workarounds are in `docs/continuous-feed.md` §4.9.
+- **iOS: PARTLY verified now, and know which part.** ✅ The feed and the scroll handoff above were
+  read on a real iPhone by the owner on 29 August (a Vercel preview deployment) and work, with
+  `PULL_THRESHOLD` kept at 96 after that testing — so that number rests on a device and should not
+  be retuned without one. ⚠️ **Everything else about WebKit here is still from its documentation
+  and from a Chromium rig with chaining forced off**, not from a phone, and two hazards in
+  particular have never been probed on one: `scroll-snap-stop: always` is the mitigation for
+  WebKit's historic hard-flick (`commitAt` keeps the trail honest even if it does not hold), and
+  WebKit's cached snap positions can go stale when children change, which the queue does
+  constantly. Symptoms and workarounds are in `docs/continuous-feed.md` §4.9.

@@ -62,15 +62,17 @@ export function edgesOf(m: {
  * finger has usually already spent travel getting there and the same number
  * would be much twitchier. 96px is a continued, deliberate pull.
  *
- * ⚠️ THIS IS THE ONE NUMBER TO TUNE ON A REAL DEVICE, and the trade it makes is
- * worth knowing before changing it. A hard flick that bottoms out with 96px to
- * spare now carries the reader past the thread chips at the end of the card.
- * That is exactly what Chrome has always done here, and scrolling back up
- * returns to that card with its chips on screen. If it turns out to grate, the
- * dial is either a bigger number or restoring the old `atBottomStart` rule
- * (accrue only when the region was ALREADY pinned as the finger went down),
- * which makes reading flicks never advance at the cost of always needing a
- * second gesture.
+ * ✅ 96 WAS TUNED ON A REAL IPHONE (29 August) AND KEPT UNCHANGED, so this number
+ * rests on a device rather than on the reasoning above it. Do not retune it
+ * without one, and know the trade it makes before you do: a hard flick that
+ * bottoms out with 96px to spare carries the reader past the thread chips at the
+ * end of the card. That is exactly what Chrome has always done here, and
+ * scrolling back up returns to that card with its chips on screen. Raising it
+ * makes the handoff need a longer pull; lowering it advances on flicks that were
+ * meant as reading. The other dial, if it ever grates, is the old
+ * `atBottomStart` rule (accrue only when the region was ALREADY pinned as the
+ * finger went down), which makes reading flicks never advance at the cost of
+ * always needing a second gesture.
  */
 export const PULL_THRESHOLD = 96;
 
