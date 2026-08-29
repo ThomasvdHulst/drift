@@ -4,11 +4,12 @@ import {
   COMMIT_SETTLE_MS,
   QUEUE_AHEAD,
   appendTerminus,
+  clearTerminus,
+  commitAt,
   commitDecision,
   hasTerminus,
   insertAfterLike,
   invalidateQueue,
-  isCandidate,
   isQueued,
   pendingIds,
   queueCapacity,
@@ -94,7 +95,7 @@ describe("pendingIds", () => {
     const queue: FeedItem[] = [
       { kind: "step", index: 0 },
       q("A"),
-      { kind: "ad" },
+      { kind: "ad", id: "ad-1" },
       q("B"),
       { kind: "terminus", reason: "pool-dry" },
     ];
@@ -109,29 +110,6 @@ describe("pendingIds", () => {
     const queue: FeedItem[] = [q("A"), q("B")];
     const { queue: after } = invalidateQueue(queue);
     expect(pendingIds(after).size).toBe(0);
-  });
-});
-
-describe("isCandidate", () => {
-  const seen = new Set<string>();
-  const pending = new Set([cardId(card("Queued"))]);
-
-  it("accepts an unseen, unqueued card from the realm being read", () => {
-    expect(isCandidate(card("Fresh"), seen, pending, "encyclopedia")).toBe(true);
-  });
-
-  it("rejects a card already spoken for by the queue", () => {
-    expect(isCandidate(card("Queued"), seen, pending, "encyclopedia")).toBe(false);
-  });
-
-  // Delegated to lookahead.isServable, so the discrete buffer and the queue can
-  // never disagree about what a servable card is.
-  it("still rejects what the buffer would reject", () => {
-    expect(
-      isCandidate(card("Read"), new Set([cardId(card("Read"))]), pending, "encyclopedia"),
-    ).toBe(false);
-    expect(isCandidate(card("Vase", "met"), seen, pending, "encyclopedia")).toBe(false);
-    expect(isCandidate(undefined, seen, pending, "encyclopedia")).toBe(false);
   });
 });
 
@@ -154,7 +132,7 @@ describe("invalidateQueue", () => {
   // buffer rather than throwing away three cards of the Met's budget per pull.
   it("hands back only real cards, not ads or endings", () => {
     const { dropped } = invalidateQueue([
-      { kind: "ad" },
+      { kind: "ad", id: "ad-1" },
       q("A"),
       { kind: "terminus", reason: "caught-up" },
     ]);
@@ -163,6 +141,57 @@ describe("invalidateQueue", () => {
 
   it("is safe on an empty queue", () => {
     expect(invalidateQueue([])).toEqual({ queue: [], dropped: [] });
+  });
+});
+
+describe("commitAt", () => {
+  it("commits the head and skips nothing, which is the ordinary case", () => {
+    const [a, b] = [q("A"), q("B")];
+    const out = commitAt([a, b], a.id);
+    expect(out.committed).toBe(a);
+    expect(out.skipped).toEqual([]);
+    expect(out.queue).toEqual([b]);
+  });
+
+  // The case that exists because WebKit has historically sent a hard flick to
+  // the end of a snap container. The trail must record what was READ, so cards
+  // passed over are neither committed nor lost.
+  it("hands back the cards a flick jumped over, uncommitted", () => {
+    const [a, b, c, d] = [q("A"), q("B"), q("C"), q("D")];
+    const out = commitAt([a, b, c, d], c.id);
+    expect(out.committed).toBe(c);
+    expect(out.skipped).toEqual([a, b]);
+    expect(out.queue).toEqual([d]);
+  });
+
+  // They go back to the discover buffer, so they cost their upstream request
+  // once rather than being thrown away — but an ad or an ending is not a card.
+  it("hands back only real cards", () => {
+    const a = q("A");
+    const c = q("C");
+    const out = commitAt([a, { kind: "ad", id: "ad-1" }, c], c.id);
+    expect(out.skipped).toEqual([a]);
+  });
+
+  // The caller compensates scrollTop by skipped.length × itemHeight, which is
+  // only exact because every item is the same height.
+  it("removes exactly the items above and including the committed one", () => {
+    const items = [q("A"), q("B"), q("C")];
+    const out = commitAt(items, items[1].id);
+    expect(out.queue).toEqual([items[2]]);
+    expect(out.skipped.length + 1).toBe(2); // one skipped + the committed one
+  });
+
+  it("changes nothing for an id that is not a queued card", () => {
+    const queue: FeedItem[] = [{ kind: "step", index: 0 }, q("A")];
+    const out = commitAt(queue, "nope");
+    expect(out.committed).toBeNull();
+    expect(out.skipped).toEqual([]);
+    expect(out.queue).toEqual(queue);
+  });
+
+  it("is safe on an empty queue", () => {
+    expect(commitAt([], "x")).toEqual({ queue: [], committed: null, skipped: [] });
   });
 });
 
@@ -243,6 +272,44 @@ describe("terminusReason", () => {
     expect(terminusReason({ focusKind: "artist", dayDone: false })).toBe("pool-dry");
     expect(terminusReason({ dayDone: false })).toBe("pool-dry");
   });
+
+  // ⚠️ "we could not reach it" OUTRANKS both "you have read it all" endings, and
+  // that ordering is the whole fix. The feed used to answer a 503 with "you have
+  // read this area dry" — a claim it had no evidence for, on a free drift over
+  // the whole of Wikipedia — and then never asked again.
+  it("says the source is quiet rather than claiming a pool is exhausted", () => {
+    expect(terminusReason({ dayDone: false, sourceQuiet: true })).toBe("source-quiet");
+    expect(
+      terminusReason({ focusKind: "current", dayDone: false, sourceQuiet: true }),
+    ).toBe("source-quiet");
+    expect(
+      terminusReason({ focusKind: "field", dayDone: false, sourceQuiet: true }),
+    ).toBe("source-quiet");
+  });
+
+  // The day still wins over everything: an allowance spent while the source
+  // happened to be down is the day ending, and that is what the reader is told.
+  it("still lets the day outrank a quiet source", () => {
+    expect(terminusReason({ dayDone: true, sourceQuiet: true })).toBe("day-done");
+  });
+});
+
+describe("clearTerminus", () => {
+  // ⚠️ Measured before the fix: `step:0 | queued:met:254779 | terminus:pool-dry |
+  // queued:… | queued:…`. A refill that pushed onto the end of the queue put
+  // real cards BELOW the ending, so the reader scrolled past "you have read this
+  // area dry" into two more cards.
+  it("takes the ending away so a new card cannot land under it", () => {
+    const withEnd = appendTerminus([q("A")], "source-quiet");
+    const out = clearTerminus(withEnd);
+    expect(hasTerminus(out)).toBe(false);
+    expect(out).toEqual([q("A")]);
+  });
+
+  it("leaves a queue that never had one alone", () => {
+    const queue: FeedItem[] = [q("A"), q("B")];
+    expect(clearTerminus(queue)).toEqual(queue);
+  });
 });
 
 describe("appendTerminus", () => {
@@ -274,7 +341,7 @@ describe("queuedCount", () => {
       queuedCount([
         { kind: "step", index: 0 },
         q("A"),
-        { kind: "ad" },
+        { kind: "ad", id: "ad-1" },
         q("B"),
         { kind: "terminus", reason: "day-done" },
       ]),

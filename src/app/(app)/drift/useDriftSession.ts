@@ -339,6 +339,21 @@ export function useDriftSession() {
   const randomBufferRef = useRef<BufferedCard[]>([]);
   // A background buffer top-up is in flight (see `topUpBuffer`). One at a time.
   const bgRefillRef = useRef(false);
+  // Did the last discover round come back with an ANSWER, or with nothing at all?
+  //
+  // ⚠️ "EMPTY" AND "UNREACHABLE" ARE DIFFERENT ANSWERS AND THE FEED HAS TO SAY
+  // SO. `fetchDiscoverBatch` returns `[]` for both — a bucket genuinely read to
+  // the end, and every request failing — and the continuous feed turned that
+  // single `[]` into "You have read this area dry", permanently, on a free drift
+  // over the whole of Wikipedia (measured against a 503 upstream). A pool that
+  // is dry stays dry; a source that is quiet comes back. So the batch records
+  // which it was, and lib/feedqueue's `terminusReason` picks the honest ending.
+  //
+  // Set only by the discover path, which is what a free drift and the field,
+  // form and artist focuses all run on. The two POOL-served focuses (orbit and
+  // "in the news") reach their end through their own widening ladders and are
+  // genuinely exhausted when they return nothing, so they keep saying so.
+  const discoverQuietRef = useRef(false);
   // Holds the Image() used to warm the next card's picture, so the browser does
   // not collect it mid-flight and abandon the fetch we just paid for.
   const warmRef = useRef<HTMLImageElement | null>(null);
@@ -383,11 +398,19 @@ export function useDriftSession() {
   // The ways this stop was left (Phase 30). More than one means the reader is
   // standing on a fork and can step onto either line; the card renders nothing
   // for a single way, which is the ordinary case.
-  const ways: Way[] = (kids[pos] ?? []).map((i) => ({
-    index: i,
-    title: history[i].card.displayTitle,
-    onPath: path.includes(i),
-  }));
+  /** The ways a given stop was left. More than one means the reader is standing
+   *  on a fork and can step onto either line. */
+  function waysFrom(index: number): Way[] {
+    return (kids[index] ?? []).map((i) => ({
+      index: i,
+      title: history[i].card.displayTitle,
+      onPath: path.includes(i),
+    }));
+  }
+  // The ways this stop was left (Phase 30). More than one means the reader is
+  // standing on a fork and can step onto either line; the card renders nothing
+  // for a single way, which is the ordinary case.
+  const ways: Way[] = waysFrom(pos);
   // Realm follows the displayed card's source (so back-nav across a crossing shows
   // the right chrome/threads), falling back to the seed realm before the first
   // card. Mirrored into realmRef in render so async handlers/effects read the live
@@ -1200,7 +1223,7 @@ export function useDriftSession() {
     card: Card,
     via: ArrivedVia,
     direction: Dir,
-    opts: { parent?: number } = {},
+    opts: { parent?: number; leaving?: number | null } = {},
   ) {
     seenRef.current.add(cardId(card));
     persistSeen([cardId(card)]); // fire-and-forget; serialized in storage
@@ -1219,6 +1242,21 @@ export function useDriftSession() {
     if (direction === "drift") driftsSinceAdRef.current += 1;
     setDir(direction);
     const parent = opts.parent ?? pos;
+    // WHICH STOP THE READER IS LEAVING, which is not always the same question as
+    // which stop this one continues from.
+    //
+    // In the card-at-a-time feed they coincide: you are standing on `pos` and you
+    // leave it. An explicit `parent` there means rejoining an EARLIER stop
+    // (walking a door, branching), where nothing is being declined and so nothing
+    // is recorded. The continuous feed breaks the coincidence — a card commits
+    // when the reader scrolls onto it, and the stop they left is the tip, which
+    // they may have passed a moment ago — so it names both.
+    const leaving =
+      opts.leaving !== undefined
+        ? opts.leaving
+        : opts.parent === undefined
+          ? pos
+          : null;
     const at = history.length; // the index this step is about to take
     // The doors the stop you are LEAVING keeps behind (Phase 28): the threads it
     // offered and you did not take. Recorded now, because only now is it known
@@ -1226,7 +1264,7 @@ export function useDriftSession() {
     // card you scrolled straight past leaves nothing (lib/doors.ts). An explicit
     // parent means you are rejoining an earlier stop rather than leaving the one
     // on screen, so nothing is being declined and nothing is recorded.
-    const doors = opts.parent === undefined ? doorsLeavingHere(card) : [];
+    const doors = leaving === null ? [] : doorsLeavingHere(card, leaving);
     setHistory((h) => {
       const next = h.slice();
       const leaving = next[parent];
@@ -1252,13 +1290,13 @@ export function useDriftSession() {
    *  live dwell from the ref, because the effect that writes `dwellMs` into the
    *  step has not run yet at this point (it fires on the `pos` change this very
    *  call is about to cause). */
-  function doorsLeavingHere(taken: Card): Door[] {
-    const leaving = history[pos];
+  function doorsLeavingHere(taken: Card, from: number): Door[] {
+    const leaving = history[from];
     if (!leaving) return [];
     const offered = threadCache[cardId(leaving.card)];
     if (!offered || offered.length === 0) return [];
     const live =
-      dwellRef.current.index === pos && dwellRef.current.at > 0
+      dwellRef.current.index === from && dwellRef.current.at > 0
         ? Date.now() - dwellRef.current.at
         : 0;
     if (
@@ -1273,6 +1311,99 @@ export function useDriftSession() {
     // The card being pushed IS where you went, whether you pulled it or drifted
     // onto it, so it is never a door you left.
     return doorsFrom(offered, taken.pageTitle);
+  }
+
+  // ----- what a queue-based shell needs on top (continuous feed, Phase 3) -----
+  //
+  // A handful of small functions, and each exists because a continuous feed asks
+  // a question the card-at-a-time feed never had to. (This said "four" until the
+  // pre-Phase-7 audit added `sourceQuiet`; a count in a comment is a thing that
+  // goes stale silently, so it is a count no longer.)
+
+  /**
+   * Commit a card the reader has actually arrived on.
+   *
+   * ⚠️ IT TAKES THE TIP EXPLICITLY, AND THAT IS THE POINT. `pushStep` defaults
+   * both the parent and the stop-being-left to `pos`, which is right when the
+   * reader can only be in one place. In a scroller they can be scrolled up to
+   * stop 2 of 10, scroll back down through the queue, and commit a card that
+   * continues from 10 — so the caller names the tip rather than letting `pos`
+   * answer a question it no longer knows.
+   */
+  function commitCard(card: Card, via: ArrivedVia, from: number) {
+    pushStep(card, via, "drift", { parent: from, leaving: from });
+  }
+
+  /** The chips for ANY card, committed or not — the queue renders cards that are
+   *  not in the trail yet, and `threads` above can only speak about `history[pos]`.
+   *  Filtered against the trail exactly as the displayed card's are. */
+  function threadsOf(card: Card): Thread[] {
+    return threadsNotInTrail(threadCache[cardId(card)] ?? [], history);
+  }
+
+  /** Are that card's chips still on their way? Distinct from "it has none". */
+  function threadsPendingFor(card: Card): boolean {
+    return !(cardId(card) in threadCache);
+  }
+
+  /**
+   * Fetch a card's chips if nobody has yet. Idempotent twice over: it skips a
+   * card already in the cache, and `threadsFor` keeps at most one request in
+   * flight per card id, so however many callers ask, a card is fetched once.
+   *
+   * ⚠️ CALL IT FOR THE ACTIVE CARD AND AT MOST ONE AHEAD. Threads plus a doorway
+   * for every rendered card would take a Gallery screenful from ~9 to ~45 Met
+   * requests against a bucket of roughly 80 per 30 seconds, and CLAUDE.md §4
+   * records that an open breaker serves a Gallery room zero cards. This is the
+   * single rule in the continuous feed that must not be relaxed.
+   */
+  function ensureThreads(card: Card): void {
+    const id = cardId(card);
+    if (id in threadCacheRef.current) return;
+    // The card's OWN realm, not the one on screen: a doorway card can be queued
+    // from the other side, and asking the wrong realm's route would answer about
+    // a different page that happens to share a title.
+    void threadsFor(card, card.pageTitle, realmOfSource(card.source), id)
+      .then((chosen) =>
+        setThreadCache((c) => (id in c ? c : { ...c, [id]: chosen })),
+      )
+      .catch(() => {
+        /* optional: the chips simply arrive on the card instead (CLAUDE.md §4) */
+      });
+  }
+
+  /**
+   * Put cards back in the pile.
+   *
+   * A queued card that is discarded — a thread pulled, a realm crossed, a focus
+   * released, a card a flick skipped past — was never committed, so nothing
+   * recorded that the reader saw it, and it is still perfectly good. It also
+   * already cost an upstream request. Throwing it away would mean every thread
+   * pull spends three cards of the museum's daily budget on nothing.
+   *
+   * To the FRONT, so the cards nearest the reader's attention are the ones served
+   * next rather than being buried under a later refill.
+   *
+   * ⚠️ ONLY CARDS THAT CAME FROM THIS BUFFER GO BACK INTO IT. A card served by a
+   * POOL — an "in the news" story, an orbit ring — carries framing the random
+   * buffer cannot express ("2 days ago", "one ring out from Octopus"), and
+   * putting it here would re-serve it later stripped of the reason it was ever
+   * shown, which is precisely the transparency §2.1 is about. Those pools do
+   * their own recycling (the news revisit ring, the orbit pool), so dropping the
+   * card here loses nothing.
+   */
+  function returnToBuffer(items: { card: Card; via: ArrivedVia }[]): void {
+    const buffered: BufferedCard[] = [];
+    for (const { card, via } of items) {
+      if (via.type !== "drift") continue;
+      if (via.reason === "current") continue; // a pool's card, not the buffer's
+      buffered.push({
+        card,
+        ...(via.topic ? { topic: via.topic } : {}),
+        ...(via.reason ? { reason: via.reason } : {}),
+      });
+    }
+    if (buffered.length > 0) randomBufferRef.current.unshift(...buffered);
   }
 
   // ----- walking a door (Phase 29) -----
@@ -1418,7 +1549,19 @@ export function useDriftSession() {
     f: Focus,
     // Always a *drift* arrival (narrowed from ArrivedVia so a crossing can add
     // `crossedFrom` to it, which only a drift or a thread carries).
+    opts: { background?: boolean } = {},
   ): Promise<{ card: Card; via: Extract<ArrivedVia, { type: "drift" }> } | null> {
+    // A BACKGROUND fetch must not take the busy lock — see `nextDriftCard`.
+    const run = opts.background
+      ? <T,>(fn: () => Promise<T>) => fn()
+      : withBusy;
+    // ...nor announce a dry pool with a transient toast. The card-at-a-time feed
+    // has nowhere else to say it, so it says it over the middle of the screen.
+    // A queue-based shell puts the same words on a card at the END of the
+    // scroll, which is where the question "why did it stop?" is actually asked
+    // (components/TerminusCard.tsx). Saying it twice, in two places, would be
+    // worse than either.
+    const say = opts.background ? () => {} : showHint;
     // "In the news" drift (Phase 23): serve the section's current articles,
     // best-ranked first, paging deeper into the pool as it empties. Once the
     // pool is genuinely dry we widen into the neighbourhood of the stories
@@ -1444,7 +1587,7 @@ export function useDriftSession() {
       if (!currentDryRef.current) {
         let nc = takeCurrentCard();
         if (!nc) {
-          await withBusy(async () => {
+          await run(async () => {
             for (let guard = 0; guard < CURRENT_DRIFT_PAGES && !nc; guard++) {
               const { fresh, status } = await fetchCurrentPage(f.section);
               currentBufferRef.current.push(...fresh);
@@ -1468,7 +1611,7 @@ export function useDriftSession() {
       }
       let oc = takeOrbitCard();
       if (!oc) {
-        oc = await withBusy(async () => {
+        oc = await run(async () => {
           await refillOrbit();
           return takeOrbitCard();
         });
@@ -1484,7 +1627,7 @@ export function useDriftSession() {
         enterCaughtUp();
         return { card: rc.card, via: via({ daysAgo: rc.daysAgo, revisit: true }) };
       }
-      showHint(
+      say(
         "You've read everything in this story and around it. Pull a thread, or drift freely.",
       );
       return null;
@@ -1496,7 +1639,7 @@ export function useDriftSession() {
     if (f.kind === "orbit") {
       let oc = takeOrbitCard();
       if (!oc) {
-        oc = await withBusy(async () => {
+        oc = await run(async () => {
           await refillOrbit();
           return takeOrbitCard();
         });
@@ -1512,7 +1655,7 @@ export function useDriftSession() {
           },
         };
       }
-      showHint(
+      say(
         "You've wandered this whole orbit. Pull a thread, or drift freely to go wider.",
       );
       return null;
@@ -1523,22 +1666,37 @@ export function useDriftSession() {
 
   // The real drift (focused orbit / liked-thread follow / independent random),
   // extracted so advance() can slip a calm ad in front of it every N drifts.
-  async function doDrift() {
-    // The day's allowance (Phase 32). Checked HERE, before anything is fetched,
-    // so a spent day costs the upstream sources nothing. The session closes into
-    // the trail map rather than into a wall: the reward belongs at the exit.
-    if (dayIsSpent()) {
-      endSession("limit");
-      return;
-    }
+  /**
+   * CHOOSE the next passive-drift card, without committing it.
+   *
+   * The natural seam `doDrift` always had: everything above the `pushStep` calls
+   * is a decision, everything at them is a consequence. The card-at-a-time feed
+   * does both in one breath because only one card can exist; the continuous feed
+   * must choose a card, render it, and only commit it once the reader actually
+   * arrives (lib/feedqueue.ts). So the decision is a function now, and `doDrift`
+   * is what it always was: this, plus a step.
+   *
+   * `likedFollow` is the one behavioural difference between the two callers. In
+   * the card-at-a-time feed a ♥ quietly redirects the NEXT drift down one of this
+   * card's threads. A queue cannot do that quietly — the next card already
+   * exists — so the continuous feed turns it off here and inserts the follow
+   * explicitly instead, which is the more honest version of the same promise.
+   *
+   * Returns null when nothing could be found; the caller decides what to say
+   * about that, because a feed with a queue says it in a different place than one
+   * without (a card at the end of the scroll, not a toast over the middle).
+   */
+  async function nextDriftCard(
+    opts: { likedFollow?: boolean; background?: boolean } = {},
+  ): Promise<{ card: Card; via: ArrivedVia } | null> {
     // A focus steers the passive drift only inside its OWN realm: carried through
     // a doorway into the other one it goes dormant (and the banner says so), so
     // what happens here is an ordinary drift in the realm you are actually in.
     const focused = focusIn(realmRef.current);
     if (focused && (focused.kind === "current" || focused.kind === "orbit")) {
-      const next = await nextFocusedCard(focused);
-      if (next) pushStep(next.card, next.via, "drift");
-      return; // null ⇒ the pool is dry and has already said so
+      // Already returns a card without committing it, which is why the
+      // pool-served focuses needed no work here.
+      return await nextFocusedCard(focused, { background: opts.background });
     }
 
     // At the live card → drift. By default every drift is an independent random
@@ -1554,17 +1712,15 @@ export function useDriftSession() {
     // stays free, as it always is under a focus. A DORMANT focus makes no such
     // promise about this realm, so the shortcut is back on here.
     const likedCurrent =
-      !focused && current
+      opts.likedFollow !== false && !focused && current
         ? reactions[cardId(current.card)] === "like"
         : false;
     const choice = pickDriftNext(threads, { likedCurrent });
     if (choice.type === "thread" && current) {
-      pushStep(
-        candidateToCard(choice.thread.candidate),
-        { type: "drift", fromLiked: current.card.displayTitle },
-        "drift",
-      );
-      return;
+      return {
+        card: candidateToCard(choice.thread.candidate),
+        via: { type: "drift", fromLiked: current.card.displayTitle },
+      };
     }
 
     // Independent random drift. Served from the buffered batch: instant whenever
@@ -1574,22 +1730,30 @@ export function useDriftSession() {
     // topic it came from (shown on the card).
     let bc = takeBufferedRandom();
     if (!bc) {
-      busyRef.current = true;
-      setAdvancing(true);
+      // ⚠️ A BACKGROUND REFILL MUST NOT TAKE THE BUSY LOCK, and this was found by
+      // measurement rather than by reading. `busyRef` is what stops a second
+      // move starting while one is in flight, so `crossRealm`, `onThread`,
+      // `goBack` and the rest all early-return while it is set. In the
+      // card-at-a-time feed that is exactly right: a refill only ever happens
+      // inside the move the reader is waiting on. In a continuous feed the queue
+      // tops itself up in the background, constantly — so the lock was set most
+      // of the time, and tapping "Cross to the Gallery" silently did nothing.
+      const lock = !opts.background;
+      if (lock) {
+        busyRef.current = true;
+        setAdvancing(true);
+      }
       try {
         await refillRandomBuffer();
         bc = takeBufferedRandom();
       } finally {
-        busyRef.current = false;
-        setAdvancing(false);
+        if (lock) {
+          busyRef.current = false;
+          setAdvancing(false);
+        }
       }
     }
     if (bc) {
-      pushStep(
-        bc.card,
-        { type: "drift", topic: bc.topic, reason: bc.reason },
-        "drift",
-      );
       // Keep the buffer above its low-water mark in the background, so the next
       // drift is never the one that has to wait for three discover calls.
       if (
@@ -1601,24 +1765,46 @@ export function useDriftSession() {
       ) {
         void topUpBuffer();
       }
-    } else {
-      // Refill failed (both discover and random unavailable). Keep advancing on
-      // a *random* untapped thread (morelike stays healthy under throttling),
-      // else a gentle hint. Never a silent dead button.
-      //
-      // Except under a FIELD focus, where that thread is the bug the reader
-      // reported as "I picked a field and it just drifted randomly": a thread
-      // neighbour is not in the field, and it arrives labelled only "Drifting"
-      // while the banner still promises "Within Architecture". A field holds tens
-      // of thousands of pages and `refillRandomBuffer` has already reached deeper
-      // before giving up, so an empty buffer here means the source is unavailable,
-      // not that the field ran out. Say so, and keep the promise.
-      const t = focused?.kind === "field" ? null : pickRandomThread(threads);
-      if (t) {
-        pushStep(candidateToCard(t.candidate), { type: "drift" }, "drift");
-      } else {
-        showHint("The source is catching its breath. Try drifting again in a moment.");
-      }
+      return {
+        card: bc.card,
+        via: { type: "drift", topic: bc.topic, reason: bc.reason },
+      };
+    }
+
+    // Refill failed (both discover and random unavailable). Keep advancing on
+    // a *random* untapped thread (morelike stays healthy under throttling),
+    // else nothing. Never a silent dead button.
+    //
+    // Except under a FIELD focus, where that thread is the bug the reader
+    // reported as "I picked a field and it just drifted randomly": a thread
+    // neighbour is not in the field, and it arrives labelled only "Drifting"
+    // while the banner still promises "Within Architecture". A field holds tens
+    // of thousands of pages and `refillRandomBuffer` has already reached deeper
+    // before giving up, so an empty buffer here means the source is unavailable,
+    // not that the field ran out. Say so, and keep the promise.
+    const t = focused?.kind === "field" ? null : pickRandomThread(threads);
+    if (t) return { card: candidateToCard(t.candidate), via: { type: "drift" } };
+    return null;
+  }
+
+  async function doDrift() {
+    // The day's allowance (Phase 32). Checked HERE, before anything is fetched,
+    // so a spent day costs the upstream sources nothing. The session closes into
+    // the trail map rather than into a wall: the reward belongs at the exit.
+    if (dayIsSpent()) {
+      endSession("limit");
+      return;
+    }
+    const next = await nextDriftCard();
+    if (next) {
+      pushStep(next.card, next.via, "drift");
+      return;
+    }
+    // A pool-served focus that ran dry has already said so through its own hint
+    // (nextFocusedCard); anything else reaching here is an unavailable source.
+    const focused = focusIn(realmRef.current);
+    if (!focused || (focused.kind !== "current" && focused.kind !== "orbit")) {
+      showHint("The source is catching its breath. Try drifting again in a moment.");
     }
   }
 
@@ -1834,7 +2020,7 @@ export function useDriftSession() {
     const base = artistOffsetRef.current;
     if (sequential) artistOffsetRef.current += REFILL_TOPICS * DISCOVER_LIMIT;
     const batches = await Promise.all(
-      picks.map(async (pick, i): Promise<BufferedCard[]> => {
+      picks.map(async (pick, i): Promise<{ cards: BufferedCard[]; ok: boolean }> => {
         try {
           const res = await fetch(
             discoverUrl(rid, {
@@ -1852,22 +2038,31 @@ export function useDriftSession() {
             }),
             { signal: AbortSignal.timeout(6000) },
           );
-          if (!res.ok) return [];
+          if (!res.ok) return { cards: [], ok: false };
           const cards = (await res.json()) as Card[];
-          if (!Array.isArray(cards)) return [];
-          return cards
-            .filter((c) => c?.pageTitle && !seenRef.current.has(cardId(c)))
-            .map((card) => ({
-              card,
-              topic: { id: pick.id, label: pick.label },
-              reason: pick.reason,
-            }));
+          if (!Array.isArray(cards)) return { cards: [], ok: false };
+          return {
+            cards: cards
+              .filter((c) => c?.pageTitle && !seenRef.current.has(cardId(c)))
+              .map((card) => ({
+                card,
+                topic: { id: pick.id, label: pick.label },
+                reason: pick.reason,
+              })),
+            // ANSWERED, even when the answer was "nothing left here". That is
+            // the whole distinction: `ok` is about reaching the source, not
+            // about liking what it said.
+            ok: true,
+          };
         } catch {
-          return [];
+          return { cards: [], ok: false };
         }
       }),
     );
-    return interleave(batches);
+    // Quiet only when NOT ONE of the parallel picks got through. One good answer
+    // means the source is up and the emptiness is real.
+    discoverQuietRef.current = batches.length > 0 && batches.every((b) => !b.ok);
+    return interleave(batches.map((b) => b.cards));
   }
 
   // Resolve a page's tracked topics — from the client cache, else the topics API
@@ -2308,6 +2503,7 @@ export function useDriftSession() {
     pathPos,
     branchAt,
     ways,
+    waysFrom,
     current,
     endless,
     // the card on screen
@@ -2324,6 +2520,11 @@ export function useDriftSession() {
     revealed,
     bannerSuffix,
     orbitingThisCard,
+    // the guided tour's two feed-facing bits: whether it is running (so an ad
+    // is never slipped in mid-tour) and whether it has frozen navigation while
+    // the reader "looks around" a card.
+    tourActive,
+    holdNav,
     // what the session is doing right now
     initialLoading,
     error,
@@ -2349,6 +2550,19 @@ export function useDriftSession() {
     isBusy: () => busyRef.current,
     advance,
     goBack,
+    // What a queue-based shell needs on top. The card-at-a-time feed uses none
+    // of these; see their definitions for why each one has to exist.
+    nextDriftCard,
+    /** Did the last refill fail to REACH the source, rather than come back with
+     *  nothing? Read synchronously, and a function rather than the ref itself
+     *  for the reason given on `onTrailSaved`. See `discoverQuietRef`. */
+    sourceQuiet: () => discoverQuietRef.current,
+    commitCard,
+    threadsOf,
+    threadsPendingFor,
+    ensureThreads,
+    returnToBuffer,
+    dayIsSpent,
     jumpTo,
     onWay,
     onThread,

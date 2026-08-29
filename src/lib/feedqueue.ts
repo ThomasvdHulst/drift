@@ -1,8 +1,6 @@
 import type { ArrivedVia, Card } from "./types";
 import type { Focus } from "./focus";
-import type { RealmId } from "./realms/types";
 import { cardId } from "./card";
-import { isServable } from "./lookahead";
 
 // ---------------------------------------------------------------------------
 // The continuous feed's queue (Phase 2 of docs/continuous-feed.md).
@@ -23,8 +21,8 @@ import { isServable } from "./lookahead";
 // pulling a thread, crossing realms and changing focus all just throw the queue
 // away, and there is nothing to undo because nothing was ever written down.
 //
-// Pure: no React, no DOM, no network (CLAUDE.md §8.4). Nothing here is wired up
-// yet; the scroller that consumes it arrives in Phase 3.
+// Pure: no React, no DOM, no network (CLAUDE.md §8.4). The scroller that
+// consumes it is drift/ContinuousFeed.tsx.
 // ---------------------------------------------------------------------------
 
 /** Why the feed has stopped producing cards. Each becomes a real, full-screen
@@ -35,6 +33,18 @@ export type TerminusReason =
   | "pool-dry"
   /** An "in the news" section whose stories AND their neighbourhood are read. */
   | "caught-up"
+  /**
+   * We could not REACH the source. Not the same thing as reading it dry, and
+   * conflating the two is a lie the reader can catch.
+   *
+   * ⚠️ THIS EXISTS BECAUSE THE FEED USED TO SAY "you have read this area dry"
+   * AT A 503. Measured: with the upstream answering 503, the scroller became
+   * `step:0 | terminus:pool-dry` within six seconds, on a free drift over the
+   * whole of Wikipedia — and stayed there after the source recovered, because
+   * nothing retried. A dry pool is final; an unreachable source is a pause, so
+   * this one is the only ending that RETRIES and clears itself.
+   */
+  | "source-quiet"
   /** The day's allowance is spent. This one ends in the trail map. */
   | "day-done";
 
@@ -44,8 +54,16 @@ export type FeedItem =
   | { kind: "step"; index: number }
   /** Materialised but NOT committed. Discardable without trace. */
   | { kind: "queued"; id: string; card: Card; via: ArrivedVia }
-  /** The calm ad interstitial (Phase 21), off by default. */
-  | { kind: "ad" }
+  /**
+   * The calm ad interstitial (Phase 21), off by default.
+   *
+   * ⚠️ IT CARRIES AN ID FOR THE SAME REASON A CARD DOES. The slot key used to be
+   * the ad's INDEX in the queue, which changes every time something above it
+   * commits — so the ad unmounted and remounted under the reader. Harmless for
+   * the house placeholder; in `adsense` mode a remount asks Google for another
+   * impression of an ad nobody scrolled to.
+   */
+  | { kind: "ad"; id: string }
   /** The end of the road, and why. */
   | { kind: "terminus"; reason: TerminusReason };
 
@@ -174,24 +192,6 @@ export function pendingIds(queue: readonly FeedItem[]): Set<string> {
   return ids;
 }
 
-/**
- * May this card be materialised into the queue right now?
- *
- * Extends `isServable` (unseen, well-formed, in the realm being read) with the
- * one dimension the queue adds: not already spoken for. Built on that function
- * rather than repeating it, so the discrete feed's buffer and the continuous
- * feed's queue can never disagree about what a servable card is.
- */
-export function isCandidate(
-  card: Card | undefined,
-  seen: Set<string>,
-  pending: Set<string>,
-  realm: RealmId,
-): boolean {
-  if (!isServable({ card }, seen, realm)) return false;
-  return !pending.has(cardId(card!));
-}
-
 // ---------------------------------------------------------------------------
 // Changing the queue
 // ---------------------------------------------------------------------------
@@ -216,6 +216,52 @@ export function invalidateQueue(queue: readonly FeedItem[]): {
   dropped: QueuedItem[];
 } {
   return { queue: [], dropped: queue.filter(isQueued) };
+}
+
+/**
+ * Commit the queued card the reader has settled on, IN ORDER.
+ *
+ * The ordinary answer is the boring one: the item is the first in the queue, it
+ * commits, and `skipped` is empty.
+ *
+ * ⚠️ THE INTERESTING CASE IS A PLATFORM LETTING A FLICK SKIP CARDS, WHICH IS
+ * REAL. `scroll-snap-stop: always` is supposed to halt a fast swipe at every
+ * snap point, and on Blink it does; WebKit has historically sent a hard flick
+ * straight to the END of a snap container instead
+ * (github.com/bvaughn/react-window/issues/290). The bounded queue keeps the
+ * blast radius at three cards rather than three hundred, but the model still has
+ * to be correct when it happens, because a trail that silently gained two stops
+ * the reader never saw is exactly the dishonesty §2 is about.
+ *
+ * So the cards passed over are NOT committed and NOT lost: they come back as
+ * `skipped`, for the caller to return to the discover buffer. They cost real
+ * upstream requests and they were never read, so putting them back in the pile
+ * is both cheap and true.
+ *
+ * Removing them from the queue is scroll-safe for the one reason everything
+ * else in this design is: every item is exactly one viewport tall, so the caller
+ * can compensate with `scrollTop -= skipped.length * itemHeight` exactly.
+ *
+ * Returns `committed: null` when the id is not a queued item at all (a step, an
+ * ad, an ending, or already gone), and changes nothing.
+ */
+export function commitAt(
+  queue: readonly FeedItem[],
+  id: string,
+): { queue: FeedItem[]; committed: QueuedItem | null; skipped: QueuedItem[] } {
+  const at = queue.findIndex((i) => isQueued(i) && i.id === id);
+  if (at < 0) return { queue: [...queue], committed: null, skipped: [] };
+  const committed = queue[at] as QueuedItem;
+  const before = queue.slice(0, at);
+  return {
+    // Everything up to and including the committed item leaves the queue: the
+    // committed one becomes a trail step, the skipped ones go back to the pile.
+    queue: queue.slice(at + 1),
+    committed,
+    // Only real cards can be handed back. An ad or an ending scrolled past is
+    // not something to re-serve.
+    skipped: before.filter(isQueued),
+  };
 }
 
 /**
@@ -283,15 +329,28 @@ export function insertAfterLike(
 /**
  * Which ending this is.
  *
- * The day always wins: an allowance that ran out inside a news section is the
- * day ending, not the section, and saying "you are caught up" there would be
- * telling the reader the wrong thing about why the feed stopped.
+ * The order is the whole content of this function, so it is worth stating:
+ *
+ *   day-done      the allowance ran out. It outranks everything, because an
+ *                 allowance spent inside a news section is the DAY ending, not
+ *                 the section, and "you are caught up" would be the wrong
+ *                 answer to "why did it stop?".
+ *   source-quiet  we could not reach the source. It outranks the two "you have
+ *                 read it all" endings for the same reason in reverse: we do
+ *                 not KNOW that anything is exhausted, only that nobody
+ *                 answered. Claiming otherwise is a lie the reader can catch by
+ *                 reloading.
+ *   caught-up     an "in the news" section, read along with its neighbourhood.
+ *   pool-dry      everything else the reader has genuinely read to the end of.
  */
 export function terminusReason(opts: {
   focusKind?: Focus["kind"] | null;
   dayDone: boolean;
+  /** True when the last refill FAILED rather than came back empty-handed. */
+  sourceQuiet?: boolean;
 }): TerminusReason {
   if (opts.dayDone) return "day-done";
+  if (opts.sourceQuiet) return "source-quiet";
   return opts.focusKind === "current" ? "caught-up" : "pool-dry";
 }
 
@@ -309,6 +368,21 @@ export function appendTerminus(
 ): FeedItem[] {
   const withoutEnd = queue.filter((i) => !isTerminus(i));
   return [...withoutEnd, { kind: "terminus", reason }];
+}
+
+/**
+ * Take the ending away again.
+ *
+ * ⚠️ A REAL CARD ARRIVING MUST REMOVE THE ENDING, NOT QUEUE UP BEHIND IT. The
+ * refill used to push onto the end of the queue whatever was already there, so
+ * a card that arrived after an ending was placed landed BELOW it — measured:
+ * `step:0 | queued:met:254779 | terminus:pool-dry | queued:… | queued:…`, a
+ * reader scrolling past "you have read this area dry" into two more cards. The
+ * ending is a statement about right now, and the moment it stops being true it
+ * has to go.
+ */
+export function clearTerminus(queue: readonly FeedItem[]): FeedItem[] {
+  return queue.filter((i) => !isTerminus(i));
 }
 
 /** Is the feed already showing an ending? */

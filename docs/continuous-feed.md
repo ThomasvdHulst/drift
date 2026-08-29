@@ -1,7 +1,11 @@
 # The continuous feed — research, architecture and the decisions it forces
 
 **Branch:** `continuous-feed` (forked from `main` at `4d21047`, 28 August 2026)
-**Status:** Phases 0, 1 and 2 shipped. Phases 3 to 7 designed, not built.
+**Status:** Phases 0 to 6 shipped, then audited before Phase 7 (§4.8 — six real bugs, two of
+them serious, all fixed). The scroller is feature-complete behind `NEXT_PUBLIC_FEED_CONTINUOUS`,
+and the owner has decided it is THE feed. Phase 7 (retire the discrete shell, rewrite the four
+promise surfaces, update the harnesses) is the last one.
+**Verify with `npm run verify:feed`.**
 **Companion files:** `plan-continuous-feed.md` (the phase tracker) and
 `docs/continuous-feed-prompt.md` (paste that into a fresh session to bring it fully up to speed).
 
@@ -241,6 +245,111 @@ this codebase works — `makeGate(50, { burst: 30, windowMs: 15_000, maxWaitMs: 
 Met is a textbook rolling-window budget. The relevant lesson for this project is that a bucket
 cares about *burst shape*, not totals, which turns out to be the good news in §7.
 
+### 4.6 What building it actually taught us (Phase 3, measured)
+
+Five things the research above did not, or could not, say. Each one was found by measuring, and
+each one is now a comment in the code at the place it matters.
+
+1. **A background refill must not take the engine's busy lock.** `busyRef` is what stops a second
+   move starting while one is in flight, so `crossRealm`, `onThread` and `goBack` all early-return
+   while it is set. In a card-at-a-time feed that is exactly right: a refill only happens inside
+   the move the reader is waiting on. A continuous feed tops itself up constantly, so the lock was
+   set most of the time and **tapping "Cross to the Gallery" silently did nothing**. `nextDriftCard`
+   now takes a `background` flag that skips the lock.
+2. **The engine derives the realm during RENDER, so a refill fired straight after an `await` sees
+   the realm you just left.** Crossing to the Gallery voided the queue, refilled it immediately,
+   and stacked three Encyclopedia cards under a Gallery card. The refill has to be deferred to an
+   effect that runs after the render which makes the new realm true.
+3. **The continuous feed retries a failing source far harder than the old one did**, because its
+   refill runs from an effect rather than from a swipe. Measured against a Met that was already
+   refusing: **2.62 discover calls per card, against 0.54 once the museum had rested.** Retrying
+   hardest exactly when a source is asking us to stop is precisely backwards, and it is how a brief
+   throttle becomes a shrunk daily budget. Hence `FILL_BACKOFF_MS`.
+4. **Key the rendered item on the CARD, not on the slot.** A slot key changes from `queued:…` to
+   `step:…` the instant a card commits, so keying on it unmounts and remounts the card at exactly
+   that moment — a flash and a re-fetched image on every single stop.
+5. **Rendering everything is fine; no windowing is needed.** Measured at 26 committed cards:
+   **29 slots, 3,394 DOM nodes, 54 images, 11 MB JS heap.** That settles the question §4.2 left
+   open — neither `content-visibility` nor placeholder windowing is worth its risk yet. Re-measure
+   before assuming it still holds for much longer sessions.
+
+### 4.7 And what Phases 5 and 6 taught (measured)
+
+Four more, all invisible to the gates that existed.
+
+6. **A ref cannot trigger a render.** The feed recorded "a refill came back empty" in a ref, because
+   the backoff reads it synchronously — but the effect that places the ending card had nothing to
+   fire on, so **the ending never appeared at all**. It is a ref *and* a counter now.
+7. **A fork REPLACES the line below it, it does not lengthen it.** `step:0 | step:1 | step:2`
+   becomes `step:0 | step:1 | step:3`. Counting step slots to prove a fork happened proves nothing.
+8. **`.first()` is a trap, twice over**, and it caused two real tour bugs as well as three false
+   test failures. The card renders its threads twice (pinned for desktop, inlined for phone, one
+   always `md:hidden`), and four cards are in the DOM at once. `CardView` now emits its `data-tour`
+   and `data-drift-scroll` markers **only when it is the active card**.
+9. **The Gallery's cold start was an image burst**, not the API. Four cards render at once and a
+   Gallery card's full-size image comes through our own proxy — four concurrent multi-megabyte
+   originals where the old feed asked for one. The heavy image is now loaded for the active card and
+   its neighbours only, gated on the URL rather than the realm.
+
+### 4.8 And what the pre-Phase-7 audit found (measured, 29 August)
+
+The scroller passed 53/53 and every gate. So the audit went looking for the paths a gate
+does not walk: an upstream that fails rather than answers, a reader parked up their own
+trail, and a keyboard. Six things, and the first two are the ones that mattered.
+
+10. **⚠️ THE FEED DIED ON ONE EMPTY REFILL, AND NOTHING COULD WAKE IT.** With the upstream
+    answering 503, the scroller became `step:0 | terminus:pool-dry` within six seconds — on a
+    free drift over the whole of Wikipedia — saying *"you have read this area dry"*, which it
+    had no evidence for. The source then recovered and **fifteen seconds and four ArrowDowns
+    later it was still exactly that**. The cause is structural rather than a slip: `fill` is
+    woken by the queue changing, by a steer and by the day's capacity, and **none of those
+    happens while the feed sits empty**, so the first failed refill was the last attempt that
+    would ever be made. A timer is the only thing that can re-open the question.
+11. **⚠️ `fill` PINNED THE ENGINE FROM ONE RENDER, WHICH SILENTLY KILLED THE DEGRADED
+    FALLBACK.** `useCallback(fill, [capacity])` and `capacity` never changes for an unmetered
+    reader, so `fill` held the `s` object from the render it was built in, for the whole
+    session. Most of the engine reads refs and did not care. `nextDriftCard`'s fallback — a
+    random untapped thread of the card on screen, the path that keeps the feed alive while
+    discover is throttled — reads `threads` from the RENDER scope, and pinned to the first
+    render of a session that list is empty, because the seed's chips have not arrived yet.
+    Measured: with `discover` answering `[]` and `related` perfectly healthy, the feed
+    announced the end of the road and the fallback fired **zero** times. `verify-feed.mjs`
+    asserted the opposite in a comment, which is how it went unnoticed.
+12. **A card could be appended AFTER the ending card.** `fill` pushed onto the end of the
+    queue whatever was already in it. Measured: `step:0 | queued:met:254779 | terminus:pool-dry
+    | queued:… | queued:…` — a reader scrolling past "you have read this area dry" into two
+    more cards. Invariant 10, broken by three lines.
+13. **The queue was refilled for the stop the reader was STANDING on, not the tip it hangs
+    below.** Cross to the Gallery and scroll up three: `data-realm` flips back to
+    `encyclopedia` while three Met cards sit queued under a Gallery tip, because the engine
+    derives realm, focus and fallback threads from `pos`. A ♥ up there proved the wake-up path
+    was live: `queued:wikipedia:Cephalopod` went straight to the head of the Met queue, four
+    deep against a capacity of three. **The queue continues the TIP, so only the tip may fill
+    it** — which also means the feed now fetches nothing at all while somebody re-reads.
+14. **Tab carried a keyboard reader down the feed.** Four cards are laid out at once and the
+    browser scrolls focus into view, so tabbing off the active card's last thread chip walked
+    into the queue below and moved the reader three cards on, committing them. Every card but
+    the active one is `inert` now. §8.6 had flagged this as "decide deliberately"; this is the
+    decision.
+15. **Two exports the docs called load-bearing were wired to nothing.** `pendingIds` (used only
+    inside `insertAfterLike`), `isCandidate` and `trimToCapacity`. See §8.7.
+
+⚠️ **And one thing that was not a bug at all, recorded because it cost time twice.** The phone
+pass reported two STEERING failures — "crossing realms lands in the other realm" and "the queue is
+rebuilt from the new realm" — while the desktop pass passed both. It was **The Met**: the run was
+sharing the machine with `audit:contrast`, which also opens Gallery views, and the server log said
+`circuit OPEN after 5 consecutive throttles` with a string of `[met] search skipped: rate budget`.
+`crossRealm` was behaving correctly by declining to land on nothing. The check now retries once
+after a pause and names the cause, the way `entryPoints` already did. **Never run `verify:feed`
+alongside another browser suite, and read the server log before the code when a Gallery check
+fails.**
+
+Three things the audit checked and found **sound**, recorded so nobody re-derives them: the
+guided tour runs clean end to end on the scroller (every forced step advances); the ad
+interstitial's spacing is right and the browser's snap re-targeting keeps the reader on the
+correct card when an item above them is removed; and nothing uncommitted ever reaches the
+`seen` store.
+
 **Sources**
 - [MDN: `scroll-snap-stop`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/scroll-snap-stop) and [MDN: CSS scroll snap](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Scroll_snap)
 - [Tailwind: `snap-always`](https://tailwindcss.com/docs/scroll-snap-stop) (this project styles with Tailwind v4)
@@ -249,6 +358,10 @@ cares about *burst shape*, not totals, which turns out to be the good news in §
 - [Smashing Magazine: Designing better infinite scroll](https://www.smashingmagazine.com/2022/03/designing-better-infinite-scroll/), [Addy Osmani: Infinite scroll without layout shifts](https://addyosmani.com/blog/infinite-scroll-without-layout-shifts/)
 - [react-vertical-feed](https://github.com/reinaldosimoes/react-vertical-feed) and [react-tiktok-style-video-scroller](https://github.com/neomavkda3/react-tiktok-style-video-scroller) as reference implementations of the snap + IntersectionObserver pattern
 - [Zuplo: API rate limiting best practices](https://zuplo.com/learning-center/10-best-practices-for-api-rate-limiting-in-2026)
+- [react-window #290](https://github.com/bvaughn/react-window/issues/290) (WebKit sends a hard flick
+  to the end of a snap container) and [WebKit 243582](https://bugs.webkit.org/show_bug.cgi?id=243582)
+  (mandatory snap disables momentum scrolling on iOS — a hazard for carousels, the behaviour we
+  want here)
 
 ---
 
@@ -435,11 +548,24 @@ be. In the queue model, a dry pool appends a **terminus item** — a real, full-
 end of the scroll:
 
 - `pool-dry` (a field or artist ring exhausted): "you have read this field dry", offering to
-  widen or drift freely.
+  drift freely. There is no "go wider" button, and that is deliberate: every widening ladder the
+  engine has is climbed *inside* refill before a terminus is ever placed, so a second button
+  offering it would be the same action under a different name (§2).
 - `caught-up` (the Phase 23 news case): the existing wording, but placed exactly where the
   section's stories end, so it answers "why did it stop here?" in the place the question is
   asked.
+- `source-quiet` (added by the §4.8 audit): **we could not REACH the source.** Not an ending at
+  all, and the only one of the four that is not final — it retries behind itself with a doubling
+  backoff, clears itself the moment a card arrives, and offers "Try again". Nobody is ever
+  carried onto it by the auto-snap, because a pause is not an exit and because the refill will
+  not replace a card somebody is standing on. See §4.8 finding 10 for what it replaced.
 - `day-done`: the trail map (see 6.2).
+
+⚠️ **An ending is placed only after the refill has come back empty TWICE** (`TRIES_BEFORE_END`,
+`FILL_BACKOFF_MS` apart). "Empty right now" is not "empty": the first refill of a session runs
+before the seed card's chips have arrived, so the degraded thread fallback has nothing to choose
+from and a perfectly healthy feed looked exhausted (§4.8 findings 10 and 11). The one exception
+is a spent day, which is a fact already in hand rather than an answer being waited on.
 
 The reader scrolls *into* the ending. That is principle §2.3 ("sessions have shape") rendered
 as geometry rather than announced in a toast, and it is the single nicest thing this
@@ -570,8 +696,13 @@ being declined) must be preserved.
 - Keys `1`/`2`/`3` pull threads on the *current* card; "current" is now observer-derived.
 - WCAG 2.2 AA is a standing gate here (`CLAUDE.md §10`). Several cards in the DOM at once
   raises real questions: focus order across off-screen items, whether non-current items should
-  be `inert`, and a visible focus indicator at every tab stop (2.4.7). Decide deliberately;
-  `inert` on non-current items is probably right and is one attribute.
+  be `inert`, and a visible focus indicator at every tab stop (2.4.7).
+  ✅ **DECIDED AND DONE (§4.8 finding 14): every card but the active one is `inert`.** It is not
+  only a tidiness matter. The browser scrolls focus into view, so tabbing off the active card's
+  last thread chip walked into the queue below and carried the reader three cards down the feed,
+  committing each one to their trail. Measured over 30 Tab presses. `inert` is Baseline (Chrome
+  102, Safari 15.5, Firefox 112) and React 19 takes it as a boolean prop.
+  `verify:feed`'s KEYBOARD FOCUS ORDER section pins it.
 - `prefers-reduced-motion`: no smooth-scroll programmatic jumps.
 
 ### 8.7 ⚠️ The `seen` set is a trap, and it is the likeliest bug in the whole project
@@ -587,8 +718,23 @@ sitting in the queue.
 was a second set, added to on materialise and released on discard — two sets with two lifetimes,
 and a release you can forget. `feedqueue.pendingIds` instead **derives** the spoken-for ids from
 the queue itself: dropping an item IS releasing its id, in the same statement, and there is no
-second piece of bookkeeping that can fall out of step. `isCandidate` then layers that over
-`lookahead.isServable` so the buffer and the queue cannot disagree about what a servable card is.
+second piece of bookkeeping that can fall out of step.
+
+⚠️ **AND FOR A WHILE IT WAS DERIVED BY NOBODY.** The §4.8 audit found `pendingIds` was called
+only from inside `insertAfterLike`, and `isCandidate` — the function this paragraph used to
+describe as layering it over `lookahead.isServable` — was **exported, unit-tested and called from
+nowhere at all.** A defence the documentation calls load-bearing and the code never consults is
+worse than no defence, because it stops anyone looking. `isCandidate` has been deleted, and `fill`
+now checks `pendingIds` where cards actually enter the queue. The duplicate it guards against is
+real and has exactly one source: the buffer and the pools all HAND OUT a card, so they cannot
+repeat, but the degraded fallback picks a random untapped thread from a fixed set of three or
+four, and two rounds of one fill can name the same one. Two items with the same id collide on the
+React key *and* on the `data-slot` the observer commits by.
+
+`trimToCapacity` was in the same state and has been wired into the fill effect instead of deleted:
+the day can close from another tab or another device, so the allowance can drop by more than the
+one stop this reader just took, and trimming from the END is what keeps invariant 7 a property
+rather than a hope.
 
 The distinction the hazard was really about still stands and must be kept: **`seen` means "the
 reader read this" and is written only on COMMIT**; spoken-for means "this is in the queue right
@@ -659,7 +805,32 @@ positions.
    (`meter === null` means unmetered).
 8. Discarding a queued card **releases its pending id** so it can be served again later.
 9. Nothing advances without a gesture. No timers, ever.
-10. The scroller ends at the last queued item. There is always a visible floor.
+10. The scroller ends at the last queued item. There is always a visible floor — or the ending
+    card, which is the floor made explicit.
+11. **The feed moves on its own in exactly ONE place**: carrying the reader onto the ending. It is
+    guarded to fire only when they are already on the last card, so it can never drag somebody who
+    is scrolled up re-reading — and never for `source-quiet`, which is a pause rather than an exit.
+    Remove either guard and the feed starts moving people through content they did not ask to leave.
+12. **Only the ACTIVE card carries `data-tour` and `data-drift-scroll`, and every other card is
+    `inert`.** Four cards are in the DOM; anything that looks a marker up by `querySelector` finds
+    the topmost one otherwise, and Tab walks into cards nobody has arrived at (§4.8 finding 14).
+13. **The full-size image is loaded for the active card and its neighbours only.** It is our proxy
+    and a multi-megabyte original per card; the hotlinked preview stands in for the rest.
+14. **Only the TIP may fill the queue.** The queue hangs under the tip, but the engine derives the
+    realm, the focus and the fallback threads from `pos` — so refilling while the reader is scrolled
+    up stacks the wrong realm underneath them (§4.8 finding 13). The same rule governs the ♥ insert.
+    A consequence worth knowing: the feed fetches **nothing** while somebody is re-reading, and an
+    ending they cannot see is therefore never placed until they come back down.
+15. **The refill can always be woken again.** Every path that leaves the queue empty either
+    schedules a retry or is a final answer the feed has evidence for. Nothing in the effect graph
+    fires while the feed sits empty, so a state with no timer behind it is a dead feed (§4.8
+    finding 10).
+16. **A real card removes the ending.** An ending is a claim about right now; the moment a card
+    arrives it is false, and it must go rather than have cards queue up below it (invariant 10).
+17. **Nothing that outlives one render may close over the engine.** `useDriftSession` returns a
+    fresh object every render and not all of it reads refs — a memoised callback that captures it
+    is holding one moment's `threads`, `current` and `history` forever (§4.8 finding 11). Go
+    through `sRef`.
 
 ---
 
@@ -687,3 +858,17 @@ than work around them. That rewrite ships *with* the feed, in the same change �
 The project is **doable**. It is not small, and the risk is concentrated in three places: the
 principle rewrite (§3.1), the Met budget (§7.2), and the `seen`-set lifetime (§8.7). Everything
 else is ordinary work.
+
+**Phases 3 to 6** then built the scroller, steering on it, forks, re-entry, endings, ads and the
+tour, and `npm run verify:feed` with them.
+
+**Then it was audited before Phase 7, and that audit is §4.8.** Everything the gates covered was
+sound; everything they did not cover was where the bugs were, and the shape of them is worth
+carrying forward. Four of the six were the same mistake in different clothes: **a continuous feed
+runs from effects, and an effect that nothing can fire is a dead branch.** One failed refill with
+no timer behind it, a `useCallback` holding an engine object nobody would refresh, a queue filled
+from `pos` when it hangs under `tip` — none of these is visible by reading the code, and all of
+them were obvious within a minute of pointing a 503 at it. The gate now closes those doors
+(`A SOURCE THAT WILL NOT ANSWER`, `KEYBOARD FOCUS ORDER`), and the ones like them that come next
+will be found the same way: break the source, park the reader somewhere unusual, and use a
+keyboard.

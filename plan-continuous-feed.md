@@ -12,59 +12,93 @@ here repeats its reasoning; this is only the order of work.
 say "read `docs/continuous-feed-prompt.md` first". It is the single prompt that brings a new
 assistant all the way from nothing to a formal plan for the next phase.
 
-> ## Current status: 2026-08-28
+> ## Current status: 2026-08-29
 >
-> ✅ **Phases 0, 1 and 2 are COMPLETE.**
+> ✅ **Phases 0 to 6 are COMPLETE, and have now been AUDITED before Phase 7.** The scroller is
+> feature-complete behind `NEXT_PUBLIC_FEED_CONTINUOUS=1`: forks, the ways switch, saved-trail
+> re-entry, endings you scroll into, ads, and the guided tour. With the flag off nothing changes;
+> with it on, `?feed=classic` gives the old feed back.
 >
-> - **Phase 0** made the existing feed fast: a whole stop lands in ~150 ms instead of 530 to
->   3,350 ms, at no extra upstream cost.
-> - **Phase 1** split the 2,850-line feed into `useDriftSession` (the engine, 2,362 lines),
->   `page.tsx` (the card-at-a-time shell, 549) and `EndOverlay.tsx` (281). Behaviour-neutral,
->   verified 30/30 across every entry point in a real browser, and performance-neutral
->   (145-148 ms, 1.00 `/related` and 1.00 `/doorway` per card, unchanged from Phase 0).
-> - **Phase 2** built `src/lib/feedqueue.ts`, the pure two-phase queue the scroller will run on:
->   31 tests, wired to nothing yet.
+> **Owner decision (28 August): the continuous feed is THE feed.** The card-at-a-time version is
+> not coming back. It is still present, and Phase 7 removes it — see below for why not sooner.
 >
-> **Gates:** 1,403 unit tests green (83 files), `npm run build` clean, `npm run lint` clean with
-> zero warnings, `npm run audit:contrast` PASS (3,909 nodes, 32 views x 2 themes).
+> ### 🔍 The pre-Phase-7 audit (29 August): six bugs, two of them serious
 >
-> ### ✅ The blocking owner decision has been taken
+> Everything the gates covered was sound (53/53, build, lint, 1,415 tests). So the audit went at
+> the paths a gate does not walk — a source that fails rather than answers, a reader parked up
+> their own trail, and a keyboard — and found six things. All are fixed; the reasoning is in
+> `docs/continuous-feed.md` §4.8 and the log entry below.
 >
-> The scroller **goes ahead**, and `CLAUDE.md §2.2`, `drift-spec.md §2.2`/§7, `/principles` §2 and
-> `/how-it-works` **will be rewritten** to say what the app really does, rather than the feature
-> being bent to fit words written before it existed. That rewrite ships **with** the feed in
-> Phase 7, never after it. See `docs/continuous-feed.md` §3.
+> 1. **The feed died on one empty refill and nothing could wake it.** A 503 produced "You have
+>    read this area dry" in six seconds, on a free drift over the whole of Wikipedia, and it was
+>    still there fifteen seconds after the source recovered.
+> 2. **`fill` pinned the engine from one render, silently killing the degraded thread fallback.**
+>    With discover empty and `related` healthy, the fallback fired zero times.
+> 3. A card could be appended **after** the ending card.
+> 4. The queue was refilled for the stop the reader was **standing on**, not the tip it hangs
+>    below — so a ♥ three stops up put a Wikipedia card on top of a queue of paintings.
+> 5. **Tab carried a keyboard reader down the feed**, committing cards they never chose.
+> 6. `pendingIds` / `isCandidate` / `trimToCapacity` were wired to nothing, including the one the
+>    docs call the fix for "the likeliest bug in the project".
 >
-> The separate one-word inaccuracy is already fixed: both published pages said Drift "fetches at
-> most one card ahead", which was untrue the day it was written (the buffer holds up to 12). They
-> now say "shows you". That was **not** the four-surface rewrite; that is still to come.
+> ### 🧪 `npm run verify:feed` — the gate
 >
-> ### 🟡 One pre-existing bug found while verifying, NOT fixed (out of scope)
+> `scripts/verify-feed.mjs` drives a real Chromium over the whole feed and reports a table.
+> **67 checks per viewport, at 1280x900 and 390x844** (was 53; the audit added `A SOURCE THAT
+> WILL NOT ANSWER` and `KEYBOARD FOCUS ORDER`, and rewrote `THE AUTO-SNAP GUARD` around the rule
+> that replaced its premise). It covers every entry point and focus kind, commit-once-per-card,
+> flings, forks, the ways switch, realm crossing, the ♥ insert, the reading handoff, endings,
+> recovery from a quiet source, focus order, cost per card, and the flag. It needs a running
+> server and is not part of `npm test`, exactly like `audit:contrast`.
 >
-> **`StorageNotice` covers the "Save trail" button on the exit screen.** The notice is
-> `fixed bottom-safe z-40`; the end overlay is `absolute inset-0 z-20`. On a 1280x900 viewport the
-> notice sits over the Save button and swallows the click, so a first-time reader who has not
-> dismissed it cannot save their first trail. Confirmed pre-existing: both files are byte-identical
-> to `main`. Found because Playwright reports an intercepted click where a human would just think
-> the button was broken. Worth a one-line z-index fix on `main`.
+> ⚠️ **DO NOT RUN IT ALONGSIDE ANOTHER BROWSER SUITE.** Both passes cross into the Gallery, and
+> locally there is no CDN in front of The Met's ~80-requests-per-30-seconds bucket (CLAUDE.md §4).
+> Running it beside `audit:contrast` tripped the breaker mid-run — `circuit OPEN after 5
+> consecutive throttles` in the server log — and `crossRealm` then correctly declined to land on
+> nothing, which read as two product failures. The cross check now retries once after a pause and
+> says "the museum would not answer" instead, the same affordance `entryPoints` has had all along.
+> **When a Gallery check fails, read the server log before reading the code.**
 >
-> ### What these phases taught the rest of the project
+> **Gates:** 1,416 unit tests (84 files), build clean, lint clean with zero warnings.
+> Cost: 1.40 `/related` and 1.40 `/doorway` per card over a 10-card session, 0.60 discover —
+> unchanged by the audit's fixes.
 >
-> 1. **Measure first.** Phase 0 was planned images-first on reasoning; the numbers said chips-first.
-> 2. **Preparing a card ahead is only free if a reader arriving mid-flight ADOPTS the request
->    already running.** Anything that prefetches must go through `threadsFor`.
-> 3. **A separate "pending" set is unnecessary and was going to be the project's worst bug.**
->    `feedqueue.pendingIds` DERIVES the spoken-for ids from the queue itself, so dropping an item
->    releases its id in the same statement. This is a deliberate improvement on the plan, which
->    had `invalidateQueue` returning a list of ids to release by hand.
-> 4. **Discarded queued cards are handed back, not thrown away.** They cost real upstream requests,
->    so `invalidateQueue` returns them for the caller to return to the discover buffer.
+> ### The Gallery slowness, answered and fixed
 >
-> ### ▶ Next
+> Not inherent: 0.54 discover calls per card against the old feed's 0.55. Two things made it feel
+> worse. A **retry storm** (fixed in Phase 4 — 2.62 calls per card against a throttled Met, versus
+> 0.54 once rested), and a **cold-start image burst**: four cards render at once, and a Gallery
+> card's full-size image comes through our own proxy, which fetches a multi-megabyte original each.
+> The heavy image is now loaded for the active card and its neighbours only; the hotlinked ~600px
+> preview stands in for the rest, so nothing looks empty.
 >
-> **Phase 3** — the scroller itself, behind `NEXT_PUBLIC_FEED_CONTINUOUS`, drift-only. The first
-> thing that can actually be scrolled. It has real unknowns (nested scroll handoff, snap on a
-> phone, the commit settle window) that want tuning with the owner rather than deciding alone.
+> ### ⚠️ Still unverified
+>
+> - **iOS.** No device here. `scroll-snap-stop: always` is the mitigation for WebKit's flick, and
+>   `commitAt` keeps the trail honest even if it does not hold. **Try it on a phone.**
+> - **`day-done` end to end.** The meter needs a signed-in account and a backend; with the cloud
+>   vars blanked it correctly fails open. Its arithmetic is unit-tested and it renders through the
+>   same `TerminusCard` as the other endings, which ARE tested end to end.
+> - **The Met under the new backoff.** The audit's failure probes all used Wikipedia routes. The
+>   retry ladder is capped at 60 s and only runs when a source did not answer at all, which is
+>   strictly gentler than what shipped, but it has not been measured against a throttling museum.
+>   Phase 7's load rehearsal is where that happens.
+>
+> ### 🔴 Two pre-existing bugs for `main`, unchanged
+>
+> 1. **A WCAG AA failure in the focus banner**: "Drift freely" at 4.42:1 against a 4.5 bar, from
+>    tint stacking (`bg-accent/12` pill, `bg-accent/10` button). Drop the nested tint at
+>    `FocusBanner.tsx:41`. ⚠️ The audit renders no view with a focus banner, which is why it has
+>    never been caught — add one focus route to `ROUTES`.
+> 2. **`StorageNotice` covers "Save trail"** on the exit screen (`z-40` over `z-20`).
+>
+> ### ▶ Next: Phase 7, the last one
+>
+> Retire the discrete feed and the flag; **rewrite the four promise surfaces in the same change**
+> (`CLAUDE.md §2.2`, `drift-spec.md §2.2`/§7, `/principles` §2, `/how-it-works`) — the moment the
+> scroller is the only feed, those published pages are lying to readers, which is why the removal
+> waited rather than landing early. Then the two harnesses that still assume the old shell: the
+> load bots, and the contrast audit's `endTrail`/`branchInFeed` rows.
 
 ---
 
@@ -150,8 +184,12 @@ consumes it is Phase 3.
       added on materialise and forgotten on discard either leaks (the card can never be served
       again, and `persistSeen` makes that durable) or duplicates. Deriving makes both impossible:
       dropping an item IS releasing its id, in the same statement.
-- [x] `isCandidate` builds on `lookahead.isServable` instead of repeating it, so the discrete
-      feed's buffer and the continuous feed's queue cannot disagree about what a servable card is.
+- [x] ~~`isCandidate` builds on `lookahead.isServable` instead of repeating it~~ — ⚠️ **DELETED
+      by the pre-Phase-7 audit.** It was exported, unit-tested and called from nowhere at all, and
+      a defence the docs describe as load-bearing but no code consults is worse than none, because
+      it stops the next person looking. `fill` now checks `pendingIds` where cards actually enter
+      the queue. Left visible rather than quietly removed, because the tick was real and the claim
+      was not.
 - [x] `invalidateQueue` returns the dropped cards, not just an emptied queue. They cost real
       upstream requests, and the caller should return them to the discover buffer — otherwise every
       thread pull throws away three cards of the Met's daily budget.
@@ -164,74 +202,59 @@ consumes it is Phase 3.
 
 ---
 
-## Phase 3 — The scroller, minimum viable, behind `NEXT_PUBLIC_FEED_CONTINUOUS`
+## Phases 3 + 4 — the scroller, and steering on it ✅ COMPLETE
 
-Drift-only. No thread pulls, no realm crossing, no focus, no branches, no limits. The point is
-to prove the substrate before anything is built on it.
+Shipped together, and the reason is a principle rather than convenience: Phase 3 alone would have
+rendered thread chips it could not honour, and a control that does not do what it says is a bug
+here (§2).
 
-- [ ] `ContinuousFeed` shell: a `h-full` scroller inside the existing `h-dvh overflow-hidden`
-      root, `scroll-snap-type: y mandatory`, items at `scroll-snap-align: start` and
-      `scroll-snap-stop: always`, each exactly one shell-height.
-- [ ] `content-visibility: auto` + `contain-intrinsic-size` on each item. No unmounting-based
-      virtualization (`docs/continuous-feed.md` §4.2).
-- [ ] The commit observer (`threshold: [0, 0.75]`) driving `commitDecision`, wired to the
-      existing `pushStep` half: trail step, `seenRef`, `persistSeen`, `recordStop`, tour signal,
-      `doorsLeavingHere`.
-- [ ] Refill at the low-water mark, `QUEUE_AHEAD = 3`, from the existing buffer path.
-- [ ] Threads + doorway for the current card and **at most one ahead**, on a dwell timer.
-      This is the rule that protects the Met (`docs/continuous-feed.md` §7.2).
-- [ ] Nested scrolling: `touch-action: pan-y`, `overscroll-behavior-y: contain` on the reading
-      region, the desktop wheel handler at the region's bottom edge (§8.11).
-- [ ] Overlays hoisted out of the scroller (§8.13).
-- [ ] Keyboard: Arrow/Space/PageDown scroll one snap point; `prefers-reduced-motion` respected.
-- [ ] **Verify on a real phone**, not only a desktop browser. Snap jitter, momentum and the
-      inner/outer scroll handoff are all device-dependent.
-- [ ] Measured: upstream requests per committed card, against the Phase 0 baseline.
-
----
-
-## Phase 4 — Steering: threads, realm crossing, focus, the like-insert
-
-- [ ] Thread pull from the tip: discard the queue, release pending ids, push the step, refill.
-- [ ] Realm crossing (horizontal swipe and the top-bar control): same discard, refill in the
-      destination realm; the realm invariant replaces `takeBufferedRandom`'s filter.
-- [ ] Focus changes (enter a field, anchor an orbit, release, widen an artist ring) discard and
-      refill. Verify the banner and the queue can never disagree.
-- [ ] The like-insert (`docs/continuous-feed.md` §6.3), including its three edge cases: liking a
-      card already scrolled past, liking with an empty queue, liking under a focus (still
-      suppressed, deliberately).
-- [ ] Pool-served focuses (`current`, `orbit`) refill through `nextFocusedCard` as today,
-      including their widening ladders before any terminus is placed.
+- [x] `src/lib/feedmode.ts` — the flag, shaped like `lib/ads.ts`. `?feed=classic` overrides it, and
+      **only in that direction**: a URL may never switch the unfinished feed ON, so a deployment
+      that has not opted in cannot be talked into serving it.
+- [x] `page.tsx` is now a two-line switch; `DiscreteFeed.tsx` is the old shell, moved unchanged.
+- [x] `ContinuousFeed.tsx` — `scroll-snap-type: y mandatory`, `scroll-snap-stop: always` on every
+      item, one scroller-height each, `tabindex=0` and an `aria-label` so a keyboard reader can
+      reach it, overlays hoisted out of the scroller, the document itself never scrolling.
+- [x] Commit on arrival: one IntersectionObserver, `threshold: [0, 0.75]`, with a 300 ms settle.
+      Two signals from it — `active` immediate so the chrome never lags the finger, `commit` settled
+      so the trail follows the reader.
+- [x] `commitAt` in `feedqueue.ts` (+6 tests): commits in order and hands back any cards a flick
+      jumped over, so the trail records what was READ whatever the platform does.
+- [x] Threads for the active card and **exactly one ahead**, never for every rendered card.
+- [x] Nested scrolling: `overscroll-behavior-y: auto` via a new `scrollChaining` prop on `CardView`.
+      Verified at both viewports: reading mid-article does not drift you off the card, and reaching
+      its end lets you carry on.
+- [x] Keyboard: one key, one card (native key scrolling moves ~40 px and mandatory snap drags it
+      straight back, so arrows would look dead without this). `1`/`2`/`3` still pull.
+- [x] Steering: thread pull, realm cross, focus release and orbit all void the queue, hand the
+      cards back to the buffer, and rebuild — **after** the move lands, never during.
+- [x] The ♥ insert, which never overwrites anything the reader has begun to reveal.
+- [x] `FILL_BACKOFF_MS` — see the log entry. The continuous feed retries a failing source far
+      harder than the old one did, and that had to be stopped.
 
 ---
 
-## Phase 5 — Revisiting, branches and re-entry
+## Phases 5 + 6 — forks, re-entry and endings ✅ COMPLETE
 
-- [ ] Scrolling up walks `pathTo(tip)`; `pos` follows the observer. Back-nav semantics must
-      match `parentOf` exactly, since `path` is built from it.
-- [ ] Pulling a thread while revisiting forks; the scroller re-renders as
-      `pathTo(tipOf(history, new))`, whose prefix is stable, so `scrollTop` survives
-      (`docs/continuous-feed.md` §5.3). Then scroll down exactly one item.
-- [ ] The Phase 30 "ways" switch changes the line below the fork without moving the reader.
-- [ ] Re-entry: `?continue=`, `?door=<stop>.<door>`, `?from=<stop>` land on the right item with
-      no animation, then build the queue below the tip (§8.8).
-- [ ] Doors, `dwellMs` and `engagedWith` all fed from the commit observer (§8.4, §8.5).
-
----
-
-## Phase 6 — Endings: limits, terminus cards, ads, the nudge, the tour
-
-- [ ] `queueCapacity` clamped by `stopsRemaining`; the queue shrinks to zero as the day closes
-      and the last card is followed by the trail map, instead of `endSession("limit")` yanking
-      the reader out (`docs/continuous-feed.md` §6.2).
-- [ ] Terminus items for `pool-dry` and `caught-up`, replacing the transient `showHint` toasts.
-- [ ] The ad interstitial as a queue item (§8.2). Off by default; must not be forgotten.
-- [ ] The ~25 stop nudge kept as an overlay for now (§8.3). The "pause card" idea is recorded
-      there but is deliberately **not** in this phase: it changes the felt product.
-- [ ] The tour: `holdNav` freezes the scroller; every `tourSignal` still fires; `data-tour`
-      targets stay reachable and are not skipped by `content-visibility`.
-- [ ] Accessibility pass (§8.6): `inert` on non-current items, focus order, 2.4.7 at every tab
-      stop, and `npm run audit:contrast` PASS on a production build.
+- [x] **Deferred images.** `CardView` loads the full-size picture for the active card and its
+      neighbours only; the hotlinked preview stands in elsewhere. Gated on the URL
+      (`startsWith("/api/")`), not the realm — a Wikipedia thumbnail is hotlinked and cheap, so it
+      is never deferred.
+- [x] **`ways`, `onWay` and `revisiting`** wired for the active card. A revisited card now says
+      "Another way from here"; a fork offers its switch.
+- [x] **Forking from a revisited stop.** A fork REPLACES the line below the fork rather than
+      lengthening it (`step:2` becomes `step:3`), which is exactly what made the first test of it
+      look like a failure.
+- [x] **Re-entry**: `?continue=` lands on the tip, `?from=<stop>` on that stop.
+- [x] **The terminus card** (`src/components/TerminusCard.tsx`) — `pool-dry`, `caught-up`,
+      `day-done`, replacing the transient toasts, which are now suppressed for the queue.
+- [x] **The auto-snap, with its guard.** The reader is carried onto the ending only if they are
+      already on the last card. Somebody scrolled up re-reading is never dragged to the bottom.
+- [x] **Ads** as their own queue item, counted on COMMIT rather than on materialise.
+- [x] **The tour**: `CardView` emits its `data-tour` and `data-drift-scroll` markers only when it
+      is the active card, and `holdNav` freezes the scroller with `overflow: hidden`.
+- [x] **`npm run verify:feed`** — 53/53 at both viewports.
+- [x] Build, lint, 1,415 tests, contrast (standing gate plus the new card measured separately).
 
 ---
 
@@ -247,6 +270,18 @@ to prove the substrate before anything is built on it.
       feed is real, and not after it ships: in the same change.
 - [ ] Fold this branch's status into `plan.md` and add a progress-log entry there.
 - [ ] Decide the flag's fate: default on, default off, or a per-reader setting.
+- [ ] Retire the discrete shell itself: `DiscreteFeed.tsx`, `lib/feedmode.ts` and its tests, the
+      `?feed=classic` override, the flag in `.env.local.example`, the `THE FLAG` section of
+      `verify:feed`, and the two-shell framing in `page.tsx`. The owner decided on 28 August that
+      the scroller is the only feed, so a switch nobody will flip is dead weight.
+- [ ] Give the contrast audit a focus route (`ROUTES` renders no view with a `FocusBanner`, which
+      is why the 4.42:1 "Drift freely" failure above has never been caught), and re-point its
+      `endTrail` / `branchInFeed` rows at the scroller once the discrete shell is gone.
+- [ ] **Measure the new retry ladder against a THROTTLING Met.** Every failure probe in the
+      pre-Phase-7 audit used Wikipedia routes. The ladder only runs when a source did not answer
+      at all and doubles to a 60 s cap, so it is strictly gentler than what shipped — but that is
+      an argument, not a measurement, and the museum is the one budget that stays shrunk for a day
+      (CLAUDE.md §4). The load rehearsal above is where this gets settled.
 
 ---
 
@@ -373,3 +408,218 @@ the exit screen is `absolute inset-0 z-20`. On a 1280x900 viewport the notice si
 trail" and swallows the click, so a first-time reader who has not dismissed it cannot save their
 first trail. Both files are byte-identical to `main`, so it is pre-existing and out of scope here,
 but it is a one-line fix worth making on `main`.
+
+### Phases 3 and 4 — the scroller (2026-08-28)
+
+The feed you can actually scroll. `scroll-snap-type: y mandatory` with `scroll-snap-stop: always`,
+one card per screen, a bounded three-card queue below the tip, and a commit that happens when the
+reader arrives rather than when the card is created.
+
+Four bugs were found by measuring, and each one is now a comment at the place it matters. They are
+worth reading before touching this code, because none of them would have been found by reading it.
+
+**A background refill must not take the engine's busy lock.** `busyRef` is what stops a second move
+starting while one is in flight, so `crossRealm`, `onThread` and `goBack` all early-return while it
+is set. In a card-at-a-time feed that is exactly right, because a refill only ever happens inside
+the move the reader is waiting on. This shell tops the queue up constantly, so the lock was set most
+of the time and **tapping "Cross to the Gallery" silently did nothing**. `nextDriftCard` now takes a
+`background` flag.
+
+**The engine derives the realm during render.** So a refill fired immediately after `await
+crossRealm()` still saw the realm we had just left, and stacked three Encyclopedia cards under a
+Gallery card. The refill has to be deferred to an effect that runs after the render which makes the
+new realm true — hence the steer tick, which looks like ceremony and is not.
+
+**The continuous feed retries a failing source much harder than the old one did**, because its
+refill runs from an effect rather than from a swipe. Measured against a Met that was already
+refusing: **2.62 discover calls per card, against 0.54 once the museum had rested.** Retrying
+hardest exactly when a source is asking us to stop is backwards, and it is how a brief throttle
+becomes a shrunk daily budget (CLAUDE.md §4). `FILL_BACKOFF_MS` leaves it alone for four seconds
+after an empty answer; a deliberate steer clears the cooldown, because the reader has just asked for
+something different.
+
+**Key the item on the card, not on the slot.** A slot key changes from `queued:…` to `step:…` the
+instant a card commits, so keying on it unmounts and remounts the card at exactly that moment: a
+flash and a re-fetched image on every stop.
+
+**The windowing question is settled, for now.** At 26 committed cards the DOM holds 29 slots, 3,394
+nodes, 54 images and 11 MB of heap. Neither `content-visibility` nor placeholder windowing is worth
+its risk at this size, so neither was built. Uniform item height keeps both doors open.
+
+**Cost.** 1.15 `/related` and 1.15 `/doorway` per committed card over 26 cards. The excess over 1.00
+is the lookahead that has not been consumed yet, and it amortises with session length (1.31 over 13
+cards, 1.15 over 26). There are **no duplicate requests** — measured directly, 15 asks across 14
+cards the reader could reach, with one orphan from a skipped card that went back to the buffer.
+
+**What could not be verified: iOS.** WebKit has historically sent a hard flick to the end of a snap
+container instead of stopping at the next item, and it disables momentum scrolling under mandatory
+snap. `scroll-snap-stop: always` is the documented fix and has been Baseline since July 2022, but
+there is no device here to prove it. The design deliberately does not depend on it: `commitAt`
+returns any skipped cards to the buffer uncommitted, so the trail stays a record of what was read
+whatever the platform does. It still wants trying on a real phone.
+
+**Three of the first browser failures were the test lying, not the app** — invented bucket slugs, a
+`.first()` that resolved to the phone copy of a component that is `md:hidden` on desktop, and a
+click on the `data-tour` container that holds "Read more" *and* the source link, which lands in the
+gap between them. A browser check that fails is a claim about the test as much as about the code.
+
+**A second harness that assumes the old feed.** The contrast audit's `endTrail` and `branchInFeed`
+rows walk the feed by clicking "Previous stop" and by taking `[data-tour="card-threads"] button`
+`.first()`. The scroller renders no bottom nav (going back is scrolling up) and keeps four cards in
+the DOM at once, so those selectors either miss or hit the wrong card, and each miss costs a 30
+second Playwright timeout. Against a continuous build the audit ran for over twenty minutes and
+proved less than it looked like it did. The standing gate is unaffected while the flag is off, and
+updating it belongs with the load-bot work in Phase 7 — but it is worth knowing before someone
+points the audit at a continuous build and trusts the PASS.
+
+**And it found a real bug on the way, in the old feed.** Measured with the audit's own code against
+four feed views: "Drift freely" in the focus banner is **4.42:1 in the light theme, under the 4.5
+bar**. It reproduces identically with the flag off, so it is not this branch's doing. The cause is
+tint stacking, which `CLAUDE.md` §10 warns static token maths cannot catch: the banner pill is
+`bg-accent/12`, the release button inside it adds `bg-accent/10`, and the label ends up on about
+accent/21 over paper rather than accent/12. It has never been caught because the audit's route list
+renders no view with a focus banner at all. Two fixes, both for `main`: drop the nested tint from
+the release button, and add one focus route to `ROUTES` so the class of bug stops being invisible.
+
+### Phases 5 and 6 — the occasional half (2026-08-28)
+
+The half a reader only meets sometimes, which is the half that survives hand testing unnoticed.
+Four bugs, and the interesting thing is that three of them were invisible to every gate we had.
+
+**A ref cannot trigger a render, and that is why the ending never appeared.** The feed recorded "a
+refill came back empty" in a ref, because the backoff needs to read it synchronously. But the
+effect that places the ending card had nothing to fire on: the queue length never changed (it was
+already zero) and refs do not re-render. It is a ref *and* a counter now, and the comment says why
+both.
+
+**A fork does not lengthen the line, it replaces it.** `step:0 | step:1 | step:2` becomes
+`step:0 | step:1 | step:3`. Counting step slots to prove a fork happened therefore proves nothing,
+and made a working feature look broken for a while. The trail's own counter is the honest measure.
+
+**`.first()` is a trap here, twice over**, and it caught me three separate times: the card renders
+its threads twice (pinned for desktop, inlined for phone, one of them always `md:hidden`), and four
+cards are in the DOM at once. It also explains two tour bugs — `TourOverlay` spotlighted the topmost
+card rather than the one being read, and the "swipe up" step scrolled the wrong card's reading
+region. `CardView` now emits its `data-tour` and `data-drift-scroll` markers only when it is the
+active card, which fixes every card-scoped step at once and makes the load bots' `.first()` resolve
+to the right card too.
+
+**The Gallery cold start was an image burst.** Four cards render at once and a Gallery card's
+full-size image comes through our own proxy, which fetches a multi-megabyte original each — four
+concurrent sharp resizes where the old feed asked for one. The heavy image is now loaded for the
+active card and its neighbours only. The rule is asymmetric on purpose and tests the URL rather
+than the realm: a Wikipedia thumbnail is hotlinked by the browser and costs us nothing.
+
+**The ending, and the one time this feed moves on its own.** A dry pool used to fire a toast
+wherever the reader happened to be standing, which is the wrong place to answer "why did it stop?" —
+that question is asked at the bottom. It is a card now, and the scroller ends on it. The reader is
+carried onto it, **but only if they are already on the last card**: somebody scrolled up re-reading
+an earlier stop is never dragged to the bottom. That guard is what keeps the move honest, because it
+means the feed is never advancing anyone *through* content, only showing them the exit.
+
+**`npm run verify:feed`.** Ad-hoc scripts do not survive a session, and this feed's failure modes
+are all in the wiring between the engine, the scroller and the observer — where no unit test
+reaches. So the checks are committed: 53 of them, at two viewports, including endings forced by
+answering discover *and* the thread fallback with an empty list (blocking only discover does not dry
+the feed, because falling back to a thread neighbour is deliberate and correct). It also retries a
+Gallery view once after a pause and says "upstream would not answer" rather than "failed", so the
+next person does not spend an hour chasing the museum's rate limiter.
+
+### The pre-Phase-7 audit (2026-08-29)
+
+Before retiring the old feed, the new one was pulled apart deliberately. The reasoning was that
+every gate we have was green, and every gate we have walks the paths a working feed walks: open
+it, drift, pull a thread, cross, end. So the audit went at the three kinds of place a gate does
+not reach — **a source that fails rather than answers, a reader parked somewhere unusual, and a
+keyboard** — and found six bugs in about an hour. Two of them were serious enough that the feed
+was not shippable.
+
+**Four of the six are the same mistake in different clothes, and that is the thing to remember.**
+A card-at-a-time feed runs from gestures: something is always about to happen because a thumb is
+about to move. A continuous feed runs from **effects**, and an effect that nothing can fire is a
+dead branch that looks like working code.
+
+- **One empty refill ended the feed forever.** `fill` stamped a backoff and returned; the effect
+  that would call it again fires on the queue changing, on a steer and on the day's capacity, and
+  none of those happens while the feed sits empty. Measured: with the upstream answering 503 the
+  scroller read `step:0 | terminus:pool-dry` within six seconds — *"you have read this area dry"*,
+  on a free drift over the whole of Wikipedia — and after the source recovered it was still that,
+  fifteen seconds and four ArrowDowns later. Only a steer escaped.
+- **`fill` was memoised on `[capacity]`, which never changes for an unmetered reader**, so it kept
+  the engine object from the render it was built in for the entire session. The old comment said
+  the engine's functions "read refs", and most of them do — but `nextDriftCard`'s degraded
+  fallback, the random untapped thread that keeps the feed alive while discover is throttled,
+  reads `threads` from the render scope. Pinned to a session's first render that list is empty,
+  because the seed's chips have not arrived. So with discover answering `[]` and `related`
+  perfectly healthy, the fallback fired **zero** times and the feed simply stopped. Worse,
+  `verify-feed.mjs` asserted the opposite in a comment, which is why nobody looked.
+
+The other four:
+
+- **A card could be appended after the ending card** — `fill` pushed onto the end of the queue
+  whatever was in it. Measured: `step:0 | queued:met:254779 | terminus:pool-dry | queued:… |
+  queued:…`, a reader scrolling past "you have read this area dry" into two more cards.
+- **The queue was refilled for the stop the reader was standing on, not the tip it hangs below.**
+  The engine derives realm, focus and fallback threads from `pos`. Cross to the Gallery, scroll up
+  three, and the session reads as Encyclopedia again with three Met cards queued under a Gallery
+  tip; a ♥ up there proved the wake-up path was live, putting `queued:wikipedia:Cephalopod` on top
+  of them, four deep against a capacity of three.
+- **Tab carried a keyboard reader down the feed.** Four cards are laid out at once and the browser
+  scrolls focus into view, so tabbing off the active card's last chip walked into the queue and
+  moved the reader three cards on, committing each.
+- **Three of `feedqueue`'s exports were wired to nothing**, including `pendingIds` — which this
+  very file calls the fix for "the likeliest bug in the whole project" — and `isCandidate`, which
+  was exported, unit-tested and called from nowhere at all.
+
+**What was done about it**, and the three shapes worth copying:
+
+1. **A pause is a different sentence from an ending.** A fourth terminus, `source-quiet`: "The
+   source is catching its breath." It is the only one that retries (doubling backoff, capped at
+   60 s), the only one that clears itself when a card arrives, the only one with a "Try again"
+   button, and the only one nobody is ever auto-snapped onto — because a pause is not an exit, and
+   because leaving the reader on their last real card is what lets the retry replace the ending
+   rather than the card under their eye. The engine can tell the two apart now:
+   `fetchDiscoverBatch` records whether **any** of its parallel picks got an answer at all, which
+   is a different question from whether it liked the answer.
+2. **No ending at all until the refill has come back empty twice.** "Empty right now" is not
+   "empty", and the first refill of a session is the clearest case: it runs before the chips the
+   fallback needs have arrived. A spent day is the exception, because that is a fact we hold
+   rather than an answer we are waiting for.
+3. **The queue continues the TIP, so only the tip fills it** — and only a ♥ at the tip may steer
+   it. This has a visible consequence that is a small product change, not just a fix: **the feed
+   now fetches nothing at all while somebody is scrolled up re-reading.** That is cheaper, it is
+   less speculative, and it is more in the direction of §2 than what it replaced. It also removed
+   the premise of one existing check (the old auto-snap guard forced an ending while the reader
+   was parked, and that moment no longer exists), so that check was rewritten around the property
+   that actually holds.
+
+Plus: `inert` on every card but the active one; `pendingIds` wired where cards actually enter the
+queue (the duplicate it guards is real — the fallback picks from a fixed set of three or four, and
+two rounds of one fill can name the same card, colliding on the React key *and* the `data-slot`
+the observer commits by); `trimToCapacity` wired into the fill effect so invariant 7 is a property
+rather than a hope; `isCandidate` deleted; ads given a stable id so a shifting queue stops
+remounting them (harmless for the house placeholder, a repeat impression request in `adsense`
+mode); the terminus's "Go wider" button removed, because it called the same function as "Drift
+freely" and every widening ladder is already climbed inside refill before an ending is placed.
+
+**Three things were checked and found sound**, recorded so nobody re-derives them: the guided tour
+runs clean end to end on the scroller, every forced step advancing; the ad interstitial's spacing
+is correct, and the browser's snap re-targeting keeps the reader on the right card when an item
+above them is removed; and nothing uncommitted ever reaches the `seen` store.
+
+**Gates.** Build clean, lint clean with zero warnings, 1,416 unit tests, `audit:contrast` PASS
+against a flag-off build (3,905 nodes, 32 views x 2 themes), the two ending cards measured
+separately at 4.53:1 light and 5.99:1 dark, and `verify:feed` at both viewports — 67 checks each,
+up from 53, with two new sections (`A SOURCE THAT WILL NOT ANSWER`, `KEYBOARD FOCUS ORDER`). Cost
+per card unchanged: 1.40 `/related`, 1.40 `/doorway`, 0.60 discover.
+
+⚠️ **The first full both-viewport run came back 132/134, and both failures were The Met.** It was
+sharing the machine with `audit:contrast`, which also opens Gallery views; the server log said
+`circuit OPEN after 5 consecutive throttles`, and `crossRealm` was right to decline to land on
+nothing. The check now retries once and names the cause. Do not run the two suites together.
+
+**What this did not cover, said plainly.** No iOS device, so the WebKit flick is still unverified.
+`day-done` still needs an account and a backend to exercise end to end. And every failure probe
+used Wikipedia routes: the new retry ladder is strictly gentler than what shipped (it only runs
+when a source did not answer at all, and it doubles to a 60 s cap), but it has not been measured
+against a throttling Met. That belongs with Phase 7's load rehearsal.
