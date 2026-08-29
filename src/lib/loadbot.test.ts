@@ -22,6 +22,7 @@ import {
   summaryUrl as appSummaryUrl,
 } from "./realms";
 import { randomOffset as appRandomOffset } from "./discover";
+import { QUEUE_AHEAD as appQueueAhead } from "./feedqueue";
 import { TOPICS } from "./topics";
 import { MET_BUCKETS } from "./realms/met.buckets";
 import {
@@ -35,6 +36,7 @@ import {
   REFILL_TOPICS,
   DISCOVER_LIMIT,
   SEED_LIMIT,
+  QUEUE_AHEAD,
 } from "../../scripts/bots/urls.mjs";
 
 // Titles chosen to exercise the encoding: a space, an ampersand, a slash, a
@@ -143,6 +145,19 @@ describe("load-bot discover constants match the feed's", () => {
     expect(REFILL_TOPICS).toBe(read("REFILL_TOPICS"));
     expect(DISCOVER_LIMIT).toBe(read("DISCOVER_LIMIT"));
     expect(SEED_LIMIT).toBe(read("SEED_LIMIT"));
+  });
+
+  // QUEUE_AHEAD is the one the continuous feed added, and it is the most
+  // consequential of the four: it decides how many cards a thread pull hands back
+  // to the buffer and how far ahead the threads lookahead runs, so getting it
+  // wrong moves requests-per-card in both directions at once.
+  //
+  // Imported rather than scraped, because unlike the three above it lives in
+  // `src/lib` and vitest can simply read it. A direct comparison cannot silently
+  // match nothing, which is the failure mode the regex above has to guard against
+  // by hand.
+  it("matches QUEUE_AHEAD in the feed queue", () => {
+    expect(QUEUE_AHEAD).toBe(appQueueAhead);
   });
 
   it("aligns offsets exactly as the app does", () => {

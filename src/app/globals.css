@@ -215,23 +215,26 @@ body {
   display: none;
 }
 
-/* The FEED's bottom bar has the same problem the tour had, and needs the
-   opposite answer.
+/* The EXIT SCREEN gets the same answer the tour does, and for the same reason.
 
-   The bar ("Previous stop" + "Drift onward") is 64px tall and sits flush at the
-   bottom of the viewport; the notice is `fixed ... bottom-safe`, i.e. 1rem up.
-   So on a first visit the notice covered the primary control by 48px, measured
-   identically at 390, 360 and 1280 px wide — elementFromPoint at the centre of
-   "Drift onward" returned the notice. The first tap on the one control the app
-   is about did nothing.
+   The end-of-session modal is `absolute inset-0 z-20`; the notice is `fixed …
+   bottom-safe z-40`, so it sat squarely over the modal's action row and
+   swallowed the click on "Save trail". A first-time reader who had not yet
+   dismissed the notice could not save their first trail — which is exactly the
+   moment the trail map is supposed to be the reward (spec §2.3).
 
-   The tour is finite, so there the notice waits its turn (above). The feed is
-   not, so hiding would defer the disclosure indefinitely. It is lifted clear
-   instead: 1rem of its own + the 4rem bar. Covering card text briefly is the
-   harmless half of the overlap, and the notice is still dismissed in one tap.
-   `FeedBottomNav` sets the attribute only while the bar is actually mounted. */
-:root[data-feed-nav] [data-storage-notice] {
-  bottom: calc(5rem + env(safe-area-inset-bottom));
+   Hidden rather than lifted, because the exit screen is a finite, deliberate
+   thing like the tour: close it and the notice is back, so the disclosure is
+   deferred by a moment rather than indefinitely. `EndOverlay` sets the attribute
+   only while it is actually open.
+
+   ⚠️ THIS REPLACED A `data-feed-nav` RULE that lifted the notice 5rem clear of
+   the feed's bottom bar. The bar went with the card-at-a-time feed in Phase 7
+   (going back is scrolling up now), so there is nothing left to lift over — but
+   the overlap with the exit screen was never about the bar, and removing the old
+   rule without this one would have left the reported bug standing. */
+:root[data-feed-overlay] [data-storage-notice] {
+  display: none;
 }
 
 /* Start-tile faces (2026-07-28 contrast audit). One authored tint per tile, two

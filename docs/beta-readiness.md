@@ -37,6 +37,16 @@ The four questions this answers:
 > - **Edge caching is live and verified in production.** Two identical GETs to
 >   `/api/realm/encyclopedia/summary` returned `x-vercel-cache: MISS` then `HIT`. Cache profiles live
 >   in `src/lib/cache-headers.ts`; every error/empty branch still sends `NO_STORE`.
+> ⚠️ **THE ≈2.4 BELOW PREDATES THE CONTINUOUS FEED (2026-08-29) AND HAS NOT BEEN RE-MEASURED.**
+> `/drift` is a scroll-snap scroller now, with a three-card queue and a threads lookahead one card
+> ahead of the reader, so the per-card shape has moved. What HAS been measured, client-side, on the
+> new feed (Encyclopedia, 11 stops, 60/40 thread/drift, Read more every fourth): **1.36
+> `/related`, 1.36 `/doorway`, 0.36 `/summary`, 0.27 discover — 3.36 app requests per committed
+> card.** Discover went DOWN (a thread pull hands three materialised cards back to the buffer); the
+> two 1.36s are lookahead not yet consumed and amortise with session length, to 1.15 over 26 cards.
+> Those are CLIENT requests and are NOT the same measurement as the UPSTREAM Wikimedia figure
+> below. **Re-measure with `npm run bots:run` before quoting the ≈2.4 to anyone.**
+>
 > - **Cost per card, measured over a real 12-card session** (Read more every 4th, a reaction every
 >   6th): **≈2.4 Wikimedia calls per card** — threads 1.0, discover ~0.5, Read more ~0.6 (the HTML
 >   body walks 1 to 4 sections), a reaction ~0.3 — plus **~1 museum call** for the cross-realm
@@ -150,9 +160,13 @@ difference. Do this first.
    - Note what stays uncacheable: `generator=random` (already mostly retired in favour of discover
      batches) and randomized discover offsets. But summaries + threads are the bulk of per-card cost
      and they cache beautifully.
-3. **Keep / tune the client-side load reduction already in place:** 1-ahead prefetch only, the
-   random-batch buffer (one request yields ~8–20 cards), the graceful "catching its breath" hint.
-   These are good; caching complements them.
+3. **Keep / tune the client-side load reduction already in place:** the random-batch buffer (one
+   request yields ~8–20 cards), the threads lookahead one card ahead of the reader, and the queue's
+   own bound. These are good; caching complements them. ⚠️ This line used to say "1-ahead prefetch
+   only", which stopped being true when the feed became a scroller: **three cards are materialised
+   below the reader**. What is still one-ahead, and is the load-bearing limit, is the THREADS and
+   DOORWAY fetch — all four rendered cards would take a Gallery screenful from ~9 Met requests to
+   ~45 against a bucket of ~80 per 30 seconds (`docs/continuous-feed.md` §7.2).
 4. **(If you ever really push it) Coordinate the gate across instances** with a shared limiter
    (Upstash Redis token bucket), or **authenticate to Wikimedia** (OAuth token / a bot-flagged
    account) for a higher/exempt limit. Both are heavier and almost certainly **unnecessary** at

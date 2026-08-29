@@ -43,15 +43,12 @@ export default function PrinciplesPage() {
 
       <Section title="2. Agency over autoplay">
         <P>
-          Nothing advances on its own. No autoplay, no timers, no card sliding
-          partway into view.
+          Nothing advances on its own. No autoplay, no timers. Every card you
+          reach is one you moved to.
         </P>
         <P>
-          <Lead>What this rules out: </Lead>a deep queue. Drift shows you at
-          most one card ahead. That is a deliberate limit rather than a technical one:
-          a large buffer is what makes a feed feel like there is always more
-          waiting, and once twenty cards are ready, stopping starts to feel
-          wasteful. One ahead is enough for the next card to appear instantly.
+          <Lead>What this rules out: </Lead>anything that decides for you when
+          you are finished with a card.
         </P>
       </Section>
 

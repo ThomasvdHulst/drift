@@ -1,10 +1,10 @@
 # The continuous feed — research, architecture and the decisions it forces
 
 **Branch:** `continuous-feed` (forked from `main` at `4d21047`, 28 August 2026)
-**Status:** Phases 0 to 6 shipped, then audited before Phase 7 (§4.8 — six real bugs, two of
-them serious, all fixed). The scroller is feature-complete behind `NEXT_PUBLIC_FEED_CONTINUOUS`,
-and the owner has decided it is THE feed. Phase 7 (retire the discrete shell, rewrite the four
-promise surfaces, update the harnesses) is the last one.
+**Status:** COMPLETE. Phases 0 to 6 built and audited it (§4.8 — six real bugs, two of them
+serious, all fixed); **Phase 7 (29 August) retired the card-at-a-time shell and the flag,
+rewrote the promise surfaces, and repointed both harnesses** (§4.9). There is one feed now, it
+is this one, and `NEXT_PUBLIC_FEED_CONTINUOUS` no longer exists.
 **Verify with `npm run verify:feed`.**
 **Companion files:** `plan-continuous-feed.md` (the phase tracker) and
 `docs/continuous-feed-prompt.md` (paste that into a fresh session to bring it fully up to speed).
@@ -13,9 +13,11 @@ This file is the reference for the project. Read it before touching any feed cod
 branch, and before writing a plan of your own. It records what was measured, what was
 decided and — more importantly — *why*, so nobody has to rediscover it.
 
-`plan.md` and `CLAUDE.md` are deliberately **not** modified on this branch yet. They are the
-main line's source of truth and editing them here would guarantee a merge conflict. The
-changes they will eventually need are listed in §3 and tracked in `plan-continuous-feed.md`.
+`plan.md` and `CLAUDE.md` were deliberately left untouched while the branch was in flight — they
+are the main line's source of truth and editing them early would have guaranteed a conflict.
+**Phase 7 folded the result into both**: `CLAUDE.md §2.2` records the reversal, §6 drops the
+motion sentence that described a transition that no longer exists, §7 lists `verify:feed`, and a
+new §12 is the map of this feed for anyone who never reads this file.
 
 ---
 
@@ -147,6 +149,22 @@ Four surfaces name the promise, and all four must move together:
 
 Shipping the feed without those is shipping two pages that lie to readers about the app they
 are reading them in. Under §2 of this project that is a bug, not a documentation debt.
+
+✅ **ALL FOUR DONE IN PHASE 7, and the two halves were treated DIFFERENTLY on purpose.**
+
+The **published** pages got the light touch, by the owner's explicit instruction: remove the
+promises we cannot keep, do not describe the new mechanism, do not explain the change. So
+`/principles` §2 lost "no card sliding partway into view" and its whole deep-queue paragraph;
+`/how-it-works` lost "no next card sliding partway in" and "No queue of preloaded cards (it
+shows you at most one ahead)". Nothing was added about queues or scrolling. (Two more stale
+claims were found on the way and went with them: "press the drift button", which no longer
+exists, and "pulling one moves you sideways", which is no longer a different motion.)
+
+The **internal** documents got the opposite treatment — `CLAUDE.md §2.2`, §6 and
+`drift-spec.md` §2.2/§7 keep the superseded wording visible under a ⚠️ and say what replaced
+it. They are instructions to future sessions, and a session that reads "Prefetch at most 1 card
+ahead" will "fix" the queue back out of existence. That asymmetry is deliberate: a reader wants
+a page that is true, and a maintainer wants to know what changed.
 
 ### 3.2 A pre-existing inaccuracy found on the way
 
@@ -350,6 +368,52 @@ interstitial's spacing is right and the browser's snap re-targeting keeps the re
 correct card when an item above them is removed; and nothing uncommitted ever reaches the
 `seen` store.
 
+### 4.9 And what Phase 7 measured, before deleting anything (29 August)
+
+Retiring the old shell is a documentation-and-harness phase, so the research went where the
+harnesses were about to lie. Five findings, and the first is the one that would have poisoned
+every future load report.
+
+16. **⚠️ THE BROWSER LOAD BOTS WERE DEAD AGAINST THIS FEED, AND THEY FAILED AS "the app stopped
+    advancing".** `bot-browser.mjs` proved a move had landed by reading `main h1` and taking
+    `.first()`. Four cards are in the DOM and the topmost is the FIRST STOP OF THE SESSION,
+    forever. Measured: three ArrowDowns, and `.first()` still read `Volcano` while the reader
+    was on `Glacier` (`["Volcano","Civil engineering","Gene Wolfe","Glacier","Airport","The
+    Stand","Sandstone"]`). So every browser bot would press three times, record `card did not
+    advance` and end `stopped advancing` on its first move — a healthy app scored as broken.
+    And the browser driver is the **calibration gate** for the volume bots (`CLAUDE.md §11`), so
+    the failure removes the only thing checking them. They read the active slot now, by the same
+    `scrollTop / clientHeight` geometry `verify-feed.mjs` uses.
+17. **Chip counts were exactly doubled**: `[data-tour="card-threads"] button` → 8, the same with
+    `:visible` → 4. The card renders its threads twice, one copy always `md:hidden`.
+18. **`Previous stop` exists zero times in the scroller**, so the contrast audit's
+    `branchInFeed` row was three 30-second Playwright timeouts per view per theme. It presses
+    ArrowUp now.
+19. **Client cost per committed card, on the continuous feed** (Encyclopedia, 11 stops, 60/40
+    thread/drift, Read more every fourth — the mix `docs/beta-readiness.md` used):
+
+    | route | per card |
+    |---|--:|
+    | `/api/realm/*/related` | 1.36 |
+    | `/api/doorway` | 1.36 |
+    | `/api/realm/*/summary` | 0.36 |
+    | `/api/realm/*/discover` | **0.27** |
+    | total `/api` | 3.36 |
+
+    **Discover is LOWER than the old feed's ~0.5**, and that is the queue paying for itself: a
+    thread pull hands three materialised cards back to the buffer, where the old feed simply
+    left them unfetched. The two 1.36s are lookahead not yet consumed and amortise with session
+    length (1.15 over 26 cards). These are CLIENT requests; `beta-readiness`'s ≈2.4 is UPSTREAM
+    Wikimedia calls and is a different measurement.
+20. **An iOS hazard to look for on the phone test, from the research rather than from a device.**
+    WebKit caches snap-point positions at layout and does not always recalculate them when
+    children are modified; the symptoms are misaligned snapping, jumpy scrolling, failing to
+    lock onto a target, or snapping only on a second gesture. It is documented as a hazard of
+    changing children's **styles and sizes**, which our uniform one-viewport items never do —
+    but the queue adds and removes children constantly, so this is the first thing to suspect if
+    the feed misbehaves on an iPhone. Workarounds, in order of bluntness: force a layout read
+    (`offsetHeight`) after a queue change, or toggle `scroll-snap-type` off and back on.
+
 **Sources**
 - [MDN: `scroll-snap-stop`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/scroll-snap-stop) and [MDN: CSS scroll snap](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Scroll_snap)
 - [Tailwind: `snap-always`](https://tailwindcss.com/docs/scroll-snap-stop) (this project styles with Tailwind v4)
@@ -362,6 +426,8 @@ correct card when an item above them is removed; and nothing uncommitted ever re
   to the end of a snap container) and [WebKit 243582](https://bugs.webkit.org/show_bug.cgi?id=243582)
   (mandatory snap disables momentum scrolling on iOS — a hazard for carousels, the behaviour we
   want here)
+- [CSS scroll snap glitches on iOS when children are changed programmatically](https://www.xjavascript.com/blog/css-scroll-snap-visual-glitches-on-ios-when-programmatically-setting-style-on-children/)
+  (WebKit's cached snap positions going stale — §4.9 finding 20)
 
 ---
 
@@ -746,14 +812,28 @@ animation on mount and then build the queue below the tip. With `scroll-snap-typ
 an initial `scrollTop` assignment can be fought by the snap engine; set it before paint (or use
 `scrollIntoView({ behavior: "instant" })` after layout) and verify on a real device.
 
-### 8.9 The load-rehearsal harness will silently measure the old app
+### 8.9 The load-rehearsal harness would have silently measured the old app
 `scripts/bots/` copies the app's URL builders, buckets and discover constants, and
 `src/lib/loadbot*.test.ts` pin the copies against the originals. A continuous feed changes
-requests-per-card and the fidelity gate compares HTTP bots against real browser bots (2.57 vs
-2.67 today). **The bots must be updated in the same phase as the feed, or the rehearsal reports
-confident numbers about a feed nobody is running.** This is exactly the failure `CLAUDE.md §7`
-warns about with the stale `.next` directory: a measurement that disagrees with reality and is
-believed anyway.
+requests-per-card, and the fidelity gate compares HTTP bots against real browser bots. **The
+bots had to be updated in the same phase as the feed, or the rehearsal would report confident
+numbers about a feed nobody is running** — exactly the failure `CLAUDE.md §7` warns about with
+the stale `.next` directory: a measurement that disagrees with reality and is believed anyway.
+
+✅ **DONE IN PHASE 7, and the browser half turned out to be worse than "drifted": it was dead.**
+See §4.9 findings 16 to 19. Three changes, and the third is the one to remember:
+
+- `bot-browser.mjs` reads the **active slot's** heading, by the scroller's own geometry, instead
+  of `main h1`.first(); and counts chips with `:visible`.
+- `bot-http.mjs` now **holds a queue**. It materialises `QUEUE_AHEAD` cards from the buffer,
+  fetches threads and the doorway for the card being read **and the head of the queue** through
+  a per-card-id cache, and **voids the queue back into the buffer** on a thread pull. Without
+  those three it would model 1.00 `/related` per card where the app measures 1.36, and 0.5
+  discover where the app measures 0.27 — wrong in both directions at once, and confidently.
+- `QUEUE_AHEAD` joined the pinned constants in `urls.mjs`, and `loadbot.test.ts` pins it by
+  **importing** `src/lib/feedqueue.ts` rather than scraping a regex out of it. A direct
+  comparison cannot silently match nothing, which is the failure mode the three scraped
+  constants have to guard against by hand.
 
 ### 8.10 Documents that go stale
 `docs/beta-readiness.md` ("≈2.4 Wikimedia calls per card"), and the four promise surfaces in

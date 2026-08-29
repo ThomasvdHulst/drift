@@ -113,6 +113,15 @@ export const REFILL_TOPICS = 3;
 export const DISCOVER_LIMIT = 4;
 /** Cards in a "Surprise me" seed batch (drift/useDriftSession.ts SEED_LIMIT). */
 export const SEED_LIMIT = 12;
+/**
+ * Cards materialised BELOW the reader (src/lib/feedqueue.ts QUEUE_AHEAD).
+ *
+ * The most consequential of the four for this report, because it is the one that
+ * decides how many cards a thread pull throws back into the buffer and how far
+ * ahead the threads lookahead runs. Get it wrong and requests-per-card is wrong
+ * in both directions at once.
+ */
+export const QUEUE_AHEAD = 3;
 
 /**
  * A window-aligned random offset — `randomOffset` in src/lib/discover.ts.

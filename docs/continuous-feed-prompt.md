@@ -1,11 +1,18 @@
-# Starting a session on the continuous feed
+# Working on the reading feed
+
+> ⚠️ **THE PROJECT THIS FILE WAS WRITTEN TO DRIVE IS FINISHED** (Phase 7, 29 August 2026). There
+> is no "next phase" to take, and `plan-continuous-feed.md` is now history rather than a queue of
+> work. What survives is this: the feed is a scroll-snap scroller, it is subtle, and the way to
+> work on it safely is the way described below. **Steps 2 and 3 assume a phase to pick up and no
+> longer apply as written** — read them as how to research and plan a CHANGE to the feed, which is
+> the part that still holds.
+>
+> If you are here for a bug or a feature in the feed, the short version is: read `CLAUDE.md` §12,
+> then `docs/continuous-feed.md` (especially §9, the invariants), then the code. Measure before
+> you decide anything. Gate with `npm run verify:feed`.
 
 **Paste this whole file as the first message of a new session**, or say: "read
 `docs/continuous-feed-prompt.md` first and do what it says."
-
-It is written to stay true whatever phase the work is in. It does not say where we are, because
-`plan-continuous-feed.md` keeps that and would go stale here within a week. Follow it in order
-and do not skip step 1 because the task "looks small".
 
 ---
 
@@ -38,8 +45,9 @@ Drift into the thing it exists to be an antidote to.
    - `src/app/(app)/drift/useDriftSession.ts` — the **engine**: everything a session IS.
    - `src/app/(app)/drift/ContinuousFeed.tsx` — the **scroller**. Its header comment lists the
      three properties that hold the whole thing up.
-   - `src/app/(app)/drift/DiscreteFeed.tsx` — the old card-at-a-time shell, retired in Phase 7.
-   - `src/app/(app)/drift/page.tsx` — just the flag switch between them.
+   - `src/app/(app)/drift/page.tsx` — nothing but the Suspense boundary the engine needs. (There
+     was a `DiscreteFeed.tsx` beside it, the card-at-a-time shell, and a `lib/feedmode.ts` flag
+     to choose between them. Phase 7 deleted both.)
    - `src/lib/feedqueue.ts`, `lookahead.ts`, `branch.ts`, `focus.ts`, `doors.ts`, `limits.ts` — the
      pure logic, all tested.
    The comments explain *why*, and usually name the bug that motivated the shape. Trust them and
@@ -69,20 +77,20 @@ Drift into the thing it exists to be an antidote to.
 - **An effect nothing can fire is a dead branch that looks like working code.** This feed runs
   from effects, not gestures. Four of the six bugs the pre-Phase-7 audit found were that same
   shape (`docs/continuous-feed.md` §4.8), and none of them was visible by reading.
-- The owner has decided the scroller goes ahead **and** that `CLAUDE.md §2.2`,
-  `drift-spec.md §2.2`/§7, `/principles` §2 and `/how-it-works` will be rewritten to say what the
-  app really does. That rewrite ships **with** the feed, never after it.
+- **The published pages and the internal rules were deliberately rewritten DIFFERENTLY**, and it
+  is worth knowing which is which before you edit either. `/principles` §2 and `/how-it-works`
+  simply had the promises we cannot keep removed, with nothing added about queues or scrolling —
+  a reader wants a page that is true, not a changelog. `CLAUDE.md §2.2`/§6 and
+  `drift-spec.md §2.2`/§7 keep the superseded wording visible under a ⚠️ and say what replaced
+  it, because a session that reads "Prefetch at most 1 card ahead" will "fix" the queue out of
+  existence. `docs/continuous-feed.md` §3.1 records the reasoning.
 
 ---
 
-## Step 2 — Research the next phase before planning it
+## Step 2 — Research the change before planning it
 
-Take the next unticked phase in `plan-continuous-feed.md`. **You may take more than one phase at
-a time if they genuinely belong together** — a pure-logic module and the code that first uses it,
-say. Say which phases you are taking and why. Do not silently expand scope, and do not split a
-phase so small that the owner cannot play with the result.
-
-Then, in this order:
+(Written for the phased build. With the project finished, read "the phase" as "the change you are
+about to make" — everything below still applies, and the measurement recipes especially.)
 
 1. **Read the code you are about to change**, fully. Not a grep of the function names.
 2. **Search the web** for anything the phase depends on that we have not already measured: CSS
@@ -101,7 +109,8 @@ Then, in this order:
    - ⚠️ To test the feed without signing in you must **rebuild** with the cloud vars blanked
      (`NEXT_PUBLIC_*` is inlined at build time, so blanking it at `next start` does nothing):
      `NEXT_PUBLIC_SUPABASE_URL= NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY= npm run build`.
-     Rebuild normally afterwards.
+     Rebuild normally afterwards. (There used to be a `NEXT_PUBLIC_FEED_CONTINUOUS=1` in front of
+     that line. Every build is the scroller now.)
    - ⚠️ Local has **no CDN**, so it hits the Met's limit far more readily than production ever
      will. A breaker trip while developing is not a signal about production (`CLAUDE.md §4`).
      Give the museum a rest between runs rather than concluding something is broken.

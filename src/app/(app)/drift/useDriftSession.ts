@@ -8,20 +8,23 @@
 // and pools it is served out of, the threads on the card you are looking at,
 // the doors you left behind, the meter, and every move you can make.
 //
-// WHY IT LIVES APART FROM THE FEED. There are two ways to render this session —
-// the card-at-a-time feed in `page.tsx`, and the continuous scroller arriving
-// behind NEXT_PUBLIC_FEED_CONTINUOUS — and they differ ONLY in how a card gets
-// on screen. Everything above is identical, and it is also the subtlest code in
-// the app: the session-restart guard, the branch model, the focus stack, the
-// upstream budget. Two copies of that would diverge, and the divergence would
-// show up as a bug in one feed that is impossible to reproduce in the other.
+// WHY IT LIVES APART FROM THE FEED. It was extracted (Phase 1 of the
+// continuous-feed work) when there were two ways to render a session and they
+// differed ONLY in how a card gets on screen; everything above is identical, and
+// it is also the subtlest code in the app — the session-restart guard, the
+// branch model, the focus stack, the upstream budget. Two copies of that would
+// have diverged, and the divergence would have shown up as a bug in one feed
+// that was impossible to reproduce in the other.
 //
-// So the rule is: if it decides WHAT the reader sees, it belongs here. If it
-// decides HOW it appears (gestures, transitions, scroll), it belongs in a shell.
+// ⚠️ THERE IS ONLY ONE SHELL NOW (Phase 7 retired the card-at-a-time feed) AND
+// THE SEPARATION STILL EARNS ITS KEEP, for a different reason: the rule "if it
+// decides WHAT the reader sees it belongs here, if it decides HOW it appears it
+// belongs in the shell" is what keeps 2,500 lines of session logic out of a file
+// that also has to think about scroll offsets and an IntersectionObserver. Do
+// not fold them back together.
 //
-// Extracted in Phase 1 of the continuous-feed work (docs/continuous-feed.md).
-// The extraction was deliberately behaviour-neutral — no logic was changed,
-// only moved — so that any later misbehaviour is known to be new.
+// The extraction was deliberately behaviour-neutral — no logic was changed, only
+// moved — so that any later misbehaviour is known to be new.
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -100,7 +103,7 @@ import {
 import type { Way } from "@/components/CardView";
 import { useAuth } from "@/components/AuthProvider";
 import { useTour } from "@/components/tour/TourProvider";
-import { adsConfig, shouldShowAd } from "@/lib/ads";
+import { adsConfig } from "@/lib/ads";
 import {
   primeMeter,
   recordStop,
@@ -109,9 +112,15 @@ import {
 } from "@/lib/billing/meter";
 import { dailyLimit, limitReached, type MeterState } from "@/lib/limits";
 
-/** Which way the reader moved. Only a shell that ANIMATES the move cares, but
- *  the engine is what knows, so it is recorded here and ignored by shells that
- *  have no transition to run. */
+/** Which KIND of move put a card in the trail.
+ *
+ *  ⚠️ IT IS NOT A DIRECTION ANY MORE, WHATEVER THE NAME SAYS. It used to drive
+ *  the card-at-a-time feed's transition (slide up, slide sideways, slide back)
+ *  and was state on the engine for that reason. The scroller has no transition
+ *  to run, so the state is gone — but the value still does one load-bearing job
+ *  inside `pushStep`: it tells the guided tour which real action just happened
+ *  (`tourSignal("drifted" | "threaded" | "crossed")`), which is what its forced
+ *  steps advance on. Delete it and the tour stops at "Pull a thread". */
 export type Dir = "drift" | "thread" | "back" | "cross";
 
 // A random-drift card waiting in the buffer, tagged with the topic it came from
@@ -210,10 +219,6 @@ export function useDriftSession() {
   // true while the user is "looking around" in the tour: navigation is frozen so
   // they can read without drifting off the card they're studying.
   const { signal: tourSignal, holdNav, active: tourActive } = useTour();
-  // Ad interstitial (Phase 21): `showAd` renders a calm ad card in place of the
-  // knowledge card; `driftsSinceAdRef` counts drift-scrolls toward the next one.
-  const [showAd, setShowAd] = useState(false);
-  const driftsSinceAdRef = useRef(0);
   // The trail is a TREE (Phase 29), held flat with parent pointers — see
   // lib/branch.ts. `pos` is still the step on screen; `tip` is the far end of
   // the branch being read, and the two together give the line you are on
@@ -224,7 +229,6 @@ export function useDriftSession() {
   const [pos, setPos] = useState(0);
   const [tip, setTip] = useState(0);
   const [threadCache, setThreadCache] = useState<Record<string, Thread[]>>({});
-  const [dir, setDir] = useState<Dir>("drift");
   // The transient "you are moving" toast. It carries WHETHER the move forked
   // (Phase 30), because a thread pulled from a stop you already left starts a
   // new line, and until now the only place that was ever said was the exit
@@ -407,10 +411,6 @@ export function useDriftSession() {
       onPath: path.includes(i),
     }));
   }
-  // The ways this stop was left (Phase 30). More than one means the reader is
-  // standing on a fork and can step onto either line; the card renders nothing
-  // for a single way, which is the ordinary case.
-  const ways: Way[] = waysFrom(pos);
   // Realm follows the displayed card's source (so back-nav across a crossing shows
   // the right chrome/threads), falling back to the seed realm before the first
   // card. Mirrored into realmRef in render so async handlers/effects read the live
@@ -496,7 +496,6 @@ export function useDriftSession() {
     displayedId ? (threadCache[displayedId] ?? []) : [],
     history,
   );
-  const threadsLoading = !!displayedId && !(displayedId in threadCache);
   // The displayed card, mirrored to a ref so the (deferred) threads fetch can
   // classify it (Phase 6) without adding it to the effect deps. The abort on
   // navigation guarantees a resolved fetch still matches this card.
@@ -611,7 +610,6 @@ export function useDriftSession() {
         artistProfileRef.current = null;
         artistRingRef.current = 0;
         artistOffsetRef.current = 0;
-        driftsSinceAdRef.current = 0;
         sessionTrailRef.current = null;
         sessionIdRef.current = ""; // a new session id is minted below
       }
@@ -1097,7 +1095,7 @@ export function useDriftSession() {
   // earlier. The only genuinely new spend is a card prepared and then not
   // visited, which is what PREPARE_NEXT_AFTER_MS is there to bound.
   useEffect(() => {
-    if (!displayedId || initialLoading || ended || dayDone || showAd) return;
+    if (!displayedId || initialLoading || ended || dayDone) return;
     const timer = window.setTimeout(() => {
       const rid = realmRef.current;
       // Two cases where the next card does not come from the buffer, so there is
@@ -1134,7 +1132,7 @@ export function useDriftSession() {
     // that the reader arrived on the very card being prepared, and cancelling
     // there would throw away the head start this whole effect exists to give.
     return () => window.clearTimeout(timer);
-  }, [displayedId, initialLoading, ended, dayDone, showAd, threadsFor, warmImage]);
+  }, [displayedId, initialLoading, ended, dayDone, threadsFor, warmImage]);
 
   // ----- dwell time -----
   // Add the elapsed time to the step we're leaving (accumulates, so revisits add
@@ -1237,10 +1235,14 @@ export function useDriftSession() {
     if (direction === "drift") tourSignal("drifted");
     else if (direction === "thread") tourSignal("threaded");
     else if (direction === "cross") tourSignal("crossed");
-    // Count only drift-scrolls toward the next ad (Phase 21); deliberate thread
-    // pulls and realm crosses never trigger an ad.
-    if (direction === "drift") driftsSinceAdRef.current += 1;
-    setDir(direction);
+    // ⚠️ THE AD COUNTER USED TO BE INCREMENTED HERE AND IT MOVED TO THE SHELL,
+    // deliberately. "One ad every N drifts" is a promise about what the READER
+    // did, and the scroller materialises cards three ahead of them — so counting
+    // at the moment a card is chosen would place the ad three cards away from
+    // where the number says. It counts on COMMIT now (`driftsRef` in
+    // ContinuousFeed), which is the moment the reader actually arrives. The rule
+    // is unchanged: only a passive drift counts, never a thread pull or a cross,
+    // and those never come through the commit path at all.
     const parent = opts.parent ?? pos;
     // WHICH STOP THE READER IS LEAVING, which is not always the same question as
     // which stop this one continues from.
@@ -1484,42 +1486,6 @@ export function useDriftSession() {
     ];
   }
 
-  async function advance() {
-    if (ended || busyRef.current || holdNav) return;
-
-    // Leaving an ad interstitial: clear it, reset the counter, then drift for real.
-    if (showAd) {
-      setShowAd(false);
-      driftsSinceAdRef.current = 0;
-      await doDrift();
-      return;
-    }
-
-    // Revisiting: move forward along the branch you're reading, without a new
-    // step. Along the PATH, not the array — once a trail forks, the step stored
-    // after this one may belong to a different line entirely.
-    if (pos !== tip) {
-      const next = path[pathPos + 1];
-      if (next !== undefined) {
-        setDir("drift");
-        setPos(next);
-        return;
-      }
-    }
-
-    // Every N drift-scrolls, show one calm ad as its own stop (Phase 21) before the
-    // next real card. Off by default; suppressed during the tour; never saved to
-    // history/trail. The ad is left by the same advance gesture (this branch's
-    // showAd path handles the next advance).
-    if (ADS.enabled && !tourActive && shouldShowAd(driftsSinceAdRef.current, ADS.every)) {
-      setDir("drift");
-      setShowAd(true);
-      return;
-    }
-
-    await doDrift();
-  }
-
   // Hold the feed busy across an async move, without stealing the lock from an
   // outer move that already holds it (a crossing INTO a focused realm runs the
   // focused-card fetch inside its own busy window). Nested calls are no-ops.
@@ -1664,8 +1630,8 @@ export function useDriftSession() {
     return null; // bucket-pinned focuses are served by the discover buffer
   }
 
-  // The real drift (focused orbit / liked-thread follow / independent random),
-  // extracted so advance() can slip a calm ad in front of it every N drifts.
+  // The real drift: a focused orbit, a liked-thread follow, or an independent
+  // random jump.
   /**
    * CHOOSE the next passive-drift card, without committing it.
    *
@@ -1787,26 +1753,18 @@ export function useDriftSession() {
     return null;
   }
 
-  async function doDrift() {
-    // The day's allowance (Phase 32). Checked HERE, before anything is fetched,
-    // so a spent day costs the upstream sources nothing. The session closes into
-    // the trail map rather than into a wall: the reward belongs at the exit.
-    if (dayIsSpent()) {
-      endSession("limit");
-      return;
-    }
-    const next = await nextDriftCard();
-    if (next) {
-      pushStep(next.card, next.via, "drift");
-      return;
-    }
-    // A pool-served focus that ran dry has already said so through its own hint
-    // (nextFocusedCard); anything else reaching here is an unavailable source.
-    const focused = focusIn(realmRef.current);
-    if (!focused || (focused.kind !== "current" && focused.kind !== "orbit")) {
-      showHint("The source is catching its breath. Try drifting again in a moment.");
-    }
-  }
+  // ⚠️ THERE WAS A `doDrift()` HERE AND ITS ABSENCE IS THE ARCHITECTURE, not an
+  // omission. It was `nextDriftCard()` plus `pushStep()` in one breath — choose a
+  // card and put it in the trail — which is only possible when exactly one card
+  // can exist. The scroller chooses a card (`nextDriftCard`), renders it into the
+  // queue, and commits it (`commitCard`) only once the reader has actually
+  // arrived on it. Those two halves are now called from two different places at
+  // two different times, and keeping a function that does both would be an
+  // invitation to commit a card nobody has seen.
+  //
+  // Its dry-source hint went too: a queue answers "why did it stop?" with a card
+  // at the END of the scroll, where the question is actually asked, rather than
+  // with a toast over the middle of whatever the reader is on.
 
   // Cross to the OTHER realm (Phase 15) — from a horizontal swipe or the top-bar
   // control. "Smart cross": land on the current card's doorway if one exists (a
@@ -2129,7 +2087,7 @@ export function useDriftSession() {
   // Refill the buffer from the topic-discover endpoint. If that yields nothing
   // (throttled/offline), we deliberately do NOT fall back to /api/wiki/random —
   // that's the endpoint Wikimedia burst-limits first, so hammering it under
-  // throttling only makes things worse. Instead advance() falls back to a
+  // throttling only makes things worse. Instead `nextDriftCard` falls back to a
   // morelike thread neighbour (which stays healthy). Leaves the buffer empty on
   // failure; the caller handles that.
   async function refillRandomBuffer(): Promise<void> {
@@ -2404,31 +2362,12 @@ export function useDriftSession() {
     }
   }
 
-  function goBack() {
-    if (ended || busyRef.current || holdNav) return;
-    // Swiping back from an ad just returns to the card you were on (no history change).
-    if (showAd) {
-      setDir("back");
-      setShowAd(false);
-      return;
-    }
-    // Back is "the stop this one continues from", which after a fork is not
-    // `pos - 1`: a branch rejoins an earlier stop, and walking back off it has
-    // to return you there rather than to whatever was stored just before it.
-    const back = parentOf(history, pos);
-    if (back !== null) {
-      setDir("back");
-      setPos(back);
-    }
-  }
-
   /** Jump to a stop on the rail. The index is a position along the CURRENT
    *  branch, which is the only line the rail draws. */
   function jumpTo(index: number) {
     if (ended || busyRef.current || holdNav) return;
     const target = path[index];
     if (target === undefined || target === pos) return;
-    setDir(index < pathPos ? "back" : "drift");
     setPos(target);
   }
 
@@ -2440,7 +2379,6 @@ export function useDriftSession() {
   function onWay(index: number) {
     if (ended || busyRef.current || holdNav) return;
     if (index === pos || index < 0 || index >= history.length) return;
-    setDir("drift");
     setPos(index);
     setTip(tipOf(history, index));
   }
@@ -2491,9 +2429,19 @@ export function useDriftSession() {
     sessionTrailRef.current = t;
   }
 
-  // A flat object on purpose. A shell destructures the whole thing in one
-  // statement, so every name here reads in its JSX exactly as it did when this
-  // all lived in one component — which is what made the extraction reviewable.
+  // A flat object on purpose. The shell destructures or reads it name by name,
+  // so every one of these reads in its JSX exactly as it did when this all lived
+  // in one component — which is what made the extraction reviewable.
+  //
+  // ⚠️ NOTHING IS EXPORTED HERE THAT NOTHING CALLS. Phase 7 removed nine names
+  // that only the card-at-a-time shell consumed (`advance`, `goBack`, `isBusy`,
+  // `showAd`, `dir`, `ways`, `current`, `threads`, `threadsLoading`,
+  // `dayIsSpent`). Several are still computed INSIDE this hook and must stay —
+  // `threads` in particular, because `nextDriftCard`'s degraded fallback reads it
+  // from render scope — but an export nothing consults is worse than none: the
+  // pre-Phase-7 audit found three of them in lib/feedqueue, including one the
+  // documentation called load-bearing, and their presence is what stopped anyone
+  // looking.
   return {
     // the trail, and where on it the reader is standing
     history,
@@ -2502,13 +2450,9 @@ export function useDriftSession() {
     path,
     pathPos,
     branchAt,
-    ways,
     waysFrom,
-    current,
     endless,
     // the card on screen
-    threads,
-    threadsLoading,
     reactions,
     // realm and focus
     realm,
@@ -2533,8 +2477,6 @@ export function useDriftSession() {
     following,
     meter,
     dayDone,
-    showAd,
-    dir,
     // ending it
     ended,
     setEnded,
@@ -2542,16 +2484,8 @@ export function useDriftSession() {
     endExisting,
     endSession,
     onTrailSaved,
-    // the moves
-    /** Is a move in flight, read SYNCHRONOUSLY? A shell's gesture handler needs
-     *  the ref, not the `advancing` state one render behind it, or a fast wheel
-     *  can slip an extra tick into the gap. Exposed as a function rather than as
-     *  the ref itself, for the reason given on `onTrailSaved`. */
-    isBusy: () => busyRef.current,
-    advance,
-    goBack,
-    // What a queue-based shell needs on top. The card-at-a-time feed uses none
-    // of these; see their definitions for why each one has to exist.
+    // the moves. Advancing and going back are not among them: in a scroller they
+    // are scrolling, and the shell does them without asking the engine.
     nextDriftCard,
     /** Did the last refill fail to REACH the source, rather than come back with
      *  nothing? Read synchronously, and a function rather than the ref itself
@@ -2562,7 +2496,6 @@ export function useDriftSession() {
     threadsPendingFor,
     ensureThreads,
     returnToBuffer,
-    dayIsSpent,
     jumpTo,
     onWay,
     onThread,

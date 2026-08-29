@@ -39,8 +39,7 @@ export default function HowItWorksPage() {
           inside the card, with tables and the infobox.
         </P>
         <P>
-          Nothing on a card moves on its own. No autoplay, no countdown, no next
-          card sliding partway in.
+          Nothing on a card moves on its own. No autoplay, no countdown.
         </P>
       </Section>
 
@@ -51,8 +50,8 @@ export default function HowItWorksPage() {
           closely related. <Lead>Tangent </Lead>means further out.
         </P>
         <P>
-          Pulling one moves you sideways rather than forward, which is a
-          different motion from an ordinary drift. Here is the demo, bundled into
+          Pulling one is a choice rather than a continuation: you say where to go
+          next instead of taking whatever comes. Here is the demo, bundled into
           the page:
         </P>
         <div className="mt-5">
@@ -66,9 +65,8 @@ export default function HowItWorksPage() {
 
       <Section title="Drifting">
         <P>
-          If you do not want to pick a direction, swipe on or press the drift
-          button and Drift chooses the next card, from well-formed pages in the
-          areas you have been reading.
+          If you do not want to pick a direction, scroll on and Drift chooses the
+          next card, from well-formed pages in the areas you have been reading.
         </P>
         <P>
           Every card carries a line saying why it appeared: the thread you
@@ -144,9 +142,8 @@ export default function HowItWorksPage() {
 
       <Section title="What Drift does not do">
         <P>
-          No autoplay. No queue of preloaded cards (it shows you at most one
-          ahead). No streaks, badges or notifications. After about 25 stops it
-          notes that you have been going a while, and you can dismiss that and
+          No autoplay. No streaks, badges or notifications. After about 25 stops
+          it notes that you have been going a while, and you can dismiss that and
           carry on.
         </P>
         <P>

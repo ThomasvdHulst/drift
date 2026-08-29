@@ -12,12 +12,23 @@
 // fraction of a whole browser per bot, on a machine that is also hosting three
 // copies of the app.
 //
-// Driven by KEYBOARD, not by simulated swipes. The feed binds these itself
-// (the keydown effect in drift/page.tsx): ArrowDown drifts onward, 1/2/3 pull
-// the first, second or third thread, ArrowUp goes back. They run through
-// exactly the same handlers a gesture does, and they do not depend on
-// hit-testing an animated element,
-// which is what makes a gesture-driven bot flaky rather than informative.
+// Driven by KEYBOARD, not by simulated swipes. The feed binds these itself (the
+// keydown effect in drift/ContinuousFeed.tsx): ArrowDown scrolls on one card,
+// 1/2/3 pull the first, second or third thread, ArrowUp scrolls back. They move
+// the real scroller by exactly one snap point, and they do not depend on
+// hit-testing an element that is moving, which is what makes a gesture-driven
+// bot flaky rather than informative.
+//
+// ⚠️ FOUR CARDS ARE IN THE DOM AT ONCE AND `.first()` IS THEREFORE A TRAP. The
+// feed is a scroll-snap scroller: the committed trail is above the reader, a
+// three-card queue is below, and the topmost `main h1` is the FIRST STOP OF THE
+// SESSION, forever. Measured against the real feed: three ArrowDowns, and
+// `main h1`.first() still read "Volcano" while the reader was on "Glacier". A
+// bot reading it sees a title that never changes, presses three times, and
+// reports the app as `stopped advancing` on its very first move — a completely
+// healthy app, scored as broken, in a report nobody would doubt. Everything here
+// reads the ACTIVE slot instead (`currentTitle` below), the same way
+// scripts/verify-feed.mjs does.
 // ---------------------------------------------------------------------------
 
 import {
@@ -27,8 +38,9 @@ import {
   sessionLength,
 } from "./behaviour.mjs";
 
-/** The card heading. Two cards are in the DOM mid-transition, hence `.first()`. */
-const TITLE = "main h1";
+/** The scroller. Its aria-label is what a keyboard reader is offered, and it is
+ *  the only stable handle on the feed from outside. */
+const SCROLLER = '[aria-label="Your drift"]';
 
 export async function runBrowserBot({
   browser,
@@ -148,8 +160,12 @@ export async function runBrowserBot({
       // How many thread chips are actually on screen decides which keys mean
       // anything: pressing "3" with two chips does nothing at all, and a bot
       // that did it would sit there looking like a broken app.
+      // `:visible` because the card renders its threads TWICE — pinned beside
+      // the text on a desktop, inlined for a phone, one of them always
+      // `md:hidden`. Without it the count is exactly doubled (measured: 8 for
+      // four chips), which makes a bot press "3" on a card with two threads.
       const chips = await page
-        .locator('[data-tour="card-threads"] button')
+        .locator('[data-tour="card-threads"] button:visible')
         .count()
         .catch(() => 0);
 
@@ -168,6 +184,9 @@ export async function runBrowserBot({
         move === "thread"
           ? String(1 + Math.floor(rng() * Math.min(3, chips)))
           : "ArrowDown";
+      // The keys are bound on `window`, but the scroller has to hold focus or a
+      // stray click on a card leaves focus somewhere that swallows them.
+      await page.locator(SCROLLER).focus().catch(() => {});
       if (move === "thread") stats.threads++;
       else stats.drifts++;
       await page.keyboard.press(key);
@@ -176,13 +195,15 @@ export async function runBrowserBot({
       // wedged bot would keep "reading" the same card and the report would count
       // cards that were never shown.
       //
-      // ⚠️ AND IT HAS TO BE PRESSED AGAIN WHEN NOTHING HAPPENS. Both `advance`
-      // and `onThread` early-return while `busyRef` is set (drift/useDriftSession.ts),
-      // which it is for the whole of a buffer refill — so a press that lands
-      // during one is dropped. A reader sees the loading state and presses
-      // again; a bot that waited 30 seconds and gave up recorded the app as
-      // broken when it was merely busy, which is how all three browser bots
-      // "stopped advancing" in the 25-bot run while the museum was throttling.
+      // ⚠️ AND IT HAS TO BE PRESSED AGAIN WHEN NOTHING HAPPENS. The reason
+      // changed with the feed and is worth stating precisely, because the
+      // counter it feeds is a real signal about the app. It used to be the busy
+      // lock: `advance` and `onThread` early-returned while `busyRef` was set,
+      // which it was for the whole of a buffer refill. In the scroller ArrowDown
+      // always scrolls — but it can only scroll onto a card that EXISTS, so a
+      // press that finds the queue empty (a refill in flight, or a source
+      // backing off) lands on nothing. Either way it is a moment a reader felt
+      // the app not respond, which is what `retries` counts.
       //
       // The retry count is kept, because it is a real signal about the app: a
       // press needing a second go is a moment a reader felt the app not respond.
@@ -226,22 +247,34 @@ export async function runBrowserBot({
   }
 }
 
-/** The heading currently on screen, or "". */
+/**
+ * The heading of the card the reader is actually ON, or "".
+ *
+ * Derived from the scroller's own geometry rather than from the DOM order,
+ * because every item is exactly one scroller-height by construction (that is
+ * invariant 5 of the feed, and the thing the whole design rests on). So
+ * `scrollTop / clientHeight` IS the index of the active slot. Same shape as
+ * `activeSlot()` in scripts/verify-feed.mjs — deliberately, so there is one way
+ * to ask this question and not two that can disagree.
+ */
 async function currentTitle(page) {
   return await page
-    .locator(TITLE)
-    .first()
-    .textContent({ timeout: 5000 })
-    .then((t) => (t ?? "").trim())
+    .evaluate((sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return "";
+      const i = Math.round(el.scrollTop / el.clientHeight);
+      const slot = el.querySelectorAll("[data-slot]")[i];
+      return slot?.querySelector("h1")?.textContent?.trim() ?? "";
+    }, SCROLLER)
     .catch(() => "");
 }
 
 /**
- * Wait until a card heading is present and different from `previous`.
+ * Wait until the active card's heading is present and different from `previous`.
  *
- * Polling rather than `waitForSelector`, because during a transition BOTH the
- * outgoing and incoming card are in the DOM and the first match can briefly
- * still be the old one.
+ * Polling rather than `waitForSelector`, because the selector never changes —
+ * the question is which slot the scroller has settled on, which only the
+ * geometry above can answer.
  */
 async function waitForCard(page, previous, timeoutMs) {
   const deadline = Date.now() + timeoutMs;

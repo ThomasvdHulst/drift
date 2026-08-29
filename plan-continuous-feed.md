@@ -12,94 +12,75 @@ here repeats its reasoning; this is only the order of work.
 say "read `docs/continuous-feed-prompt.md` first". It is the single prompt that brings a new
 assistant all the way from nothing to a formal plan for the next phase.
 
-> ## Current status: 2026-08-29
+> ## Current status: 2026-08-29 — ✅ THE PROJECT IS COMPLETE
 >
-> ✅ **Phases 0 to 6 are COMPLETE, and have now been AUDITED before Phase 7.** The scroller is
-> feature-complete behind `NEXT_PUBLIC_FEED_CONTINUOUS=1`: forks, the ways switch, saved-trail
-> re-entry, endings you scroll into, ads, and the guided tour. With the flag off nothing changes;
-> with it on, `?feed=classic` gives the old feed back.
+> **Phases 0 to 7 are done.** `/drift` is a continuous scroll-snap feed and there is no other one:
+> Phase 7 deleted the card-at-a-time shell, `lib/feedmode.ts`, `?feed=classic` and
+> `NEXT_PUBLIC_FEED_CONTINUOUS`, rewrote the four promise surfaces, and repointed both harnesses.
 >
-> **Owner decision (28 August): the continuous feed is THE feed.** The card-at-a-time version is
-> not coming back. It is still present, and Phase 7 removes it — see below for why not sooner.
+> **`docs/continuous-feed.md` is the reference** and outlives this file: the research, the
+> measurements, the rate-limit arithmetic, and **seventeen invariants** (§9) that the design rests
+> on. `CLAUDE.md §12` is the short map for someone who never opens it. This tracker is now history.
 >
-> ### 🔍 The pre-Phase-7 audit (29 August): six bugs, two of them serious
+> ### 🧪 The gates
 >
-> Everything the gates covered was sound (53/53, build, lint, 1,415 tests). So the audit went at
-> the paths a gate does not walk — a source that fails rather than answers, a reader parked up
-> their own trail, and a keyboard — and found six things. All are fixed; the reasoning is in
-> `docs/continuous-feed.md` §4.8 and the log entry below.
+> | | |
+> |---|---|
+> | `npm run test` | **1,394** green, 83 files |
+> | `npm run build` | clean (the type-check gate) |
+> | `npm run lint` | clean, **zero** warnings |
+> | `npm run verify:feed` | **130/130**, 65 checks each at 1280x900 and 390x844 |
+> | `npm run audit:contrast` | **PASS**, 5,014 nodes over 33 views x 2 themes |
 >
-> 1. **The feed died on one empty refill and nothing could wake it.** A 503 produced "You have
->    read this area dry" in six seconds, on a free drift over the whole of Wikipedia, and it was
->    still there fifteen seconds after the source recovered.
-> 2. **`fill` pinned the engine from one render, silently killing the degraded thread fallback.**
->    With discover empty and `related` healthy, the fallback fired zero times.
-> 3. A card could be appended **after** the ending card.
-> 4. The queue was refilled for the stop the reader was **standing on**, not the tip it hangs
->    below — so a ♥ three stops up put a Wikipedia card on top of a queue of paintings.
-> 5. **Tab carried a keyboard reader down the feed**, committing cards they never chose.
-> 6. `pendingIds` / `isCandidate` / `trimToCapacity` were wired to nothing, including the one the
->    docs call the fix for "the likeliest bug in the project".
+> ⚠️ **DO NOT RUN `verify:feed` ALONGSIDE ANOTHER BROWSER SUITE.** Both passes cross into the
+> Gallery, and locally there is no CDN in front of The Met's ~80-requests-per-30-seconds bucket
+> (CLAUDE.md §4). When a Gallery check fails, read the server log before reading the code.
 >
-> ### 🧪 `npm run verify:feed` — the gate
+> ### 📏 Cost, re-measured on the finished feed
 >
-> `scripts/verify-feed.mjs` drives a real Chromium over the whole feed and reports a table.
-> **67 checks per viewport, at 1280x900 and 390x844** (was 53; the audit added `A SOURCE THAT
-> WILL NOT ANSWER` and `KEYBOARD FOCUS ORDER`, and rewrote `THE AUTO-SNAP GUARD` around the rule
-> that replaced its premise). It covers every entry point and focus kind, commit-once-per-card,
-> flings, forks, the ways switch, realm crossing, the ♥ insert, the reading handoff, endings,
-> recovery from a quiet source, focus order, cost per card, and the flag. It needs a running
-> server and is not part of `npm test`, exactly like `audit:contrast`.
+> Encyclopedia, 11 committed stops, 60/40 thread/drift, Read more every fourth — the mix
+> `docs/beta-readiness.md` used. **Identical before and after Phase 7's engine strip**, which is how
+> we know that part was behaviour-neutral:
 >
-> ⚠️ **DO NOT RUN IT ALONGSIDE ANOTHER BROWSER SUITE.** Both passes cross into the Gallery, and
-> locally there is no CDN in front of The Met's ~80-requests-per-30-seconds bucket (CLAUDE.md §4).
-> Running it beside `audit:contrast` tripped the breaker mid-run — `circuit OPEN after 5
-> consecutive throttles` in the server log — and `crossRealm` then correctly declined to land on
-> nothing, which read as two product failures. The cross check now retries once after a pause and
-> says "the museum would not answer" instead, the same affordance `entryPoints` has had all along.
-> **When a Gallery check fails, read the server log before reading the code.**
+> | route | per committed card |
+> |---|--:|
+> | `/api/realm/*/related` | 1.36 |
+> | `/api/doorway` | 1.36 |
+> | `/api/realm/*/summary` | 0.36 |
+> | `/api/realm/*/discover` | **0.27** |
+> | total `/api` | 3.36 |
 >
-> **Gates:** 1,416 unit tests (84 files), build clean, lint clean with zero warnings.
-> Cost: 1.40 `/related` and 1.40 `/doorway` per card over a 10-card session, 0.60 discover —
-> unchanged by the audit's fixes.
+> The two 1.36s are lookahead not yet consumed; they amortise with session length (1.15 over 26
+> cards). **Discover went DOWN** from the old feed's ~0.5, because a thread pull hands three
+> materialised cards back to the buffer instead of leaving them unfetched.
 >
-> ### The Gallery slowness, answered and fixed
+> ### 🔴 Still unverified, said plainly
 >
-> Not inherent: 0.54 discover calls per card against the old feed's 0.55. Two things made it feel
-> worse. A **retry storm** (fixed in Phase 4 — 2.62 calls per card against a throttled Met, versus
-> 0.54 once rested), and a **cold-start image burst**: four cards render at once, and a Gallery
-> card's full-size image comes through our own proxy, which fetches a multi-megabyte original each.
-> The heavy image is now loaded for the active card and its neighbours only; the hotlinked ~600px
-> preview stands in for the rest, so nothing looks empty.
->
-> ### ⚠️ Still unverified
->
-> - **iOS.** No device here. `scroll-snap-stop: always` is the mitigation for WebKit's flick, and
->   `commitAt` keeps the trail honest even if it does not hold. **Try it on a phone.**
+> - **iOS.** No device here. `scroll-snap-stop: always` is the mitigation for WebKit's historic
+>   hard-flick, and `commitAt` keeps the trail honest even if it does not hold. Watch also for
+>   WebKit's cached snap positions going stale as the queue adds and removes children
+>   (`docs/continuous-feed.md` §4.9, finding 20). **Try it on a phone.**
+> - **The 25-reader load rehearsal has not been re-run** since the harness was repointed. So
+>   `docs/beta-readiness.md`'s ≈2.4 Wikimedia calls per card still describes the OLD feed, and the
+>   new retry ladder has still never been measured against a throttling Met. The harness is ready;
+>   the run is not done. Two boxes in Phase 7 are open for exactly this.
 > - **`day-done` end to end.** The meter needs a signed-in account and a backend; with the cloud
 >   vars blanked it correctly fails open. Its arithmetic is unit-tested and it renders through the
->   same `TerminusCard` as the other endings, which ARE tested end to end.
-> - **The Met under the new backoff.** The audit's failure probes all used Wikipedia routes. The
->   retry ladder is capped at 60 s and only runs when a source did not answer at all, which is
->   strictly gentler than what shipped, but it has not been measured against a throttling museum.
->   Phase 7's load rehearsal is where that happens.
+>   same `TerminusCard` as the three endings that ARE tested in a browser.
 >
-> ### 🔴 Two pre-existing bugs for `main`, unchanged
+> ### ✅ Two pre-existing `main` bugs, fixed here
 >
-> 1. **A WCAG AA failure in the focus banner**: "Drift freely" at 4.42:1 against a 4.5 bar, from
->    tint stacking (`bg-accent/12` pill, `bg-accent/10` button). Drop the nested tint at
->    `FocusBanner.tsx:41`. ⚠️ The audit renders no view with a focus banner, which is why it has
->    never been caught — add one focus route to `ROUTES`.
-> 2. **`StorageNotice` covers "Save trail"** on the exit screen (`z-40` over `z-20`).
+> Both were uncovered by Phase 7's own work rather than sought out, and both are recorded in the log
+> entry below.
 >
-> ### ▶ Next: Phase 7, the last one
+> 1. **The focus banner's WCAG AA failure.** "Drift freely" measured **4.42:1** against a 4.5 bar,
+>    from tint stacking. Fixed by dropping the release button's nested tint; **re-measured at
+>    5.69:1**. The audit's route list now renders a focus banner, so the class of bug is no longer
+>    invisible.
+> 2. **`StorageNotice` covering "Save trail".** Hit-tested: the element at the centre of the button
+>    was the notice. It steps aside while the exit screen is open now, the way it already did for
+>    the guided tour, and comes back when the screen closes.
 >
-> Retire the discrete feed and the flag; **rewrite the four promise surfaces in the same change**
-> (`CLAUDE.md §2.2`, `drift-spec.md §2.2`/§7, `/principles` §2, `/how-it-works`) — the moment the
-> scroller is the only feed, those published pages are lying to readers, which is why the removal
-> waited rather than landing early. Then the two harnesses that still assume the old shell: the
-> load bots, and the contrast audit's `endTrail`/`branchInFeed` rows.
-
 ---
 
 ## Phase 0 — Make the discrete feed feel instant ✅ COMPLETE
@@ -258,30 +239,44 @@ here (§2).
 
 ---
 
-## Phase 7 — Prove it, then tell the truth about it
+## Phase 7 — Prove it, then tell the truth about it ✅ COMPLETE
 
-- [ ] Update `scripts/bots/` and the `src/lib/loadbot*.test.ts` fidelity gates for the new feed.
-      **Until this is done the load rehearsal measures an app nobody is running** (§8.9).
-- [ ] Full rehearsal: 25 readers, both realms, against the local production rig. Compare Met
-      requests, 403s and breaker trips against the 96-requests / zero-403s Gallery baseline.
-- [ ] Re-measure Wikimedia calls per card; update `docs/beta-readiness.md` (currently ≈2.4).
-- [ ] Rewrite the four promise surfaces (`CLAUDE.md §2.2`, `drift-spec.md §2.2` and §7,
-      `/principles` §2, `/how-it-works`) to say what the app actually does. Not before the
-      feed is real, and not after it ships: in the same change.
-- [ ] Fold this branch's status into `plan.md` and add a progress-log entry there.
-- [ ] Decide the flag's fate: default on, default off, or a per-reader setting.
-- [ ] Retire the discrete shell itself: `DiscreteFeed.tsx`, `lib/feedmode.ts` and its tests, the
-      `?feed=classic` override, the flag in `.env.local.example`, the `THE FLAG` section of
-      `verify:feed`, and the two-shell framing in `page.tsx`. The owner decided on 28 August that
-      the scroller is the only feed, so a switch nobody will flip is dead weight.
-- [ ] Give the contrast audit a focus route (`ROUTES` renders no view with a `FocusBanner`, which
-      is why the 4.42:1 "Drift freely" failure above has never been caught), and re-point its
-      `endTrail` / `branchInFeed` rows at the scroller once the discrete shell is gone.
+The last phase. One feed, four surfaces that describe it honestly, and two harnesses that
+measure the app that actually exists.
+
+- [x] **Retired the discrete shell.** `DiscreteFeed.tsx`, `lib/feedmode.ts` and its tests, the
+      `?feed=classic` override, the flag in `.env.local.example`, and the `THE FLAG` section of
+      `verify:feed` (67 checks → 65). `page.tsx` is now nothing but the Suspense boundary the
+      engine's `useSearchParams` needs.
+- [x] **Removed what only that shell used**, rather than leaving it exported and uncalled — the
+      shape the pre-Phase-7 audit found three times in `feedqueue`. `FeedBottomNav` and its
+      `data-feed-nav` rule; `edgesOf` / `resolveSwipe` / `isWheelReadingScroll` in `lib/gesture.ts`
+      with their tests (`resolveHorizontalSwipe` stays — the realm cross still uses it); and nine
+      names off the engine (`advance`, `goBack`, `isBusy`, `showAd`, `dir`, `ways`, `current`,
+      `threads`, `threadsLoading`, `dayIsSpent`), plus `doDrift`, which only `advance` called.
+      ⚠️ `threads` and `current` are still COMPUTED — `nextDriftCard`'s degraded fallback reads
+      `threads` from render scope, which is audit finding 11 — only their exports are gone.
+- [x] **Updated `scripts/bots/` and the fidelity gates.** The browser driver was not "drifted", it
+      was **dead**: see the log entry. `bot-http.mjs` now models the queue, the one-ahead
+      lookahead and the void-on-thread-pull; `QUEUE_AHEAD` is pinned by importing
+      `src/lib/feedqueue.ts` rather than scraping it.
+- [x] **Rewrote the four promise surfaces**, published and internal, and deliberately not the same
+      way. See the decision log and `docs/continuous-feed.md` §3.1.
+- [x] **Gave the contrast audit a focus route** (`/drift?focus=field&bucket=architecture`) and
+      repointed its `branchInFeed` row from clicking "Previous stop" to pressing ArrowUp.
+- [x] **Fixed the two pre-existing bugs that work uncovered**: the focus banner's 4.42:1 "Drift
+      freely" (a nested tint on the release button) and `StorageNotice` swallowing the click on
+      "Save trail".
+- [x] **`CLAUDE.md` §12** is the feed's map for anyone who never reads `docs/continuous-feed.md`;
+      §2.2 records the reversal, §6 drops the motion sentence, §7 lists `verify:feed`.
+- [ ] **Full load rehearsal**: 25 readers, both realms, against the local production rig. Compare
+      Met requests, 403s and breaker trips against the 96-requests / zero-403s Gallery baseline,
+      and re-measure Wikimedia calls per card for `docs/beta-readiness.md` (currently ≈2.4, which
+      predates the scroller).
 - [ ] **Measure the new retry ladder against a THROTTLING Met.** Every failure probe in the
-      pre-Phase-7 audit used Wikipedia routes. The ladder only runs when a source did not answer
-      at all and doubles to a 60 s cap, so it is strictly gentler than what shipped — but that is
-      an argument, not a measurement, and the museum is the one budget that stays shrunk for a day
-      (CLAUDE.md §4). The load rehearsal above is where this gets settled.
+      pre-Phase-7 audit used Wikipedia routes. The rehearsal above is where this gets settled;
+      `rig.mjs` already counts throttles per host and breaker openings from the instance logs.
+- [x] Fold this branch's status into `plan.md` and add a progress-log entry there.
 
 ---
 
@@ -296,16 +291,23 @@ here (§2).
 | 2026-08-28 | Commit at 75% visibility **plus a settle window** | `scroll-snap-stop: always` stops a fling at every card, so visibility alone would record six stops from one gesture. §6.2. |
 | 2026-08-28 | Threads and the doorway: current card and **one ahead only** | All-N would take a Gallery screenful from ~9 to ~45 Met requests against a ~80-per-30s bucket. This is the one way to genuinely break the app. §7.2. |
 | 2026-08-28 | Phase 0 ships to `main` independently | It needs no principle change and it measures whether the rest is even needed. |
+| 2026-08-29 | **Remove the flag and the old shell entirely**, no escape hatch | Owner's call. A switch nobody will flip is dead weight, and two shells over one engine is a gate that has to stay green twice, forever. |
+| 2026-08-29 | **Published pages: remove the broken promises, say nothing about the new mechanism** | Owner's call, and the right one for a reader: `/principles` and `/how-it-works` describe the app, not its changelog. A page that explains why it used to say something else is a page about itself. |
+| 2026-08-29 | **Internal docs: the opposite — keep the old wording visible under a ⚠️** | `CLAUDE.md` and `drift-spec.md` are instructions to future sessions. A session that reads "Prefetch at most 1 card ahead" will "fix" the queue out of existence, which is exactly what `CLAUDE.md §1` keeps stale text visible to prevent. |
+| 2026-08-29 | **Strip the engine's dead exports too**, not just delete the shell | The pre-Phase-7 audit's own lesson: an exported, tested, uncalled `isCandidate` is worse than no defence, because its presence stops the next person looking. Nine names went; the ones still used INSIDE the hook stayed. |
+| 2026-08-29 | Fix the two pre-existing `main` bugs here | Not scope creep in the end: adding the focus route to the contrast audit turns the 4.42:1 banner failure into a red gate, so the fix is required by the phase. The `StorageNotice` one is a line, and it stands between a first-time reader and saving their first trail. |
 
-## Open questions for the owner
+## Open questions for the owner — all three answered
 
-1. **The peek.** Native 1:1 scrolling means the next card is partly visible mid-drag. There is
-   no version of this that does not. Acceptable, or is a peek-free variant (transition only on
-   release) wanted, which costs most of the "seamless" feel?
-2. **Where should the day's end live?** The queue model can let the reader scroll into the trail
-   map. Better than today's abrupt close, but it does put the ending inside the feed.
-3. **Ship both feeds, or replace?** The plan assumes both, behind a flag, with the discrete feed
-   as the fallback. Keeping both forever is a real maintenance cost.
+1. **The peek.** ✅ Accepted, and shaped rather than removed. The `SEAM` constant in
+   `ContinuousFeed.tsx` is the decision: a band of paper between cards, so what you see mid-drag
+   is the next card's top edge rather than a readable slice of it. Edge to edge would have been
+   the shape of the feeds Drift exists to be an antidote to.
+2. **Where should the day's end live?** ✅ Inside the feed, as a card you scroll into
+   (`TerminusCard`). It answers "why did it stop?" in the place the question is actually asked —
+   the bottom — instead of as a toast over the middle of whatever you were reading.
+3. **Ship both feeds, or replace?** ✅ **Replace.** Decided 28 August, executed in Phase 7. There
+   is one feed and no flag.
 
 ---
 
@@ -623,3 +625,79 @@ nothing. The check now retries once and names the cause. Do not run the two suit
 used Wikipedia routes: the new retry ladder is strictly gentler than what shipped (it only runs
 when a source did not answer at all, and it doubles to a 60 s cap), but it has not been measured
 against a throttling Met. That belongs with Phase 7's load rehearsal.
+
+### Phase 7 — one feed, and four surfaces that describe it (2026-08-29)
+
+The last phase, and almost none of it was feature work. It was the cost of the old feed still being
+in the building: a shell that had to keep passing every gate, two published pages promising things
+the app no longer did, and two harnesses that would have measured the wrong app while reporting
+success.
+
+**The browser load bots were not "drifted" — they were dead, and they failed as a false accusation.**
+This is the finding worth carrying. `bot-browser.mjs` proved a move had landed by reading `main h1`
+and taking `.first()`. In a scroller that is the first stop of the session, forever. Measured
+against the real feed:
+
+```
+before:            Volcano
+after ArrowDown 1: Volcano
+after ArrowDown 2: Volcano
+after ArrowDown 3: Volcano       ← the reader was on "Glacier"
+```
+
+So every browser bot would press three times, record `card did not advance` and end
+`stopped advancing` on its first move. A completely healthy app, scored as broken, by the driver
+that exists precisely to **calibrate** the volume bots — and the volume bots would have gone on
+producing confident numbers with nothing checking them. It reads the active slot now, by the
+scroller's own `scrollTop / clientHeight` geometry, which is the same expression `verify-feed.mjs`
+uses so there is one way to ask the question rather than two that can disagree. Chip counting was
+doubled too (8 for four chips: the card renders its threads twice, one copy always `md:hidden`).
+
+**`bot-http.mjs` had to grow a queue.** Not cosmetic: without the queue, the one-ahead lookahead and
+the void-on-thread-pull, it would model 1.00 `/related` per card where the app measures 1.36, and
+0.5 discover where the app measures 0.27. Wrong in both directions at once, and confidently.
+`QUEUE_AHEAD` joined the pinned constants, and `loadbot.test.ts` pins it by **importing**
+`src/lib/feedqueue.ts` rather than scraping a regex out of a file — a direct comparison cannot
+silently match nothing, which is the failure mode the three scraped constants have to guard against
+by hand.
+
+**The promise surfaces got two different treatments, and the split was deliberate.** Published pages
+(`/principles` §2, `/how-it-works`) simply lost the promises we cannot keep — "no card sliding
+partway into view", "No queue of preloaded cards (it shows you at most one ahead)" — with nothing
+added about queues or scrolling. That was the owner's call and it is the right one: a reader wants a
+page that is true, not a page about itself. Two more stale claims went with them, found on the way:
+"press the drift button" (there is no button) and "pulling one moves you sideways" (there is no
+sideways). The internal documents got the opposite: `CLAUDE.md §2.2` and §6, and `drift-spec.md`
+§2.2/§7, keep the superseded wording visible under a ⚠️ and say what replaced it — because a session
+that reads "Prefetch at most 1 card ahead" will "fix" the queue out of existence, which is exactly
+what `CLAUDE.md §1` keeps stale text visible to prevent.
+
+**The engine was stripped, not just orphaned.** Nine exports went with the shell that consumed them
+(`advance`, `goBack`, `isBusy`, `showAd`, `dir`, `ways`, `current`, `threads`, `threadsLoading`,
+`dayIsSpent`), plus `doDrift`, which only `advance` called. The audit's own lesson made this
+non-optional: an exported, unit-tested, uncalled function is worse than no defence, because its
+presence stops the next person looking. ⚠️ **`threads` and `current` are still computed** — the
+degraded fallback in `nextDriftCard` reads `threads` from render scope, which is audit finding 11 —
+only their exports are gone. `doDrift`'s absence is now a comment explaining that it *was*
+`nextDriftCard` plus `pushStep` in one breath, which is exactly the fusion a queue has to split.
+
+**Two pre-existing `main` bugs were fixed because this work uncovered them, and one was required.**
+Adding a focus route to the contrast audit turns the banner's 4.42:1 "Drift freely" into a red gate,
+so the fix shipped with the route: the release button's `bg-accent/10` was stacking on the pill's
+`bg-accent/12`. Re-measured after: **5.69:1**. The other was `StorageNotice` (`z-40`) sitting over
+the exit screen's "Save trail" (`z-20`), so a first-time reader could not save their first trail.
+Hit-tested before and after: the element at the centre of the button was the notice, and is now the
+button. It hides while the exit screen is open, exactly as it already did for the guided tour, and
+comes back when the screen closes — so the disclosure is deferred by a moment, never skipped.
+
+**What was verified, and how.** Build clean, lint clean with zero warnings, 1,394 tests,
+`verify:feed` **130/130** at both viewports (65 each, down from 67 with `THE FLAG` gone),
+`audit:contrast` **PASS** at 5,014 nodes over 33 views x 2 themes — this time against a
+**continuous** build, because there is no other kind. Cost per card re-measured identical before and
+after the engine strip. The focus banner and the storage notice were each measured directly rather
+than inferred from the suite passing.
+
+**What was not.** The load rehearsal. The harness is correct now, but the 25-reader run has not
+happened, so `docs/beta-readiness.md`'s ≈2.4 Wikimedia calls per card still describes the old feed
+and the retry ladder is still unmeasured against a throttling museum. It is stated as open rather
+than quietly rounded off, because a number in that file is one somebody will quote.

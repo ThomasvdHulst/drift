@@ -3,8 +3,9 @@
 // ---------------------------------------------------------------------------
 // The continuous feed: a scroll-snap scroller, 1:1 with your finger.
 //
-// One of two SHELLS over `useDriftSession`. The engine decides WHAT the reader
-// sees; this decides only HOW it appears. Behind NEXT_PUBLIC_FEED_CONTINUOUS.
+// The SHELL over `useDriftSession`. The engine decides WHAT the reader sees;
+// this decides only HOW it appears. It was one of two shells behind a flag
+// while it was being built; it is the only one now.
 //
 // WHAT IS ON SCREEN, top to bottom:
 //
@@ -516,7 +517,7 @@ export function ContinuousFeed() {
   // observer effect below depends on it, so an unstable one would tear down and
   // rebuild the IntersectionObserver on every render. Losing the observer
   // mid-scroll loses the settle timers with it, which is exactly how a card
-  // would silently fail to commit. Same trick as `advanceRef` in DiscreteFeed.
+  // would silently fail to commit.
   const commitRef = useRef<(id: string) => void>(() => {});
   useEffect(() => {
     commitRef.current = (id: string) => {
@@ -847,7 +848,7 @@ export function ContinuousFeed() {
   );
   // Latest handlers, reachable from the stable keydown listener below. Written
   // in an effect (not during render) and with no dependency list, so it simply
-  // tracks every render — the same pattern DiscreteFeed uses for `advanceRef`.
+  // tracks every render, the same way `commitRef` above does.
   const keyRef = useRef({ stepBy, onThread, threads: [] as Thread[] });
   useEffect(() => {
     keyRef.current = {

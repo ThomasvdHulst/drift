@@ -1,8 +1,7 @@
 // ---------------------------------------------------------------------------
 // Drift · verify the reading feed end to end.
 //
-//   NEXT_PUBLIC_FEED_CONTINUOUS=1 NEXT_PUBLIC_SUPABASE_URL= \
-//   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY= npm run build
+//   NEXT_PUBLIC_SUPABASE_URL= NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY= npm run build
 //   … npx next start -p 3106
 //   BASE=http://localhost:3106 npm run verify:feed
 //
@@ -719,19 +718,6 @@ async function focusOrder(browser, vp) {
   await page.context().close();
 }
 
-// The flag itself. With it off the app must be byte-for-byte what shipped, and
-// no URL may switch the unfinished feed on.
-async function flag(browser, vp) {
-  heading("THE FLAG");
-  const page = await newPage(browser, vp);
-  await page.goto(`${BASE}/drift?title=Octopus&seed=Octopus&feed=classic`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "Maybe later" }).click({ timeout: 4000 }).catch(() => {});
-  await page.waitForTimeout(7000);
-  rec("?feed=classic returns the card-at-a-time feed", (await page.locator(SCROLLER).count()) === 0);
-  rec("which still shows a card", (await page.locator("main h1").count()) > 0);
-  await page.context().close();
-}
-
 const browser = await chromium.launch();
 for (const vp of VIEWPORTS) {
   if (ONLY && ONLY !== vp.name) continue;
@@ -743,7 +729,6 @@ for (const vp of VIEWPORTS) {
   await autoSnapGuard(browser, vp);
   await resilience(browser, vp);
   await focusOrder(browser, vp);
-  await flag(browser, vp);
 }
 await browser.close();
 

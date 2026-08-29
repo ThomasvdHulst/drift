@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import type { TrailStep } from "@/lib/types";
 import type { RealmId } from "@/lib/realms/types";
@@ -62,6 +62,23 @@ export function EndOverlay({
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const mapRef = useRef<HTMLDivElement>(null);
+
+  // Tell the document the exit screen is open, so the first-run storage notice
+  // steps aside for it.
+  //
+  // ⚠️ WITHOUT THIS A FIRST-TIME READER CANNOT SAVE THEIR FIRST TRAIL. The notice
+  // is `fixed … bottom-safe z-40` and mounted in the ROOT layout — it has to
+  // appear on the signed-out landing too, so the two components never meet in the
+  // tree — and this modal is `absolute inset-0 z-20`. Hit-tested at 1280x900, the
+  // element at the centre of "Save trail" was the notice, not the button. An
+  // attribute plus a rule in globals.css for the same reason the tour uses one:
+  // there is no shared React state to thread it through. Hidden rather than
+  // moved, because closing this screen brings it straight back.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.setAttribute("data-feed-overlay", "");
+    return () => root.removeAttribute("data-feed-overlay");
+  }, []);
 
   async function handleExport() {
     if (!mapRef.current) return;

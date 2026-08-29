@@ -45,15 +45,26 @@ without them:
 
 1. **Transparency over opacity** — the user always sees *why* the next card appeared (the
    thread they chose, or "drift" if random). No hidden ranking.
-2. **Agency over autoplay** — nothing advances automatically. No autoplay, no infinite
-   preloading that teases "just one more." Prefetch **at most 1 card ahead**.
-   ⚠️ *That rule is about what is RENDERED, not about how many upstream calls a request
-   makes.* The discover and random routes deliberately fetch a BATCH of ~20 cards' worth of
-   metadata at a time (`/api/wiki/random`, `lib/discover.ts`) because `generator=random` is
-   Wikimedia's burst-limited endpoint and one-card-at-a-time cost 2-3 requests per drift. No
-   card is ever rendered or teased ahead of the one you are on, which is the thing the
-   principle protects. Do not "fix" the batching to satisfy a literal reading, and do not use
-   it as licence to render ahead.
+2. **Agency over autoplay** — nothing advances automatically. No autoplay, no timers, no
+   infinite preloading that teases "just one more."
+   ⚠️ **THIS RULE USED TO END "Prefetch at most 1 card ahead" AND THAT CLAUSE IS GONE, BY
+   DECISION.** The feed is a continuous scroll-snap scroller (the `continuous-feed` project,
+   `docs/continuous-feed.md`), so the next card is partly visible while your thumb moves and
+   there are **three** materialised cards below the one you are reading. Both were ruled out
+   in writing before, which is why the old wording is recorded here rather than quietly
+   deleted. What the principle protects is intact and is now stronger than prose: the queue is
+   **bounded at three by geometry** (`QUEUE_AHEAD`, `lib/feedqueue.ts`), the scroller
+   physically ENDS at the last queued card, `scroll-snap-stop: always` means a fling cannot
+   blur past a card, and nothing advances without a gesture except one guarded auto-snap onto
+   the ending card. An uncommitted card is not in the trail, not in `seen`, and not counted by
+   the meter. Invariants 1-17 in `docs/continuous-feed.md` §9 are the enforceable version of
+   this principle; read them before touching feed code.
+   ⚠️ *And the separate, older warning still stands: the rule is about what is RENDERED, not
+   about how many upstream calls a request makes.* The discover and random routes deliberately
+   fetch a BATCH of ~20 cards' worth of metadata at a time (`/api/wiki/random`,
+   `lib/discover.ts`) because `generator=random` is Wikimedia's burst-limited endpoint and
+   one-card-at-a-time cost 2-3 requests per drift. Do not "fix" the batching to satisfy a
+   literal reading, and do not use it as licence to render further ahead than the queue.
 3. **Sessions have shape** — beginning (seed) → middle (trail) → end (trail map). The
    reward (the trail map) is placed at the *exit*, not the next swipe.
 4. **Gentle awareness, not guilt** — a quiet "N stops" counter; after ~25 cards a soft,
@@ -329,9 +340,15 @@ A **"quiet reading room."** Warm off-white paper tone (soft cream, not stark whi
 ink-dark text, one muted accent (sage green or dusty blue) used sparingly for thread chips
 and links. Generous whitespace, soft rounded corners, gentle shadows. Warm serif display
 font for card titles (Fraunces / Newsreader) + clean sans for body (Inter), generous
-line-height. A **"night library" dark mode** (deep warm gray, not pure black). Motion:
-smooth framer-motion springs; thread-follow feels like being *pulled* sideways/diagonally,
-distinct from the neutral vertical drift swipe. Visual language = the opposite of a casino.
+line-height. A **"night library" dark mode** (deep warm gray, not pure black). Visual
+language = the opposite of a casino.
+⚠️ **THE MOTION SENTENCE HERE USED TO SAY "thread-follow feels like being *pulled*
+sideways/diagonally, distinct from the neutral vertical drift swipe", AND THERE IS NO SUCH
+MOTION ANY MORE.** The feed is a native scroll-snap scroller (§2.2): every move is the same
+vertical scroll, and a thread pull is distinguished by what it DOES (it rebuilds the line
+below you and carries you onto the card you chose) rather than by a different animation. The
+one motion that survives is horizontal, and it is the realm cross. `motion/react` is still a
+dependency and still animates the trail map, the overlays and the landing page.
 
 ## 7. Commands
 
@@ -344,6 +361,7 @@ npm run test:watch      # vitest in watch mode
 npm run verify:supabase # Phase 9: check the cloud backend (tables + RLS + upserts)
 npm run verify:social   # Phase 10: check the friends/sharing tables + RLS
 npm run audit:contrast  # WCAG 2.2 AA contrast sweep of the RUNNING app (see §10)
+npm run verify:feed     # drive a real Chromium over the reading feed (see §12)
 
 # Load rehearsal — simulated readers against a local production rig (see §11)
 npm run bots:seed -- --count 25   # burner accounts + supporter unlock (idempotent)
@@ -504,3 +522,43 @@ and the real browser bots; measured 2.57 vs 2.67 (4% apart), against the ~2.4 in
 `/api/email/welcome` on every confirmed sign-in and that route sends via Resend unless the stamp
 is set. Without it a 50-bot run means 50 hard bounces to `.invalid` against a real sending
 reputation. Teardown selects on `app_metadata.load_bot`, never on the address.
+
+## 12. The reading feed is a continuous scroller (`continuous-feed`, 2026-08-29)
+
+The feed is a **CSS scroll-snap scroller**, one card per screen, 1:1 with your finger. It
+replaced the card-at-a-time swipe, and the reversal it forced in §2.2 is recorded there.
+
+**Read `docs/continuous-feed.md` before touching feed code.** It holds the research, the
+measurements, the rate-limit arithmetic and — most importantly — **seventeen invariants** (§9)
+that the whole design rests on. What follows is only the map.
+
+- **The engine and the shell are separate, and stay separate.**
+  `src/app/(app)/drift/useDriftSession.ts` is everything a session IS; `ContinuousFeed.tsx` is
+  the scroller, the observer and the markup. The pure logic is in `src/lib/feedqueue.ts`,
+  `lookahead.ts`, `branch.ts`, `focus.ts`, `doors.ts` and `limits.ts`, all unit-tested.
+- **A card is MATERIALISED, then COMMITTED, and the split is the architecture.** Materialising
+  renders a card into the queue below the tip and costs a discover slot. Committing happens
+  when the reader is ≥75% onto it for 300 ms, and only then does it enter the trail, `seen`,
+  the meter and the tour. **An uncommitted card is not part of the session** and can be
+  discarded without a trace, which is what makes a thread pull, a realm cross and a focus
+  change cheap.
+- ⚠️ **Threads and the doorway are fetched for the current card and AT MOST ONE AHEAD**, never
+  for every rendered card. All four would take a Gallery screenful from ~9 Met requests to ~45
+  against a bucket of ~80 per 30 seconds (§4), and an open breaker serves a Gallery room zero
+  cards. This is the one way to genuinely break the app with this feature.
+- ⚠️ **A CONTINUOUS FEED RUNS FROM EFFECTS, AND AN EFFECT NOTHING CAN FIRE IS A DEAD BRANCH
+  THAT LOOKS LIKE WORKING CODE.** Four of the six bugs the pre-Phase-7 audit found were that
+  same shape and none was visible by reading: one failed refill with no timer behind it ended
+  the feed forever; a `useCallback` pinned the engine from one render and silently killed the
+  degraded fallback; the queue was filled from where the reader was STANDING rather than from
+  the tip it hangs under. When you change this code, break the upstream, park the reader up
+  their own trail, and use a keyboard — that is where the bugs are.
+- **`npm run verify:feed`** drives a real Chromium over the whole feed at two viewports and is
+  the gate for anything touching the scroller. It needs a running server and is not part of
+  `npm test`, exactly like `audit:contrast`. ⚠️ **Never run the two together**: both cross into
+  the Gallery, and locally there is no CDN in front of the museum's bucket. When a Gallery check
+  fails, read the server log before reading the code.
+- **Still unverified: iOS.** No device here. `scroll-snap-stop: always` is the mitigation for
+  WebKit's historic hard-flick, and `commitAt` keeps the trail honest even if it does not hold.
+  Watch also for WebKit's cached snap positions going stale when children change; the queue adds
+  and removes them constantly. Symptoms and workarounds are in `docs/continuous-feed.md` §4.9.
