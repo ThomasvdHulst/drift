@@ -20,12 +20,17 @@
 // ⚠️ IT IS NOT A REPLACEMENT FOR LOOKING. It proves that things happen, not that
 // they feel right. The settle window, the seam and the peek are judgements.
 //
-// Two lessons from writing it, both of which cost time and will again:
+// Three lessons from writing it, all of which cost time and will again:
 //   • Several cards are in the DOM at once, so `.first()` is a trap — it
 //     resolves to the topmost card, not the one being read. Scope to the active
 //     slot, which is what `activeSlot()` below is for.
 //   • `data-tour="card-readmore"` marks a CONTAINER holding "Read more" AND the
 //     source link, so clicking its centre lands in the gap. Target the button.
+//   • The middle of the screen is not the middle of the card. On a desktop the
+//     card is a ROW and its left half is the image panel, so a pointer or a drag
+//     at `vp.width / 2` never touches the reading region at all — and a check
+//     that needs the region then passes for the wrong reason. Ask the element
+//     for its box (`regionBox()` in the SCROLL HANDOFF section).
 // ---------------------------------------------------------------------------
 
 import { chromium } from "playwright";
@@ -772,6 +777,211 @@ async function focusOrder(browser, vp) {
   await page.context().close();
 }
 
+// ---------------------------------------------------------------------------
+// The scroll handoff, i.e. what happens where the card's reading region ends and
+// the feed begins.
+//
+// ⚠️ THIS IS THE ONLY TOUCH-DRIVEN SECTION IN THE FILE, AND IT HAS TO BE. Every
+// other check drives the keyboard or the wheel, and the bug this guards is
+// specifically that a TOUCH gesture which reaches the end of an article has
+// nowhere to go on WebKit: it latches to the scroller it picked when the finger
+// went down and rubber-bands rather than chaining, so the reader had to swipe
+// two to four times. `lib/gesture.edgePull` is the polyfill.
+//
+// ⚠️ AND THE TRICK THAT MAKES IT TESTABLE IN CHROMIUM: Chromium chains, so it
+// would pass these checks with the polyfill deleted. Injecting
+// `overscroll-behavior-y: contain` on the reading region makes Chromium refuse
+// to chain, which is exactly the shape of WebKit's latching for this purpose —
+// so with it on, only our own JS can move the feed. Both states are checked,
+// because the second failure mode is just as bad as the first: two mechanisms
+// driving one scroller skips a card.
+async function scrollHandoff(browser, vp) {
+  heading("THE SCROLL HANDOFF (nested scrolling)");
+  const ctx = await browser.newContext({
+    viewport: { width: vp.width, height: vp.height },
+    reducedMotion: "reduce",
+    hasTouch: true,
+    isMobile: vp.width < 700,
+  });
+  const page = await ctx.newPage();
+  page.on("pageerror", (e) => rec(`no page error (${e.message.slice(0, 60)})`, false));
+  const cdp = await ctx.newCDPSession(page);
+  await open(page, "/drift?title=Octopus&seed=Octopus");
+  await page.waitForTimeout(7000);
+
+  /** A real finger. Playwright has no touch drag, so this goes through CDP. */
+  async function drag(x, y0, dist, stepPx = 10, ms = 12) {
+    const steps = Math.max(2, Math.round(Math.abs(dist) / stepPx));
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y: y0 }] });
+    for (let i = 1; i <= steps; i++) {
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x, y: y0 - (dist * i) / steps }],
+      });
+      await page.waitForTimeout(ms);
+    }
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  }
+  /** How much of the active card's article is still below the fold. */
+  const gap = () =>
+    page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      const i = Math.round(el.scrollTop / el.clientHeight);
+      const r = el.querySelectorAll("[data-slot]")[i]?.querySelector("[data-drift-scroll]");
+      return r ? r.scrollHeight - r.clientHeight - r.scrollTop : -1;
+    }, SCROLLER);
+  /**
+   * The active card's reading region, in viewport coordinates.
+   *
+   * ⚠️ NOT `vp.width / 2`. On a desktop the card is a row and its LEFT half is
+   * the image panel, so a drag down the middle of the screen never touches the
+   * reading region at all and every check here would pass for the wrong reason.
+   */
+  const regionBox = () =>
+    page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      const i = Math.round(el.scrollTop / el.clientHeight);
+      const r = el.querySelectorAll("[data-slot]")[i]?.querySelector("[data-drift-scroll]");
+      if (!r) return null;
+      const b = r.getBoundingClientRect();
+      return { cx: b.x + b.width / 2, cy: b.y + b.height / 2, bottom: b.bottom, height: b.height };
+    }, SCROLLER);
+  /**
+   * Park the active card's article at its end.
+   *
+   * ⚠️ PROGRAMMATIC ON PURPOSE, AND IT HAS TO BE. This is SETUP — the thing under
+   * test is the pull that follows, which is a real touch drag. Dragging to the
+   * end instead looks more honest and is worse: with native chaining live, the
+   * drag that finishes the article chains straight on, so "read to the end" moved
+   * the reader FIVE cards and left the pull to be measured on a fresh article at
+   * its top, which cannot advance and correctly did not. Both stand-down checks
+   * failed on the phone for that reason and nothing was wrong with the code.
+   */
+  const parkAtEnd = async () => {
+    for (let i = 0; i < 3; i++) {
+      await page.evaluate((sel) => {
+        const el = document.querySelector(sel);
+        const i2 = Math.round(el.scrollTop / el.clientHeight);
+        const r = el.querySelectorAll("[data-slot]")[i2]?.querySelector("[data-drift-scroll]");
+        if (r) r.scrollTo(0, r.scrollHeight);
+      }, SCROLLER);
+      await page.waitForTimeout(500);
+      if ((await gap()) <= 1) return true;
+    }
+    return (await gap()) <= 1;
+  };
+  /** A pull inside the reading region, starting near its bottom edge. */
+  const pull = async (dist) => {
+    const b = await regionBox();
+    if (!b) return false;
+    await drag(b.cx, b.bottom - 20, dist);
+    return true;
+  };
+
+  let noChain = null;
+  async function chaining(on) {
+    if (!on && !noChain) {
+      noChain = await page.addStyleTag({
+        content: "[data-drift-scroll]{overscroll-behavior-y:contain !important}",
+      });
+    }
+    if (on && noChain) {
+      await noChain.evaluate((n) => n.remove());
+      noChain = null;
+    }
+    await page.waitForTimeout(250);
+  }
+
+  // 1. The polyfill itself. With chaining off, nothing but our JS can move the
+  //    feed, so this check fails outright if `edgePull` stops firing.
+  await chaining(false);
+  const parked = await parkAtEnd();
+  let before = await at(page);
+  await pull(150);
+  await page.waitForTimeout(1600);
+  rec(
+    "a pull past the article's end carries you on, with no scroll chaining",
+    parked && Math.abs((await at(page)) - before - 1) < 0.06,
+    `${before.toFixed(2)} -> ${(await at(page)).toFixed(2)}`,
+  );
+
+  // 2. Reading is not advancing. The budget only accrues past the edge, so a
+  //    swipe that ends mid-article must leave the feed exactly where it was.
+  //
+  //    ⚠️ IT HAS TO BE RUN ON A CARD WITH MORE THAN THE DRAG LEFT TO READ, or it
+  //    is not the check it claims to be. A card that FITS reports BOTH edges at
+  //    once and correctly hands off, so on a desktop — where a collapsed article
+  //    routinely fits the 554px reading column, measured at 0px of overflow — this
+  //    failed for the right reason and looked like a regression. Open the article
+  //    instead of hunting for a long one: "Read more" takes the region from 0 to
+  //    ~2,000px at either viewport, and an expanded article is also where an
+  //    accidental advance would cost the reader most.
+  const rewind = () =>
+    page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      const i = Math.round(el.scrollTop / el.clientHeight);
+      el.querySelectorAll("[data-slot]")[i]?.querySelector("[data-drift-scroll]")?.scrollTo(0, 0);
+    }, SCROLLER);
+  await rewind();
+  await page.waitForTimeout(400);
+  const slot = await activeSlot(page);
+  const more = slot?.getByRole("button", { name: "Read more" });
+  if (more && (await more.isVisible().catch(() => false))) {
+    await more.click().catch(() => {});
+    await page.waitForTimeout(6000);
+    await rewind();
+    await page.waitForTimeout(400);
+  }
+  const g0 = await gap();
+  before = await at(page);
+  await pull(150);
+  await page.waitForTimeout(1600);
+  rec(
+    "a swipe that ends mid-article does not drift you off the card",
+    g0 >= 260 && Math.abs((await at(page)) - before) < 0.06,
+    `${g0}px left to read; ${before.toFixed(2)} -> ${(await at(page)).toFixed(2)}`,
+  );
+
+  // 3. The stand-down. Chaining back on, a long pull must move the reader ONE
+  //    card: the browser's chain and ours must never both fire.
+  await chaining(true);
+  for (const dist of [300, 600]) {
+    const ok = await parkAtEnd();
+    before = await at(page);
+    await pull(dist);
+    await page.waitForTimeout(1800);
+    rec(
+      `a ${dist}px pull with native chaining live advances exactly one card`,
+      ok && Math.abs((await at(page)) - before - 1) < 0.06,
+      `${before.toFixed(2)} -> ${(await at(page)).toFixed(2)}`,
+    );
+  }
+
+  // 4. The same handoff for the wheel, which is what macOS Safari needs: it
+  //    latches trackpad scrolls exactly as it latches touch.
+  await chaining(false);
+  await parkAtEnd();
+  const centre = await regionBox();
+  if (centre) {
+    await page.mouse.move(centre.cx, centre.cy);
+    before = await at(page);
+    for (let i = 0; i < 5; i++) {
+      await page.mouse.wheel(0, 120);
+      await page.waitForTimeout(45);
+    }
+    await page.waitForTimeout(1600);
+    rec(
+      "a wheel past the article's end carries you on too",
+      Math.abs((await at(page)) - before - 1) < 0.06,
+      `${before.toFixed(2)} -> ${(await at(page)).toFixed(2)}`,
+    );
+  } else {
+    rec("a wheel past the article's end carries you on too", false, "no reading region");
+  }
+
+  await ctx.close();
+}
+
 const browser = await chromium.launch();
 for (const vp of VIEWPORTS) {
   if (ONLY && ONLY !== vp.name) continue;
@@ -783,6 +993,7 @@ for (const vp of VIEWPORTS) {
   await autoSnapGuard(browser, vp);
   await resilience(browser, vp);
   await focusOrder(browser, vp);
+  await scrollHandoff(browser, vp);
 }
 await browser.close();
 

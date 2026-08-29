@@ -925,13 +925,19 @@ export function CardView({
           on it decides whether reaching its end chains on to the next card in the
           feed's scroller (see `scrollChaining` below).
 
-          ⚠️ THIS USED TO SAY "the feed's gesture handler reads this region's edges
-          (via [data-drift-scroll]) to tell scroll-to-read from overscroll-to-drift
-          — see lib/gesture", AND THAT HANDLER IS GONE. `edgesOf`, `resolveSwipe`
-          and `isWheelReadingScroll` were deleted with the card-at-a-time shell in
-          Phase 7: the feed is a native scroll-snap scroller now and the browser
-          answers that question. The marker is still needed — the guided tour looks
-          it up to scroll the card to its end — but nothing in JS reads its edges. */}
+          ⚠️ THIS SAID FOR ONE RELEASE THAT "the feed is a native scroll-snap
+          scroller now and the browser answers that question", AND THAT SENTENCE
+          IS WHY THE IPHONE FELT STUCK. Chrome and Firefox answer it. WebKit
+          LATCHES: within one gesture only the scroller it picked at touch-down
+          moves, so reaching the end of an article and pulling further rubber-
+          bands instead of chaining and the reader has to start a new gesture.
+          With every collapsed card overflowing on a phone (measured, 18 of 18)
+          that was two to four swipes per card. `edgePull` in lib/gesture is the
+          polyfill and the feed's touch/wheel handlers drive it; this region's
+          edges are read again, live, through this marker. (The guided tour is the
+          other reader of the marker — it scrolls the card to its end before
+          telling you to swipe.) Keep `scrollChaining="auto"` — the polyfill
+          defers to native chaining and `auto` is what makes it happen. */}
       {/* `min-w-0` matters as much as `min-h-0` here, and for the mirror-image
           reason. A flex item defaults to `min-width: auto`, i.e. "never narrower
           than my content", so ONE wide child sizes this whole column: with a wide
@@ -1268,11 +1274,11 @@ export function CardView({
               sticky, so it hovers just above the fold while the chips are out of
               sight and settles away once they are reached. Phone only.
               `-mt-12` cancels its own `h-12` so it contributes NO scroll height:
-              the feed's overscroll-to-advance reads this container's
-              scrollHeight, and a floating hint must not move where the bottom
+              the feed's scroll handoff reads this container's scrollHeight to
+              find its bottom edge, and a floating hint must not move where that
               edge is. It stays inside the scroll region (rather than overlaying
-              from outside) so a swipe that starts on it is still read as
-              "scrolling to read" — see lib/gesture `insideRegion`. */}
+              from outside) so a swipe that starts on it is still a swipe on the
+              article — `edgePull` only accrues once the region is pinned. */}
           <div
             className={`pointer-events-none sticky bottom-0 z-10 -mx-6 -mt-14 flex h-14 items-end justify-center bg-gradient-to-t from-paper-raised from-55% via-paper-raised/85 to-transparent px-6 pb-1 transition-opacity duration-300 sm:-mx-8 sm:px-8 md:hidden ${
               showThreadHint ? "opacity-100" : "opacity-0"

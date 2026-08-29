@@ -63,7 +63,7 @@ the pages were rewritten in the same change.
    traps around running servers), §8 (the working agreement), §10 (WCAG 2.2 AA and its two gates),
    and §12 (the map of this feed).
 2. **`docs/continuous-feed.md`, every word.** This is the reference for the project: the research,
-   the measurements, the rate-limit arithmetic, the hazards, and **seventeen invariants in §9**
+   the measurements, the rate-limit arithmetic, the hazards, and **eighteen invariants in §9**
    that the whole design rests on. §4.8 is the author's own pre-Phase-7 audit (six bugs) and §4.9
    is what Phase 7 measured. Read §5 (the architecture), §7 (the upstream budget) and §9 twice.
 3. `plan-continuous-feed.md`: the status block, then the progress log at the bottom. It says what
@@ -207,7 +207,7 @@ Re-run the gates after, and list what you did.
 **Report back and WAIT for approval, do not implement:**
 
 - anything that changes what a reader sees or feels
-- anything touching one of the seventeen invariants, the commit path, the queue, the upstream
+- anything touching one of the eighteen invariants, the commit path, the queue, the upstream
   budget, or the `seen` store
 - anything spanning more than one file, or requiring a new test to prove
 - anything where you are not certain, and anything where more than one fix is defensible
