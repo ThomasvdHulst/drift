@@ -4,21 +4,25 @@ import { realmOfSource } from "./crossrealm";
 import type { RealmId } from "./realms/types";
 
 // ---------------------------------------------------------------------------
-// Lookahead into the drift buffer (continuous feed, Phase 0).
+// Reading the drift buffer (continuous feed, Phase 0).
 //
-// The buffer has always been read DESTRUCTIVELY: `takeBufferedRandom` shifted
-// entries off the front until it found one worth serving and dropped the rest.
-// That is still exactly right for serving a card. What Phase 0 adds is a
-// second, NON-destructive question — "which card would the next drift serve?" —
-// so the feed can warm that card's picture and threads while the reader is
-// still on this one.
+// The buffer is read DESTRUCTIVELY: `takeBufferedRandom` shifts entries off the
+// front until it finds one worth serving and drops the rest. One predicate
+// decides "worth serving", it lives here, and every caller goes through it —
+// the same reasoning that put the Met's parameter ordering inside `searchIds`
+// rather than in each caller.
 //
-// Both questions must be answered by the SAME predicate. A peek that disagreed
-// with the take would warm one card and then show a different one: the reader
-// would see no improvement, and the only visible symptom would be an
-// unexplained rise in the upstream request counts. So the predicate lives here,
-// once, and both callers go through it — the same reasoning that put Met
-// parameter ordering inside `searchIds` rather than in each caller.
+// ⚠️ THERE WAS A NON-DESTRUCTIVE `peekServable` HERE AND IT WENT WITH THE THING
+// THAT ASKED THE QUESTION. Phase 0 added it so the engine could warm the picture
+// and chips of "the card the next drift would serve" while the reader was still
+// on this one, and this comment used to explain at length why the peek and the
+// take had to share a predicate. The scroller made the question meaningless:
+// `fill` takes cards OUT of this buffer to materialise them, so the buffer's
+// head is not the next card any more, it is the one after the whole queue —
+// four below the reader. That lookahead is deleted (docs/continuous-feed.md
+// §4.10 finding 22), and the peek went with it rather than being left exported,
+// unit-tested and called by nobody, which is the shape the pre-Phase-7 audit
+// found three times over in `feedqueue` (§8.7).
 //
 // Pure: no React, no DOM, no network (CLAUDE.md §8.4).
 // ---------------------------------------------------------------------------
@@ -59,16 +63,6 @@ export function firstServableIndex<T extends BufferEntry>(
     if (isServable(items[i], seen, realm)) return i;
   }
   return -1;
-}
-
-/** The entry the next drift would serve, WITHOUT consuming it. */
-export function peekServable<T extends BufferEntry>(
-  items: readonly T[],
-  seen: Set<string>,
-  realm: RealmId,
-): T | null {
-  const i = firstServableIndex(items, seen, realm);
-  return i < 0 ? null : items[i];
 }
 
 /**

@@ -147,7 +147,22 @@ export async function runBrowserBot({
       stats.cards++;
 
       if (shouldReadMore(rng)) {
-        const more = page.locator('[data-tour="card-readmore"]').first();
+        // ⚠️ THE MARKER IS A CONTAINER, SO CLICK THE BUTTON INSIDE IT. This used
+        // to click `[data-tour="card-readmore"]` itself, which wraps "Read more",
+        // the source link AND the licence line — so the click landed in the gap
+        // between them and did nothing at all, while `readMores` counted it.
+        // Measured on the real feed at both viewports: the reading region's
+        // scrollHeight was unchanged (542 -> 542 desktop, 1180 -> 1180 phone) and
+        // ZERO `/summary?extended=1` requests were made. That is the most
+        // expensive call a card can make (~0.6 upstream Wikimedia calls per card,
+        // docs/beta-readiness.md), missing from the driver that exists to
+        // CALIBRATE the volume bots. `scripts/verify-feed.mjs` records the same
+        // trap in its header; this is the other place it had to be applied.
+        // The marker is only emitted by the ACTIVE card, so this stays scoped to
+        // the card being read without naming a slot.
+        const more = page
+          .locator('[data-tour="card-readmore"]')
+          .getByRole("button", { name: /^Read more$/ });
         if (await more.isVisible().catch(() => false)) {
           await more.click().catch(() => {});
           stats.readMores++;

@@ -173,6 +173,30 @@ describe("commitAt", () => {
     expect(out.skipped).toEqual([a]);
   });
 
+  // ⚠️ AND THAT IS EXACTLY WHY `removed` EXISTS AND IS NOT `skipped.length`.
+  // The caller moves `scrollTop` by one item-height per slot that vanished from
+  // above the reader; an ad vanishes but is not handed back, so the two numbers
+  // differ whenever one is in the way. Compensating with the smaller of them
+  // left the reader one card BELOW the one they flicked to — a card they never
+  // scrolled onto, which then committed itself 300 ms later.
+  it("counts every slot removed above the committed card, ads included", () => {
+    const a = q("A");
+    const c = q("C");
+    const out = commitAt([a, { kind: "ad", id: "ad-1" }, c], c.id);
+    expect(out.removed).toBe(2);
+    expect(out.skipped.length).toBe(1);
+  });
+
+  it("counts nothing removed when the head commits", () => {
+    const [a, b] = [q("A"), q("B")];
+    expect(commitAt([a, b], a.id).removed).toBe(0);
+  });
+
+  it("counts the cards a flick jumped over", () => {
+    const [a, b, c, d] = [q("A"), q("B"), q("C"), q("D")];
+    expect(commitAt([a, b, c, d], c.id).removed).toBe(2);
+  });
+
   // The caller compensates scrollTop by skipped.length × itemHeight, which is
   // only exact because every item is the same height.
   it("removes exactly the items above and including the committed one", () => {
@@ -191,7 +215,12 @@ describe("commitAt", () => {
   });
 
   it("is safe on an empty queue", () => {
-    expect(commitAt([], "x")).toEqual({ queue: [], committed: null, skipped: [] });
+    expect(commitAt([], "x")).toEqual({
+      queue: [],
+      committed: null,
+      skipped: [],
+      removed: 0,
+    });
   });
 });
 

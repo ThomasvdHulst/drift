@@ -297,6 +297,10 @@ export function ContinuousFeed() {
     if (Date.now() < fillNextAtRef.current) return;
     fillingRef.current = true;
     let added = 0;
+    // Did this fill stop because something ELSE happened, rather than because
+    // the source had nothing? See the `finally` below for why the difference
+    // has to be carried out of the loop.
+    let interrupted = false;
     try {
       // One card at a time, re-reading the capacity each round: a thread pull or
       // a realm cross can land mid-fill, and a card chosen under the old promise
@@ -313,6 +317,7 @@ export function ContinuousFeed() {
         // a promise it was not chosen for.
         if (queueRef.current !== before || steeringRef.current) {
           engine.returnToBuffer([next]);
+          interrupted = true;
           break;
         }
         // ⚠️ THE SAME CARD TWICE IS A REAL POSSIBILITY, AND IT IS WHAT
@@ -353,12 +358,25 @@ export function ContinuousFeed() {
         fillNextAtRef.current = 0;
         window.clearTimeout(retryTimerRef.current);
         retryTimerRef.current = undefined;
-      } else if (queuedCount(queueRef.current) < capacity) {
+      } else if (!interrupted && queuedCount(queueRef.current) < capacity) {
         // Nothing came back and the queue is short. WHICH kind of nothing
         // decides how long the feed keeps asking: a pool that answered and was
         // empty is dry, and once it has said so twice the feed believes it; a
         // source that did not answer at all may come back, so that one is asked
         // again for as long as the reader is here, backing off as it goes.
+        //
+        // ⚠️ `!interrupted` MATTERS BECAUSE THE LOOP HAS A THIRD WAY OUT AND IT
+        // IS NOT THE SOURCE'S FAULT. A round that came back with a perfectly
+        // good card, and dropped it because the queue changed underneath while
+        // it was in flight, also lands here with `added === 0` — and the queue
+        // changes underneath on every commit and every steer. Charging that to
+        // the source cost the reader a four-second refill freeze and a step
+        // toward the ending, for the crime of scrolling on while a discover call
+        // was open. Nothing is lost by staying quiet: the very thing that
+        // interrupted this fill (a new queue) is itself a dependency of the
+        // effect that calls it, so the refill is already about to run again.
+        // A duplicate card from the degraded fallback is NOT this case and still
+        // counts, deliberately — the source answered, and had nothing new.
         dryCountRef.current += 1;
         sourceQuietRef.current = sRef.current.sourceQuiet();
         const wait = sourceQuietRef.current
@@ -493,12 +511,33 @@ export function ContinuousFeed() {
   }, [queue.length, capacity, dryTick, steerTick, s.initialLoading, s.error, s.ended, s.history.length]);
 
   // ----- threads: the active card, and exactly one ahead -----
+  //
+  // ⚠️ THIS IS NOW THE ONLY THREADS LOOKAHEAD, AND IT WAS NOT BEFORE. The engine
+  // carried a second one from Phase 0 ("prepare the NEXT card") that fetched for
+  // the head of the DISCOVER BUFFER — which, once `fill` started taking cards out
+  // of that buffer to materialise them, is QUEUE_AHEAD + 1 = four cards below the
+  // reader, not one. So invariant 6 was false of the code that implemented it,
+  // and the effect below was mostly a cache hit on work already done too early.
+  // It was removed (useDriftSession.ts has the measurements); this is what keeps
+  // the promise now, so do not add a second one back without changing the
+  // invariant and the four documents that state it.
   useEffect(() => {
     if (activeCard) s.ensureThreads(activeCard);
-    // "One ahead" is the FIRST QUEUED card, which is the next thing the reader
-    // can reach. Not the next slot in the list — when the reader is scrolled up
-    // in the trail, the cards below are already committed and already have their
-    // chips, so the one worth preparing is still the head of the queue.
+    // "One ahead" is the first queued card the reader is NOT already on, which is
+    // the next thing they can reach. Two things about that phrasing are load-
+    // bearing:
+    //
+    //   • not the next slot in the list. When the reader is scrolled up in the
+    //     trail, the cards below them are already committed and already have
+    //     their chips, so the one worth preparing is still the head of the queue.
+    //   • not simply the head. `activeKey` flips the moment a card is 75% on
+    //     screen, but the card does not COMMIT for another COMMIT_SETTLE_MS, and
+    //     until it does it is still the head of the queue — so `queue.find(isQueued)`
+    //     returned the card the reader was standing on and the lookahead went
+    //     quiet at exactly the moment it should have been starting. Skipping the
+    //     active card makes it continuous instead of commit-triggered, and buys
+    //     the settle window back. It costs nothing: the same cards are fetched,
+    //     one per committed card, just started a little earlier.
     const ahead = queue.find(isQueued);
     if (ahead && ahead.card !== activeCard) s.ensureThreads(ahead.card);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -521,15 +560,20 @@ export function ContinuousFeed() {
   const commitRef = useRef<(id: string) => void>(() => {});
   useEffect(() => {
     commitRef.current = (id: string) => {
-      const { queue: rest, committed, skipped } = commitAt(queueRef.current, id);
+      const { queue: rest, committed, skipped, removed } = commitAt(queueRef.current, id);
       if (!committed) return;
       // Cards a fling jumped over were never read. They go back in the pile
       // rather than into the trail, and the DOM they occupied is compensated
       // exactly — every item is one scroller-height, so this cannot drift.
-      if (skipped.length > 0) {
-        s.returnToBuffer(skipped);
+      if (skipped.length > 0) s.returnToBuffer(skipped);
+      // ⚠️ `removed`, NOT `skipped.length`. An ad passed over on the way leaves
+      // the queue but is not a card to hand back, so it is in the first number
+      // and not the second; compensating with the second left the reader one
+      // card further down than they flicked to, on a card they never scrolled
+      // onto, which then committed. See `commitAt` in lib/feedqueue.
+      if (removed > 0) {
         const el = scrollerRef.current;
-        if (el) el.scrollTop -= skipped.length * el.clientHeight;
+        if (el) el.scrollTop -= removed * el.clientHeight;
       }
       setQueueBoth(rest);
       driftsRef.current += 1;

@@ -162,12 +162,16 @@ Then call `ExitPlanMode` and wait.
 - `npm run build` clean (this is the type-check gate), `npm run lint` clean with **zero warnings**,
   `npm run test` green;
 - `BASE=<your port> npm run audit:contrast` PASS if anything visual changed (pass `BASE` or it
-  measures nothing and still says PASS). ⚠️ Run the standing gate against a **flag-off** build: its
-  `endTrail`/`branchInFeed` rows drive the card-at-a-time feed and click controls the scroller has
-  no need for, so against a continuous build each one burns a 30s timeout;
-- **`BASE=<your port> npm run verify:feed`** — 67 checks over the real feed at two viewports. This
-  is the gate for anything touching the scroller, and it needs a continuous build:
-  `NEXT_PUBLIC_FEED_CONTINUOUS=1 NEXT_PUBLIC_SUPABASE_URL= NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY= npm run build`;
+  measures nothing and still says PASS). ⚠️ **THIS USED TO SAY "run the standing gate against a
+  flag-off build", AND THAT IS NOW IMPOSSIBLE AND BACKWARDS.** There is no flag and no other feed:
+  Phase 7 repointed `audit-contrast.mjs` at the scroller (its `branchInFeed` row presses ArrowUp
+  where it used to click a "Previous stop" button that no longer exists), so it must be run against
+  the ordinary build like everything else;
+- **`BASE=<your port> npm run verify:feed`** — **130 checks** over the real feed, 65 at each of two
+  viewports. This is the gate for anything touching the scroller. It needs the cloud vars blanked,
+  nothing more: `NEXT_PUBLIC_SUPABASE_URL= NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY= npm run build`
+  (there used to be a `NEXT_PUBLIC_FEED_CONTINUOUS=1` in front of that; every build is the scroller
+  now). ⚠️ Never alongside `audit:contrast` — both cross into the Gallery;
 - the **real screen exercised in a real browser**, including a thread pull, a realm cross, going
   back, a branch, and the trail map. A phone if the phase touches gestures or scrolling;
 - the upstream cost re-measured and compared against the number you recorded in step 2;

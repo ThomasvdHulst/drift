@@ -173,7 +173,7 @@ without them:
     shows ONE candidate per facet, capped at three (`selectFacetThreads`), so fetching more than a
     spare each is pure waste.
   - ⚠️ **THE BIGGEST CONSUMER OF THE MUSEUM IS THE ENCYCLOPEDIA, NOT THE GALLERY.** `/api/doorway`
-    fires on EVERY card in BOTH realms (`drift/page.tsx:941`), and from an Encyclopedia card it
+    fires on EVERY card in BOTH realms (`fetchThreadsFor` in `drift/useDriftSession.ts`), and from an Encyclopedia card it
     searches The Met for the article title. In a 25-reader load rehearsal that was **491 of 494
     cards and 92.6% of all Met traffic**; nineteen Encyclopedia readers cost the museum twelve times
     what six Gallery readers did. Do not reason about Gallery load without counting the doorway.

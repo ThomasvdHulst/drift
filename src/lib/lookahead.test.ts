@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   isServable,
   firstServableIndex,
-  peekServable,
   takeServable,
   servableCount,
 } from "./lookahead";
@@ -60,29 +59,6 @@ describe("firstServableIndex", () => {
   it("is -1 when nothing can be served", () => {
     expect(firstServableIndex([entry("A", "met")], new Set(), "encyclopedia")).toBe(-1);
     expect(firstServableIndex([], new Set(), "encyclopedia")).toBe(-1);
-  });
-});
-
-describe("peekServable", () => {
-  it("returns the entry a take would return, without consuming anything", () => {
-    const items = [entry("A", "met"), entry("B"), entry("C")];
-    const before = items.length;
-    const peeked = peekServable(items, new Set(), "encyclopedia");
-    expect(peeked?.card?.pageTitle).toBe("B");
-    expect(items.length).toBe(before);
-  });
-
-  // The whole point of the module: warm what will actually be shown.
-  it("agrees with takeServable", () => {
-    const seen = new Set([cardId(card("A"))]);
-    const items = [entry("A"), entry("B", "met"), entry("C"), entry("D")];
-    const peeked = peekServable(items, seen, "encyclopedia");
-    const taken = takeServable([...items], seen, "encyclopedia");
-    expect(peeked?.card?.pageTitle).toBe(taken?.card?.pageTitle);
-  });
-
-  it("is null when nothing can be served", () => {
-    expect(peekServable([entry("A", "met")], new Set(), "encyclopedia")).toBeNull();
   });
 });
 

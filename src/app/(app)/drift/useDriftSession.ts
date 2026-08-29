@@ -52,7 +52,7 @@ import { selectDiverseThreads, selectFacetThreads } from "@/lib/diversity";
 import { classifyThreads, threadsNotInTrail } from "@/lib/threads";
 import { pickDriftNext, pickRandomThread } from "@/lib/drift";
 import { randomOffset, interleave } from "@/lib/discover";
-import { peekServable, servableCount, takeServable } from "@/lib/lookahead";
+import { servableCount, takeServable } from "@/lib/lookahead";
 import { applyFeedback, type Interest, type Reaction } from "@/lib/interest";
 import {
   focusStackFromParams,
@@ -192,10 +192,6 @@ const REFILL_LOW_WATER = 3;
 // ⚠️ Read CLAUDE.md §2.2 before changing this. Preparing one card ahead is what
 // that principle permits; preparing several is what it forbids, and this timer
 // is also the thing that keeps the cost honest. Work started here is WASTED
-// whenever the reader pulls a thread or crosses realms instead of drifting on,
-// so it deliberately does not fire for someone moving quickly — they leave
-// before it ever runs.
-const PREPARE_NEXT_AFTER_MS = 1200;
 // How far down a bucket's ranking a SECOND-try refill may sample. The ordinary
 // window is the top ~400 pages (lib/discover.ts `randomOffset`), which keeps
 // drifted cards recognizable; a long session confined to one field can read that
@@ -343,24 +339,38 @@ export function useDriftSession() {
   const randomBufferRef = useRef<BufferedCard[]>([]);
   // A background buffer top-up is in flight (see `topUpBuffer`). One at a time.
   const bgRefillRef = useRef(false);
-  // Did the last discover round come back with an ANSWER, or with nothing at all?
+  // Did the last attempt to find a card end because a source could not be
+  // REACHED, rather than because it answered and had nothing?
   //
   // ⚠️ "EMPTY" AND "UNREACHABLE" ARE DIFFERENT ANSWERS AND THE FEED HAS TO SAY
-  // SO. `fetchDiscoverBatch` returns `[]` for both — a bucket genuinely read to
-  // the end, and every request failing — and the continuous feed turned that
-  // single `[]` into "You have read this area dry", permanently, on a free drift
-  // over the whole of Wikipedia (measured against a 503 upstream). A pool that
-  // is dry stays dry; a source that is quiet comes back. So the batch records
-  // which it was, and lib/feedqueue's `terminusReason` picks the honest ending.
+  // SO. Every producer here returns `[]` / null for both — a pool genuinely read
+  // to the end, and every request failing — and the continuous feed turned that
+  // into "You have read this area dry", permanently, on a free drift over the
+  // whole of Wikipedia (measured against a 503 upstream). A pool that is dry
+  // stays dry; a source that is quiet comes back. So the attempt records which
+  // it was, and lib/feedqueue's `terminusReason` picks the honest ending:
+  // `source-quiet` retries with a doubling backoff, refuses the auto-snap and
+  // offers "Try again"; `pool-dry` and `caught-up` are final and offer neither.
   //
-  // Set only by the discover path, which is what a free drift and the field,
-  // form and artist focuses all run on. The two POOL-served focuses (orbit and
-  // "in the news") reach their end through their own widening ladders and are
-  // genuinely exhausted when they return nothing, so they keep saying so.
-  const discoverQuietRef = useRef(false);
-  // Holds the Image() used to warm the next card's picture, so the browser does
-  // not collect it mid-flight and abandon the fetch we just paid for.
-  const warmRef = useRef<HTMLImageElement | null>(null);
+  // ⚠️ THIS USED TO BE `discoverQuietRef`, WRITTEN BY THE DISCOVER PATH ALONE,
+  // AND THE COMMENT HERE CLAIMED THE POOL-SERVED FOCUSES DID NOT NEED IT —
+  // "orbit and 'in the news' reach their end through their own widening ladders
+  // and are genuinely exhausted when they return nothing". They do not. Neither
+  // `refillOrbit` nor `fetchCurrentPage` reported an unreachable source at all,
+  // so the exact bug the flag exists to prevent was still live in both. Measured
+  // 29 August 2026 on `/drift?focus=orbit&title=Octopus&seed=Octopus` with
+  // `/api/realm/*/related` answering 503: `step:0 | terminus:pool-dry`, "You have
+  // read this area dry", within six seconds, for an orbit that had produced zero
+  // cards and with no "Try again" offered. The source was then restored and
+  // FORTY-FIVE SECONDS AND ZERO API REQUESTS LATER it was still exactly that.
+  //
+  // THE CONTRACT, and it is what makes this robust to which fetch ran last:
+  // `nextDriftCard` CLEARS it at the top of every attempt, and every producer
+  // that fails to reach a source ORs it to true. Nobody clears it in the middle.
+  // So one attempt that touched the news pool (unreachable) and then the orbit
+  // ring (frontier genuinely exhausted) still ends up saying "quiet", which is
+  // the honest answer: we never got to find out whether the section was read out.
+  const upstreamQuietRef = useRef(false);
   // Threads currently being fetched, by card id — see `threadsFor`. This is what
   // stops a prepared card being fetched a second time by the reader arriving on
   // it before the preparation lands.
@@ -505,14 +515,6 @@ export function useDriftSession() {
   // every time a card's chips land. Same trick as `realmRef` and `focusStackRef`.
   const threadCacheRef = useRef<Record<string, Thread[]>>({});
   threadCacheRef.current = threadCache;
-  // Is the card on screen ♥-liked, in the sense that makes the NEXT drift follow
-  // one of its threads? Mirrors `doDrift`'s own test exactly, `!focused` included:
-  // under a bucket-pinned focus the liked-follow is suspended, so the next card
-  // does come from the buffer after all and is worth preparing.
-  const likedCurrentRef = useRef(false);
-  likedCurrentRef.current =
-    !focus && !!displayedId && reactions[displayedId] === "like";
-
   // ----- the session the URL asks for -----
   //
   // Keyed on the params, NOT on the mount. This used to run once per mount and
@@ -1053,86 +1055,73 @@ export function useDriftSession() {
     };
   }, [displayedId, displayedNative, threadCache, threadsFor]);
 
-  /**
-   * Warm a picture the reader's browser is about to hotlink.
-   *
-   * ⚠️ DELIBERATELY ASYMMETRIC, and the asymmetry is the whole point.
-   * `previewUrl` (the museum's own ~600px derivative) and a Wikipedia thumbnail
-   * are both fetched by the browser DIRECTLY, so warming one costs us no
-   * bandwidth and no function invocation. `imageUrl` on a Gallery card is OUR
-   * proxy (`/api/img/met/...`), where a cold miss is a serverless invocation
-   * plus a multi-megabyte original from a host with its own gate and breaker
-   * (CLAUDE.md §4) — never spend that on a card that may never be visited.
-   *
-   * The test is on the URL, not the realm, so it stays correct if another
-   * proxied source is ever added.
-   */
-  const warmImage = useCallback((card: Card) => {
-    const url = card.previewUrl ?? card.imageUrl;
-    if (!url || url.startsWith("/api/")) return;
-    const img = new Image();
-    img.decoding = "async";
-    img.src = url;
-    warmRef.current = img; // held so the fetch is not abandoned to the collector
-  }, []);
-
-  // ----- prepare the NEXT card, exactly one ahead -----
+  // ----- ⚠️ THERE WAS A SECOND, DEEPER LOOKAHEAD HERE AND IT AIMED AT THE
+  // WRONG CARD -----
   //
-  // ⚠️ ONE card, and its DATA only. Read CLAUDE.md §2.2 before changing this:
-  // preparing the next card's chips and picture is what that principle permits;
-  // preparing several of them, or rendering any of them, is what it forbids.
+  // Phase 0 added "prepare the NEXT card, exactly one ahead": after 1.2 s on a
+  // card it fetched the threads and the doorway for `peekServable(randomBuffer)`
+  // and warmed that card's picture. In the CARD-AT-A-TIME feed the buffer's head
+  // genuinely was the next card, so the name was true and the effect was worth
+  // its cost: the chips were the whole wait (3,347 ms median in the Encyclopedia
+  // against a local build with no CDN) and the picture already was not.
   //
-  // Why this is worth doing at all — measured on a local production build, which
-  // is the worst case because nothing caches in front of it (in production the
-  // day-long s-maxage on /related and /doorway absorbs most of it):
+  // The scroller made both halves wrong.
   //
-  //     Encyclopedia   chips ready 3,347 ms after the keypress (median)
-  //     Gallery        chips ready 1,847 ms
-  //     both realms    picture ready within ~0 ms of the transition settling
+  //   • THE PICTURE. Cards are RENDERED three ahead now, and a rendered card
+  //     loads its own hotlinked preview immediately whether or not it is inside
+  //     the heavy-image window. Warming an unrendered one bought nothing.
+  //   • THE CHIPS, and this is the one that mattered. `fill` takes cards OUT of
+  //     the buffer to materialise them, so the buffer's head is no longer the
+  //     next card — it is the one after the whole queue, QUEUE_AHEAD + 1 = FOUR
+  //     cards below the reader. Measured 29 August 2026, Encyclopedia, 2.6 s
+  //     dwell: with the queue holding `Mach number | Human sexuality | La Scala`
+  //     the only `/related` of that stop was for `Aerobatics`, which was in
+  //     neither the trail nor the queue and became queue[2] one commit later.
+  //     So "at most one ahead" — invariant 6, CLAUDE.md §12, drift-spec.md §7 and
+  //     docs/beta-readiness.md, the rule §7.2 calls the one way to genuinely
+  //     break this app — was false of the code that implemented it.
   //
-  // The chips were the wait; the picture already was not. Threads are cached by
-  // card id, so preparing one ahead adds no fetch — it moves the same fetch
-  // earlier. The only genuinely new spend is a card prepared and then not
-  // visited, which is what PREPARE_NEXT_AFTER_MS is there to bound.
-  useEffect(() => {
-    if (!displayedId || initialLoading || ended || dayDone) return;
-    const timer = window.setTimeout(() => {
-      const rid = realmRef.current;
-      // Two cases where the next card does not come from the buffer, so there is
-      // nothing here to prepare and guessing would spend the budget on a card
-      // that is not coming:
-      //   • a pool-served focus ("in the news", a page orbit) draws from its own
-      //     pool (nextFocusedCard), not from this buffer;
-      //   • a ♥-liked card sends the next drift down one of THIS card's threads
-      //     (lib/drift.ts), which are already fetched anyway.
-      const f = focusForRealm(focusStackRef.current, rid);
-      if (f && (f.kind === "current" || f.kind === "orbit")) return;
-      if (likedCurrentRef.current) return;
-
-      const next = peekServable(randomBufferRef.current, seenRef.current, rid);
-      if (!next?.card) return;
-      warmImage(next.card);
-
-      const id = cardId(next.card);
-      if (id in threadCacheRef.current) return;
-      threadsFor(next.card, next.card.pageTitle, rid, id)
-        .then((chosen) => {
-          // Only ever ADD. If the reader arrived on this card meanwhile, the
-          // on-screen effect has written the answer already and this must not
-          // overwrite it.
-          setThreadCache((c) => (id in c ? c : { ...c, [id]: chosen }));
-        })
-        .catch(() => {
-          /* preparation is a bonus: a failure just means the chips load on
-             arrival exactly as they did before (CLAUDE.md §4). */
-        });
-    }, PREPARE_NEXT_AFTER_MS);
-    // Only the TIMER is cancelled when the reader moves on. The request itself
-    // is deliberately left to finish: the commonest reason the card changed is
-    // that the reader arrived on the very card being prepared, and cancelling
-    // there would throw away the head start this whole effect exists to give.
-    return () => window.clearTimeout(timer);
-  }, [displayedId, initialLoading, ended, dayDone, threadsFor, warmImage]);
+  // It is gone rather than re-aimed, because re-aiming it at the queue's head
+  // makes it a slower duplicate of the scroller's own lookahead
+  // (ContinuousFeed.tsx, "threads: the active card, and exactly one ahead"),
+  // which is better placed anyway: the head is KNOWN the instant the card above
+  // it commits, so the fetch starts then, with a whole dwell of lead, where this
+  // one waited 1.2 s and then guessed at a card four rows down.
+  //
+  // ⚠️ MEASURED BOTH WAYS, AND IT IS NOT FREE — the honest numbers, because the
+  // next person will want them before they change this again. Ten stops,
+  // Encyclopedia, local production build (no CDN, so the worst case; in
+  // production `related` and `doorway` both carry `s-maxage=86400`):
+  //
+  //                                    with it        without it
+  //   dwell 2,600 ms  chips ready       9/10           9/10      (median 0 ms)
+  //   dwell 1,200 ms  chips ready       6-7/10         4/10      (median 618 ms)
+  //   per committed card                1.00-1.18      0.91      `/related`
+  //
+  // So at a reading pace there is no difference at all, and at a SKIMMING pace
+  // (1.2 s a card, half what `verify:feed` calls a reader's pace and a third of
+  // the 4 s `docs/continuous-feed.md` measured against) the chips arrive a few
+  // hundred ms after the card instead of with it. That was judged the right
+  // trade: the card itself — title, description, extract, picture — is already
+  // rendered and unaffected, it is only the chips that fill in; the reader who is
+  // moving that fast is not pulling threads; and the deep lookahead was spending
+  // the SHARED upstream budget (the Met's ~80-per-30-seconds bucket, CLAUDE.md
+  // §4) on cards a skimmer never reaches.
+  //
+  // If that trade is ever revisited, the option to weigh is fetching for the
+  // queue's SECOND card as well as its head — bounded by the queue, unlike this
+  // effect, and in STEADY STATE it costs nothing extra (each commit still admits
+  // exactly one new card to fetch for; only the session's first stop and each
+  // steer pay one more). It would need invariant 6 and the four documents that
+  // state "at most one ahead" changed to say two, in the same change, which is
+  // the whole reason it was not done here.
+  //
+  // Two of its guards are worth keeping in mind if anything like it comes back,
+  // because both had also stopped describing this feed: it skipped a pool-served
+  // focus (so the deeper lookahead never applied to an orbit or the news at all)
+  // and it skipped a ♥-liked card because "the next drift follows one of THIS
+  // card's threads" — which the scroller turns off, passing `likedFollow: false`
+  // and inserting the follow into the queue explicitly instead.
 
   // ----- dwell time -----
   // Add the elapsed time to the step we're leaving (accumulates, so revisits add
@@ -1655,6 +1644,12 @@ export function useDriftSession() {
   async function nextDriftCard(
     opts: { likedFollow?: boolean; background?: boolean } = {},
   ): Promise<{ card: Card; via: ArrivedVia } | null> {
+    // ONE attempt, one answer to "could we reach a source?". Cleared here and
+    // only here; every producer below ORs a failure in. That ordering is the
+    // whole contract — see `upstreamQuietRef` for why last-writer-wins was not
+    // good enough. A buffered card that needs no fetch at all leaves it false,
+    // which is right: nothing was asked, so nothing was refused.
+    upstreamQuietRef.current = false;
     // A focus steers the passive drift only inside its OWN realm: carried through
     // a doorway into the other one it goes dormant (and the banner says so), so
     // what happens here is an ordinary drift in the realm you are actually in.
@@ -1891,8 +1886,9 @@ export function useDriftSession() {
    * a late arrival would quietly re-seed the feed with cards from a focus the
    * reader has already let go of.
    *
-   * Failure costs nothing: `doDrift`'s blocking `refillRandomBuffer` is still
-   * there as the fallback.
+   * Failure costs nothing: `nextDriftCard`'s own blocking `refillRandomBuffer`
+   * is still there as the fallback. (This said `doDrift` until Phase 7, which
+   * split choosing a card from committing it and deleted that function.)
    */
   async function topUpBuffer(): Promise<void> {
     if (bgRefillRef.current) return;
@@ -2018,8 +2014,12 @@ export function useDriftSession() {
       }),
     );
     // Quiet only when NOT ONE of the parallel picks got through. One good answer
-    // means the source is up and the emptiness is real.
-    discoverQuietRef.current = batches.length > 0 && batches.every((b) => !b.ok);
+    // means the source is up and the emptiness is real. OR-ed in rather than
+    // assigned: `nextDriftCard` owns the clearing (see `upstreamQuietRef`), so a
+    // later producer in the same attempt cannot wipe out a failure this one saw.
+    if (batches.length > 0 && batches.every((b) => !b.ok)) {
+      upstreamQuietRef.current = true;
+    }
     return interleave(batches.map((b) => b.cards));
   }
 
@@ -2172,9 +2172,13 @@ export function useDriftSession() {
         `/api/wiki/current?section=${encodeURIComponent(section)}&offset=${offset}&limit=${CURRENT_PAGE}`,
         { signal: AbortSignal.timeout(8000) },
       );
-      if (!res.ok) return { fresh: [], status: "error" };
+      // "error" means we could not reach the news pool, which is a different
+      // sentence from "this section is read out" and reaches the reader as a
+      // different ending. See `upstreamQuietRef`; the caller's `status` is about
+      // paging, and cannot carry this.
+      if (!res.ok) return quietly({ fresh: [], status: "error" });
       const batch = (await res.json()) as CurrentCard[];
-      if (!Array.isArray(batch)) return { fresh: [], status: "error" };
+      if (!Array.isArray(batch)) return quietly({ fresh: [], status: "error" });
       const fresh: CurrentCard[] = [];
       for (const c of batch) {
         if (!c?.card?.pageTitle) continue;
@@ -2192,8 +2196,16 @@ export function useDriftSession() {
       }
       return { fresh, status: batch.length === 0 ? "end" : "ok" };
     } catch {
-      return { fresh: [], status: "error" };
+      return quietly({ fresh: [], status: "error" });
     }
+  }
+
+  /** Mark this attempt as "we could not reach a source" and pass the result
+   *  through. One helper so all three of `fetchCurrentPage`'s failure exits say
+   *  it, which is what stops the next one being added without it. */
+  function quietly<T>(result: T): T {
+    upstreamQuietRef.current = true;
+    return result;
   }
 
   function takeCurrentCard(): CurrentCard | null {
@@ -2274,6 +2286,16 @@ export function useDriftSession() {
       if (ok) next = ingestMorelike(next, f.title, f.ring, cands, seenRef.current);
     }
     orbitRef.current = next;
+    // ⚠️ AND SAY SO WHEN NOTHING GOT THROUGH. Leaving the frontier for a later
+    // retry (above) keeps the orbit alive, but it tells the FEED nothing, and the
+    // feed is what has to choose between "you have read this area dry" and "we
+    // could not reach the source". Without this the first is what an orbit said
+    // at a 503, on its very first refill, permanently. See `upstreamQuietRef`.
+    // An exhausted FRONTIER is not this case and must not set it: that is a real
+    // answer about the pool, and it reaches the reader as `pool-dry`, correctly.
+    if (fetched.length > 0 && fetched.every((x) => !x.ok)) {
+      upstreamQuietRef.current = true;
+    }
   }
 
   // "Drift around this" (Phase 18): re-anchor a page orbit on the current card
@@ -2487,10 +2509,12 @@ export function useDriftSession() {
     // the moves. Advancing and going back are not among them: in a scroller they
     // are scrolling, and the shell does them without asking the engine.
     nextDriftCard,
-    /** Did the last refill fail to REACH the source, rather than come back with
-     *  nothing? Read synchronously, and a function rather than the ref itself
-     *  for the reason given on `onTrailSaved`. See `discoverQuietRef`. */
-    sourceQuiet: () => discoverQuietRef.current,
+    /** Did the last `nextDriftCard` attempt fail to REACH a source, rather than
+     *  come back with nothing? True for every producer — discover, the orbit
+     *  ring and the news pool — not just discover. Read synchronously, and a
+     *  function rather than the ref itself for the reason given on
+     *  `onTrailSaved`. See `upstreamQuietRef` for the contract. */
+    sourceQuiet: () => upstreamQuietRef.current,
     commitCard,
     threadsOf,
     threadsPendingFor,

@@ -686,6 +686,60 @@ async function resilience(browser, vp) {
   const keys = await p2.evaluate(() => [...document.querySelectorAll("[data-slot]")].map((n) => n.dataset.slot));
   rec("and never queues the same card twice", new Set(keys).size === keys.length, keys.join(" | ").slice(0, 90));
   await p2.context().close();
+
+  // ⚠️ THE SAME QUESTION, ASKED OF A POOL-SERVED FOCUS — where it was still
+  // answered wrongly long after the free-drift case above was fixed. `sourceQuiet`
+  // was written by the DISCOVER path alone, and neither the orbit ring nor the
+  // news pool reported an unreachable source at all. Measured 29 August 2026 on
+  // `/drift?focus=orbit&title=Octopus&seed=Octopus` with `related` answering 503:
+  // "You have read this area dry" within six seconds, for an orbit that had
+  // produced zero cards, with no Try again and no auto-retry — and the source was
+  // then restored and FORTY-FIVE SECONDS AND ZERO REQUESTS LATER it was unchanged.
+  //
+  // Both halves are checked, and neither is optional: an implementation that
+  // called every ending "quiet" would pass the first and fail the second, and
+  // that is the more dangerous of the two failures, because it makes a genuinely
+  // exhausted pool retry a healthy source forever.
+  const p4 = await newPage(browser, vp);
+  const dead = (r) => r.fulfill({ status: 503, contentType: "application/json", body: "{}" });
+  await p4.route("**/api/realm/*/related*", dead);
+  await open(p4, "/drift?focus=orbit&title=Octopus&seed=Octopus");
+  await p4.waitForTimeout(16000);
+  const orbitReason = await p4
+    .locator("[data-terminus]")
+    .getAttribute("data-terminus")
+    .catch(() => null);
+  rec(
+    "an orbit that cannot REACH its source says so, not that it is read dry",
+    orbitReason === "source-quiet",
+    orbitReason ?? "no ending",
+  );
+  await p4.unrouteAll({ behavior: "ignoreErrors" });
+  await p4.waitForTimeout(22000);
+  rec(
+    "and it refills itself once the source comes back",
+    (await p4.locator("[data-terminus]").count()) === 0 && (await queued(p4)) > 0,
+    `${await queued(p4)} queued`,
+  );
+  await p4.context().close();
+
+  // The other half: a source that ANSWERS and has nothing is a real ending, and
+  // must stay final — no Try again, no retry ladder against a healthy upstream.
+  const p5 = await newPage(browser, vp);
+  await p5.route("**/api/realm/*/related*", (r) =>
+    r.fulfill({ status: 200, contentType: "application/json", body: "[]" }));
+  await open(p5, "/drift?focus=orbit&title=Octopus&seed=Octopus");
+  await p5.waitForTimeout(16000);
+  const dryReason = await p5
+    .locator("[data-terminus]")
+    .getAttribute("data-terminus")
+    .catch(() => null);
+  rec(
+    "an orbit genuinely read out still ends, finally",
+    dryReason === "pool-dry" && !(await anyVisible(p5.getByRole("button", { name: /Try again/i }))),
+    dryReason ?? "no ending",
+  );
+  await p5.context().close();
 }
 
 // Four cards are laid out at once, so Tab used to walk straight out of the card

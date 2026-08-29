@@ -362,6 +362,19 @@ after a pause and names the cause, the way `entryPoints` already did. **Never ru
 alongside another browser suite, and read the server log before the code when a Gallery check
 fails.**
 
+⚠️ **AND ONE MORE CHECK JOINED THAT LIST IN PHASE 8: `MOVING: chips are ready on the card you
+land on`.** It was insensitive to local upstream latency only because a second lookahead was
+running four cards ahead and hiding it (§4.10 finding 22). With the honest one-ahead the chips
+have exactly one dwell to arrive, and `DWELL` is 2,600 ms against an uncached local
+`/api/realm/*/related` that was **measured at 1.4 to 1.8 s** on a quiet afternoon and at **12 s
+timeouts** twenty minutes later, after a day of driving the same IP with no CDN in front of it.
+So it fits, without much room. In production that fetch is a `s-maxage=86400` CDN hit and the
+margin is enormous. **If this check alone fails, measure the route before touching the code:**
+`curl -o /dev/null -w '%{time_total}' http://localhost:PORT/api/realm/encyclopedia/related?id=Octopus`.
+It was deliberately NOT loosened to accommodate this — a gate relaxed to fit a change is worth
+less than no gate — but a failure of this one check, alone, on a machine that has been hammering
+Wikimedia all day, is a statement about the machine.
+
 Three things the audit checked and found **sound**, recorded so nobody re-derives them: the
 guided tour runs clean end to end on the scroller (every forced step advances); the ad
 interstitial's spacing is right and the browser's snap re-targeting keeps the reader on the
@@ -405,6 +418,11 @@ every future load report.
     left them unfetched. The two 1.36s are lookahead not yet consumed and amortise with session
     length (1.15 over 26 cards). These are CLIENT requests; `beta-readiness`'s ≈2.4 is UPSTREAM
     Wikimedia calls and is a different measurement.
+
+    ⚠️ **THE TWO 1.36s ARE SUPERSEDED — see §4.10 finding 22.** Most of what this called
+    "lookahead not yet consumed" was a SECOND lookahead aimed four cards ahead, which should never
+    have been running. With it removed the same measurement is **0.91** `/related` and **0.91**
+    `/doorway` per committed card. Quote those, not these.
 20. **An iOS hazard to look for on the phone test, from the research rather than from a device.**
     WebKit caches snap-point positions at layout and does not always recalculate them when
     children are modified; the symptoms are misaligned snapping, jumpy scrolling, failing to
@@ -413,6 +431,83 @@ every future load report.
     but the queue adds and removes children constantly, so this is the first thing to suspect if
     the feed misbehaves on an iPhone. Workarounds, in order of bluntness: force a layout read
     (`offsetHeight`) after a queue change, or toggle `scroll-snap-type` off and back on.
+
+### 4.10 And what the independent audit found (measured, 29 August, after Phase 7)
+
+Phase 7 shipped every gate green: 1,394 tests, `verify:feed` 130/130, `audit:contrast` PASS. So
+this pass went where a green gate cannot look — at the paths a gate does not walk, and at the
+claims the documents make about themselves. Four things, and the first is the same bug as §4.8
+finding 10 wearing different clothes.
+
+21. **⚠️ A POOL-SERVED FOCUS STILL SAID "you have read this area dry" AT A 503, AND STILL NEVER
+    ASKED AGAIN.** Finding 10 was fixed for the discover path only: `sourceQuiet` read
+    `discoverQuietRef`, written by `fetchDiscoverBatch` alone, and the comment beside it asserted
+    that the two pool-served focuses "reach their end through their own widening ladders and are
+    genuinely exhausted when they return nothing". They do not. `refillOrbit` computed a per-fetch
+    `ok` flag and used it only to decide whether to mark a frontier title expanded; `fetchCurrentPage`
+    returned `status: "error"` and the caller discarded it. Measured on
+    `/drift?focus=orbit&title=Octopus&seed=Octopus` with `/api/realm/*/related` answering 503:
+    `step:0 | terminus:pool-dry`, **"You have read this area dry"**, within six seconds, for an
+    orbit that had produced zero cards, with no "Try again" offered and the reader auto-snapped
+    onto it. The source was then restored and **forty-five seconds and zero API requests later it
+    was unchanged.** Fixed by making the flag mean "did the LAST `nextDriftCard` attempt fail to
+    REACH a source?": `nextDriftCard` clears it at the top of every attempt and every producer ORs
+    a failure in, so no producer can clear another's failure and a mixed attempt (news pool
+    unreachable, then orbit frontier genuinely exhausted) still says "quiet", which is the honest
+    answer. `verify:feed` now checks **both** directions, because an implementation that called
+    every ending "quiet" would pass the first and fail the second, and that is the worse failure.
+    **The lesson generalises past this bug and is the same one CLAUDE.md §2.5 draws about the
+    Papers flag: a rule enforced in one of two code paths is not enforced.**
+22. **⚠️ THE "AT MOST ONE AHEAD" LOOKAHEAD WAS RUNNING FOUR AHEAD, IN A SECOND MECHANISM NOBODY
+    HAD RE-READ SINCE PHASE 0.** `useDriftSession`'s `prepare the NEXT card, exactly one ahead`
+    effect fetched threads and the doorway for `peekServable(randomBuffer)`. In the card-at-a-time
+    feed the buffer's head genuinely was the next card. In the scroller `fill` takes cards OUT of
+    that buffer to materialise them, so the buffer's head is the card after the whole queue:
+    `QUEUE_AHEAD + 1` = **four** below the reader. Measured: with the queue holding
+    `Mach number | Human sexuality | La Scala`, the only `/related` of that stop was for
+    `Aerobatics`, in neither the trail nor the queue, which became `queue[2]` one commit later.
+    The effect is deleted; the scroller's own one-ahead is the only lookahead now, and it is better
+    placed (the queue's head is known the instant the card above it commits, so the fetch starts
+    then, where Phase 0's waited 1.2 s and guessed). **Both halves of the trade, measured over ten
+    stops on a local build with no CDN:**
+
+    | | with the deep lookahead | without it |
+    |---|--:|--:|
+    | dwell 2,600 ms, chips ready on arrival | 9/10 | 9/10 |
+    | dwell 1,200 ms, chips ready on arrival | 6-7/10 | 4/10 |
+    | `/related` and `/doorway` per committed card | 1.00-1.18 | **0.91** |
+
+    So at a reading pace it is free, and at a **skimming** pace (1.2 s a card, half what
+    `verify:feed` calls a reader's pace) the chips arrive a few hundred ms after the card instead
+    of with it. The card itself is unaffected: it was rendered before the reader arrived. If that
+    trade is ever revisited, the option to weigh is the queue's SECOND card as well as its head:
+    bounded by the queue, unlike Phase 0's effect, and in steady state it costs nothing extra
+    (each commit still admits exactly one new card to fetch for). It needs invariant 6 and the
+    four documents that state it changed in the same commit, which is why it was not done here.
+23. **The scroll compensation after a skipped card counted the wrong thing.** `commitAt` removes
+    every slot up to and including the committed card, but returns `skipped` filtered to real
+    CARDS — an ad interstitial passed over on the way is removed and not reported, because it is
+    not something to re-serve. The caller compensated `scrollTop` with `skipped.length`, so with
+    an ad in the way it under-corrected by exactly one item-height:
+    `[step0, step1, ad, qA, qB, qC]`, a flick from `step1` to `qB`, is three slots removed and one
+    reported, and the reader lands on `qC` — a card they never scrolled onto, which then commits
+    itself 300 ms later. A phantom stop in the trail, which is the exact dishonesty the two-phase
+    model exists to prevent. `commitAt` returns `removed` now, and three unit tests pin it. Not
+    reproduced in a browser (it needs ads enabled and a card-skipping flick, i.e. WebKit); found
+    by reading, and the repo's own test `hands back only real cards` already encoded the mismatch.
+24. **An interrupted refill was being charged to the source.** `fill`'s loop has a third way out
+    besides "a card" and "nothing": a round that returns a perfectly good card and drops it
+    because the queue changed underneath while it was in flight. That lands in the same
+    `added === 0` branch as a dry source, so a commit or a steer that happened to overlap an open
+    discover call cost a four-second refill freeze and a step toward the ending. It carries an
+    `interrupted` flag now. A duplicate from the degraded fallback deliberately still counts: the
+    source answered, and had nothing new.
+
+Two more things this pass checked and found **sound**, recorded so nobody re-derives them: nothing
+uncommitted ever reaches `seen` (it is written in exactly two places, both commits), and `holdNav`'s
+`overflow: hidden` freeze preserves `scrollTop` in Chromium (2,521 px across the toggle), so §8.1's
+parenthetical "(and restoring `scrollTop`)" is not a thing this code has to do. WebKit unverified.
+
 
 **Sources**
 - [MDN: `scroll-snap-stop`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/scroll-snap-stop) and [MDN: CSS scroll snap](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Scroll_snap)
@@ -666,7 +761,16 @@ This is the question with the most surprising answer, so it gets its own section
 
 > **Materialising a card costs a discover slot. It must NOT cost a threads fetch or a doorway
 > fetch.** Threads and the doorway are fetched for the card being read and **at most one
-> ahead**, and the one-ahead fires on a short dwell timer.
+> ahead**.
+
+⚠️ **THIS RULE ENDED "and the one-ahead fires on a short dwell timer", WHICH DESCRIBED THE WRONG
+MECHANISM AND STOPPED BEING TRUE OF EITHER.** The dwell timer belonged to Phase 0's engine-side
+`prepare the NEXT card` effect, which aimed at the head of the DISCOVER BUFFER. Once `fill` began
+taking cards out of that buffer to materialise them, the buffer's head stopped being the next card
+and became the one after the whole queue: **four** below the reader, not one. Measured 29 August
+2026 (§4.10). The one-ahead that actually feeds the reader is the scroller's own
+(`ContinuousFeed.tsx`), it aims at the head of the QUEUE, and it has no dwell timer because it does
+not need one: the head is known the instant the card above it commits, so the fetch starts then.
 
 If all N rendered cards fetched threads and a doorway, Gallery cost per screenful would go from
 ~9 Met requests to ~45. The bucket is ~80 per 30 s. **The breaker would open within seconds**,
@@ -686,7 +790,10 @@ Work it through per committed card, in steady state:
 Threads are cached per card id (`threadCache`), so prefetching one ahead does not add a fetch —
 **it moves the same fetch earlier in time.** The only genuinely new spend is threads fetched for
 cards that are then discarded (a thread pull or realm cross invalidating the queue), which is a
-small fraction of moves, and the dwell timer means a fast scroller never triggers the +1 at all.
+small fraction of moves. (This sentence used to end "and the dwell timer means a fast scroller never
+triggers the +1 at all". There is no dwell timer any more, and the +1 does fire for a fast scroller
+— it is one fetch per committed card either way, so the total is unchanged; see §4.10 for what a
+fast scroller actually pays now.)
 
 And the burst *shape* improves. Today a refill is a 12-card burst every twelfth drift: three
 parallel discover calls, and in the Gallery ~15 Met requests at once. A low-water queue refills
@@ -880,7 +987,11 @@ positions.
 5. **Every item is exactly one shell-height.** Uniform height is what makes forking,
    branch-switching and windowing scroll-safe.
 6. **Threads and the doorway are fetched for the current card and at most one ahead.** Never
-   for the whole queue.
+   for the whole queue. ⚠️ **AND IT MUST BE ENFORCED IN ONE PLACE ONLY.** From Phase 0 until the
+   Phase 8 audit there were TWO lookaheads: the scroller's (the queue's head, correct) and the
+   engine's (the discover buffer's head, which the queue had quietly moved four cards away). The
+   invariant was written down, tested by eye, and false. The engine's is gone (§4.10); if a deeper
+   one is ever wanted, change this line and the four documents that state it in the same commit.
 7. The queue length never exceeds `stopsRemaining`, and the meter still **fails open**
    (`meter === null` means unmetered).
 8. Discarding a queued card **releases its pending id** so it can be served again later.

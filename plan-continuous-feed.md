@@ -29,8 +29,8 @@ assistant all the way from nothing to a formal plan for the next phase.
 > | `npm run test` | **1,394** green, 83 files |
 > | `npm run build` | clean (the type-check gate) |
 > | `npm run lint` | clean, **zero** warnings |
-> | `npm run verify:feed` | **130/130**, 65 checks each at 1280x900 and 390x844 |
-> | `npm run audit:contrast` | **PASS**, 5,014 nodes over 33 views x 2 themes |
+> | `npm run verify:feed` | **136/136**, 68 checks each at 1280x900 and 390x844 |
+> | `npm run audit:contrast` | **PASS**, ~5,020 nodes over 33 views x 2 themes |
 >
 > ⚠️ **DO NOT RUN `verify:feed` ALONGSIDE ANOTHER BROWSER SUITE.** Both passes cross into the
 > Gallery, and locally there is no CDN in front of The Met's ~80-requests-per-30-seconds bucket
@@ -44,15 +44,20 @@ assistant all the way from nothing to a formal plan for the next phase.
 >
 > | route | per committed card |
 > |---|--:|
-> | `/api/realm/*/related` | 1.36 |
-> | `/api/doorway` | 1.36 |
+> | `/api/realm/*/related` | **0.91** |
+> | `/api/doorway` | **0.91** |
 > | `/api/realm/*/summary` | 0.36 |
 > | `/api/realm/*/discover` | **0.27** |
-> | total `/api` | 3.36 |
+> | total `/api` | ~2.45 |
 >
-> The two 1.36s are lookahead not yet consumed; they amortise with session length (1.15 over 26
-> cards). **Discover went DOWN** from the old feed's ~0.5, because a thread pull hands three
-> materialised cards back to the buffer instead of leaving them unfetched.
+> **Discover went DOWN** from the old feed's ~0.5, because a thread pull hands three materialised
+> cards back to the buffer instead of leaving them unfetched.
+>
+> ⚠️ **THE TWO WERE 1.36 UNTIL THE PHASE 8 AUDIT, AND THE EXPLANATION FOR THAT NUMBER WAS WRONG.**
+> It was recorded here as "lookahead not yet consumed, amortising with session length". Most of it
+> was a SECOND threads lookahead, left over from Phase 0, aimed at the head of the discover buffer
+> — which the queue had quietly moved four cards away from the reader, making invariant 6 false of
+> the code that implemented it. Removed; these are the numbers now.
 >
 > ### 🔴 Still unverified, said plainly
 >

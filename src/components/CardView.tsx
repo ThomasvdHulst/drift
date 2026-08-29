@@ -921,9 +921,17 @@ export function CardView({
       </div>
 
       {/* Reading side: one scroll region + a pinned threads bar. The whole
-          reading side scrolls (image included on phones), and the feed's gesture
-          handler reads this region's edges (via [data-drift-scroll]) to tell
-          "scroll to read" from "overscroll to drift on" — see lib/gesture. */}
+          reading side scrolls (image included on phones), and `overscroll-behavior`
+          on it decides whether reaching its end chains on to the next card in the
+          feed's scroller (see `scrollChaining` below).
+
+          ⚠️ THIS USED TO SAY "the feed's gesture handler reads this region's edges
+          (via [data-drift-scroll]) to tell scroll-to-read from overscroll-to-drift
+          — see lib/gesture", AND THAT HANDLER IS GONE. `edgesOf`, `resolveSwipe`
+          and `isWheelReadingScroll` were deleted with the card-at-a-time shell in
+          Phase 7: the feed is a native scroll-snap scroller now and the browser
+          answers that question. The marker is still needed — the guided tour looks
+          it up to scroll the card to its end — but nothing in JS reads its edges. */}
       {/* `min-w-0` matters as much as `min-h-0` here, and for the mirror-image
           reason. A flex item defaults to `min-width: auto`, i.e. "never narrower
           than my content", so ONE wide child sizes this whole column: with a wide
@@ -940,13 +948,21 @@ export function CardView({
             drags are left to the feed's own handler, which is the only thing
             that wants them (there is nothing to scroll sideways). Most visible
             during the guided tour, where the coach card pushes your thumb into
-            the middle of the prose. drift/page.tsx also handles `touchcancel`,
-            as a fallback for a genuinely diagonal drag. */}
+            the middle of the prose.
+
+            ⚠️ THIS USED TO ADD "drift/page.tsx also handles `touchcancel`, as a
+            fallback for a genuinely diagonal drag", AND THERE IS NO SUCH HANDLER
+            ANY MORE. `drift/page.tsx` is a Suspense boundary since Phase 7 and the
+            scroller only listens for touchstart/touchend. `touch-pan-y` here is
+            what keeps the browser from claiming the drag in the first place, which
+            is the half that was actually doing the work. */}
         <div
           // Only the feed's card owns a scroll region. In flow mode the marker
-          // is absent too, deliberately: `lib/gesture` and the tour both look it
-          // up to find "the thing that scrolls", and pointing them at a div that
-          // does not scroll would be worse than finding nothing.
+          // is absent too, deliberately: the guided tour looks it up to find "the
+          // thing that scrolls" (it scrolls the card to its end before telling you
+          // to swipe up), and pointing it at a div that does not scroll would be
+          // worse than finding nothing. `lib/gesture` used to be the other reader
+          // of this marker; it no longer reads the DOM at all (Phase 7).
           {...(flow || !active ? {} : { "data-drift-scroll": true })}
           className={`flex min-w-0 flex-col gap-3 px-6 pb-4 pt-6 sm:px-8 sm:pt-8 md:px-10 md:pt-10 lg:px-12 lg:pt-12 ${
             flow

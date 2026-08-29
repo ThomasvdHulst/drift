@@ -69,9 +69,13 @@ export type FeedItem =
 
 export type QueuedItem = Extract<FeedItem, { kind: "queued" }>;
 
-export function isStep(i: FeedItem): i is Extract<FeedItem, { kind: "step" }> {
-  return i.kind === "step";
-}
+// ⚠️ THERE WAS AN `isStep` HERE AND IT WAS CALLED FROM NOWHERE AT ALL. Exported,
+// type-safe, obvious — and consulted by neither this module, the scroller nor a
+// test, which is the exact shape the pre-Phase-7 audit deleted three times over
+// (§8.7: "a defence the documentation calls load-bearing and the code never
+// consults is worse than no defence, because it stops anyone looking"). The
+// scroller asks `item.kind === "step"` where it needs to. `isQueued` and
+// `isTerminus` below are both genuinely used; this one was not.
 export function isQueued(i: FeedItem): i is QueuedItem {
   return i.kind === "queued";
 }
@@ -240,7 +244,22 @@ export function invalidateQueue(queue: readonly FeedItem[]): {
  *
  * Removing them from the queue is scroll-safe for the one reason everything
  * else in this design is: every item is exactly one viewport tall, so the caller
- * can compensate with `scrollTop -= skipped.length * itemHeight` exactly.
+ * can compensate with `scrollTop -= removed * itemHeight` exactly.
+ *
+ * ⚠️ COMPENSATE WITH `removed`, NEVER WITH `skipped.length` — they are different
+ * numbers and the difference is a real displacement. `skipped` is what goes back
+ * to the discover buffer, so it holds only CARDS; an ad interstitial passed over
+ * on the way is removed from the queue too but is not something to re-serve, so
+ * it is absent from `skipped`. The caller used to compensate with
+ * `skipped.length` and therefore under-corrected by exactly one item-height per
+ * ad. Worked through, with an ad above the committed card:
+ * `[step0, step1, ad, qA, qB, qC]`, a flick from step1 to qB, is 3 slots removed
+ * above the reader and 1 reported — they land on qC, an uncommitted card they
+ * never scrolled to, which then commits 300 ms later. That is a phantom stop in
+ * the trail, which is precisely what the two-phase model exists to prevent.
+ * (An ending can never be above the committed card: `clearTerminus` runs before
+ * anything is pushed, so an ad is the only case — but `removed` is right for
+ * both and does not have to know which.)
  *
  * Returns `committed: null` when the id is not a queued item at all (a step, an
  * ad, an ending, or already gone), and changes nothing.
@@ -248,9 +267,17 @@ export function invalidateQueue(queue: readonly FeedItem[]): {
 export function commitAt(
   queue: readonly FeedItem[],
   id: string,
-): { queue: FeedItem[]; committed: QueuedItem | null; skipped: QueuedItem[] } {
+): {
+  queue: FeedItem[];
+  committed: QueuedItem | null;
+  skipped: QueuedItem[];
+  /** How many SLOTS vanished from above the committed one. The committed item
+   *  itself is not counted: it leaves the queue but stays on screen as a trail
+   *  step, in the same place. This is the number to move `scrollTop` by. */
+  removed: number;
+} {
   const at = queue.findIndex((i) => isQueued(i) && i.id === id);
-  if (at < 0) return { queue: [...queue], committed: null, skipped: [] };
+  if (at < 0) return { queue: [...queue], committed: null, skipped: [], removed: 0 };
   const committed = queue[at] as QueuedItem;
   const before = queue.slice(0, at);
   return {
@@ -261,6 +288,7 @@ export function commitAt(
     // Only real cards can be handed back. An ad or an ending scrolled past is
     // not something to re-serve.
     skipped: before.filter(isQueued),
+    removed: before.length,
   };
 }
 
