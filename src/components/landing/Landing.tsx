@@ -5,7 +5,7 @@ import Link from "next/link";
 import { motion, useReducedMotion } from "motion/react";
 import { Wordmark, Monogram } from "@/components/BrandLogo";
 import { PublicFooter } from "@/components/PublicFooter";
-import { AuthForm } from "@/components/AuthForm";
+import { AuthForm, type AuthMode } from "@/components/AuthForm";
 import { TrailMap } from "@/components/TrailMap";
 import { KindIcon, KIND_META } from "@/components/ThreadChips";
 import type { ThreadKind } from "@/lib/types";
@@ -39,11 +39,21 @@ export function Landing() {
     );
   }, []);
 
-  function goToJoin(e: React.MouseEvent) {
+  // Which tab the join form opens on. Every link that scrolls down here also
+  // SAYS which one it meant: clicking "Sign in" at the top and landing on a form
+  // still set to "Create account" is how you end up typing your real credentials
+  // into a sign-up and being told the account already exists.
+  const [joinMode, setJoinMode] = useState<AuthMode>("signup");
+
+  function goToJoin(e: React.MouseEvent, mode: AuthMode) {
     e.preventDefault();
-    document
-      .getElementById("join")
-      ?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    setJoinMode(mode);
+    const join = document.getElementById("join");
+    join?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    // A smooth scroll leaves keyboard focus at the top of the page, so the next
+    // Tab goes back into the header rather than into the form. Move it with the
+    // eye; preventScroll so focusing does not cancel the animation by jumping.
+    join?.focus({ preventScroll: true });
   }
 
   return (
@@ -61,8 +71,8 @@ export function Landing() {
             </Link>
             <a
               href="#join"
-              onClick={goToJoin}
-              className="rounded-full px-3 py-1.5 text-sm font-medium text-ink-soft transition hover:text-accent-strong sm:px-4"
+              onClick={(e) => goToJoin(e, "signin")}
+              className="focus-ring rounded-full px-3 py-1.5 text-sm font-medium text-ink-soft transition hover:text-accent-strong sm:px-4"
             >
               Sign in
             </a>
@@ -89,16 +99,16 @@ export function Landing() {
             <div className="mt-7 flex flex-col items-center gap-3 sm:flex-row lg:justify-start">
               <a
                 href="#join"
-                onClick={goToJoin}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-accent px-7 py-3 text-base font-semibold text-paper-raised shadow-sm transition hover:bg-accent-strong sm:w-auto"
+                onClick={(e) => goToJoin(e, "signup")}
+                className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-full bg-accent px-7 py-3 text-base font-semibold text-paper-raised shadow-sm transition hover:bg-accent-strong sm:w-auto"
               >
                 Create your account
                 <span aria-hidden="true">→</span>
               </a>
               <a
                 href="#join"
-                onClick={goToJoin}
-                className="text-sm text-ink-soft transition hover:text-ink"
+                onClick={(e) => goToJoin(e, "signin")}
+                className="focus-ring rounded text-sm text-ink-soft transition hover:text-ink"
               >
                 or sign in
               </a>
@@ -249,7 +259,12 @@ export function Landing() {
         </Reveal>
 
         {/* --- Join --- */}
-        <section id="join" className="scroll-mt-20 py-14 sm:py-20">
+        <section
+          id="join"
+          // Focus target for the links above, not a tab stop of its own.
+          tabIndex={-1}
+          className="scroll-mt-20 py-14 sm:py-20 focus:outline-none"
+        >
           <div className="mx-auto max-w-md">
             <div className="mb-6 text-center">
               <div className="flex justify-center">
@@ -264,7 +279,7 @@ export function Landing() {
                 devices.
               </p>
             </div>
-            <AuthForm initialMode="signup" />
+            <AuthForm mode={joinMode} onModeChange={setJoinMode} />
             {/* Reading, for anyone not ready to sign up yet. The footer carries
                 the same links, but this puts them where the decision is made. */}
             <p className="mt-8 text-center text-sm leading-relaxed text-ink/75">

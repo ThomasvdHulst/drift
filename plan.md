@@ -56,6 +56,13 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > **Phase 33H (28 August) added `/start`**, the page a QR code on a sticker or a flyer lands on,
 > plus a stale-credit fix on `/how-it-works`. Entry at the bottom.
 >
+> **The join form now obeys the link you clicked (29 August).** "Sign in" in the landing header
+> scrolled you to a form still set to "Create account", so typing your real credentials answered
+> "there is already an account with that email". Fixed, along with a formal pass over every auth
+> field for password managers: **the sign-in password input carried `minLength={8}`, which locked
+> out anyone whose account predates the six-to-eight change**, and `/account`'s change-password
+> panel still asked for six characters and was not a `<form>` at all. Entry at the bottom.
+>
 > **Drift is live** at <https://www.usedrift.org> (Vercel + Supabase) as an installable PWA, in a
 > small friends-and-family beta, now taking real payments for the **supporter unlock** (Phase 32).
 > A refund starts a **seven day wait before that account can buy again** (Phase 32B); migration
@@ -5802,3 +5809,98 @@ them does. Removing either on the grounds that "the other one must be doing it" 
 
 Gates: **1,411 tests green** (83 files), `npm run build` clean, `npm run lint` clean,
 `npm run verify:feed` **146/146** at two viewports.
+
+---
+
+## The sign-in link that opened a sign-up form (29 August 2026)
+
+**Reported by the owner, from their own account, more than once.** Click "Sign in" in the landing
+page's sticky header, get carried down to the join section, type your real credentials, press the
+button, and be told *"There is already an account with that email."* Of course there is. You were
+trying to sign into it.
+
+**The cause is one hard-coded prop.** `Landing` rendered `<AuthForm initialMode="signup" />`, and
+all three links that scroll to `#join` — the header's "Sign in", the hero's "Create your account",
+the hero's "or sign in" — shared a single `goToJoin` handler that scrolled and nothing else. The
+form's tabs were correct, visible and one click away; the page just never said which one it meant.
+A link that names a destination and lands you somewhere else is the kind of quiet dishonesty §2
+calls a bug.
+
+`AuthForm` now takes an optional **controlled** `mode` + `onModeChange`, and `Landing` holds the
+tab state so each link can set it. `/account` is untouched and stays uncontrolled on "signin".
+
+**A refusal is now remembered WITH the mode that produced it** (`Notice`), and only rendered while
+that mode is on screen. That falls out of the fix rather than being extra: a mode change can now
+arrive from outside the form, so clearing the error inside the tab handler would have missed it.
+Deriving it during render is also what the React compiler's lint wants — the first attempt cleared
+the three message states from a `useEffect` on `mode` and `react-hooks/set-state-in-effect`
+correctly refused it.
+
+**And the dead end itself got an exit.** When a sign-up is refused because the address is already
+registered, the error now carries a **"Sign in with this email instead"** button that switches the
+tab and keeps both the email and the password already typed. One click, one button, no retype.
+
+### The formal pass over the auth fields, and the six things it found
+
+The owner also asked for a check that the login/sign-up fields are properly specified — that they
+behave for 1Password, Apple Keychain and Chrome's password manager. They mostly were. Six were not:
+
+1. ⚠️ **The sign-in password field carried `minLength={8}`, and that is a lockout, not a hint.**
+   `PasswordField` set it unconditionally from `PASSWORD_RULES`. The app "previously said 6
+   everywhere" (`lib/auth.ts`), so accounts made then have six- and seven-character passwords, and
+   the browser was refusing to submit the form at all for those people — with a validation bubble
+   about lengthening a password that is already correct. `minLength` now applies only to
+   `new-password`. **This is the one finding here that could keep a real person out of their
+   account**, and it is invisible to everyone whose password happens to be long enough.
+2. **The email field said `autocomplete="email"`.** That is a contact detail; the token every
+   manager keys a credential on is **`username`**, which is what Apple and Chrome both document for
+   a sign-in form. Changed, in all three modes (sign in, sign up, and the reset request).
+3. **Neither field had a `name`.** Managers read it as a hint about what a field is for. Added,
+   along with real `id`s and `htmlFor` labels.
+4. **The eye button lived inside the `<label>`.** A `<label>` may not contain a second labelable
+   element, and a `<button>` is one — so the field's label was ambiguous in exactly the markup a
+   manager parses to decide what it is looking at. The label is now a sibling of the input.
+5. ⚠️ **`/account`'s change-password panel was not a form, and asked for six characters.** Two
+   separate bugs in one panel: it enforced `password.length < 6` while the server requires eight
+   with a mix (the identical bug `/account/reset` fixed earlier, left standing here), and its
+   inputs sat in a `<div>` behind a `type="button"` click handler — which is not the shape any
+   manager recognises as "a password was just changed", so none of them would ever offer to update
+   the saved one. It is now a real `<form>` with a submit button, built from the shared
+   `PasswordField` and `passwordProblem`, so it cannot disagree with the server again.
+6. **Neither password-setting screen told a manager WHICH login it was for.** A change-password
+   form offering only `new-password` fields gives Keychain and 1Password nothing to match on, so
+   they save an orphan entry or say nothing. `AccountUsernameField` adds the documented fix — the
+   account's email in a read-only `autocomplete="username"` field, `sr-only` (which clips, so it is
+   still laid out; `display:none` is skipped by some managers), out of the tab order and out of the
+   accessibility tree, with the address ALSO said in plain prose beside it so the reader knows too.
+
+Smaller things, in the same pass: `autoCapitalize`/`autoCorrect`/`spellCheck` off on the password
+input, because "show password" flips it to `type="text"` and a phone keyboard will happily
+capitalise and autocorrect a visible password; the same trio plus `inputMode="email"` and
+`enterKeyHint` on the email field; `aria-pressed` on the two mode tabs and a group label, because
+they looked different and sounded identical; `aria-invalid`/`aria-describedby` tying a refusal to
+the fields it is about; `aria-busy` on the submit; `focus-ring` on the several bare buttons and
+links here that had no visible focus state (2.4.7); and keyboard focus moved to the join section
+when a link scrolls there, so the next Tab goes into the form rather than back into the header.
+
+**Not changed, on purpose.** Supabase's "Secure password change" (re-auth) is still off, so
+`/account` can set a new password without asking for the old one — that is a dashboard setting and
+the owner's call, and the comment saying so is still accurate. And the 72-byte bcrypt ceiling on a
+password is still unguarded in the UI; a maximum measured in bytes cannot be honestly expressed as
+`maxLength` in characters, so it stays a server refusal.
+
+**Gates.** `npm run build` clean, `npm run lint` clean, **1,411 tests green** (83 files, unchanged
+— nothing here added pure logic; the rules these screens now share were already covered by
+`auth.test.ts`). Verified in a real Chromium against a dev server: **40 checks** over the landing
+form (every link's mode, the tab/parent sync, every autofill attribute in every mode, the
+already-registered rescue, and that a refusal clears on an external mode change), and **17 more**
+over the two signed-in password screens with a stubbed session and the network blocked, including
+that a six-character password can no longer even be submitted and an eight-character one with no
+capital is refused with the real rule. `npm run audit:contrast` **PASS** (5,982 text nodes, 33
+views x 2 themes) — the several `focus-ring` additions and the new prose on `/account/reset` all
+use existing tokens, and this confirms it.
+
+⚠️ **One screen here is NOT covered by that audit and could not be**: `/account` renders the
+LANDING page when signed out, so the audit measures the gate, never the change-password panel. It
+was read in a browser with a stubbed session instead (above); its colours are the same tokens the
+rest of `/account` already uses.

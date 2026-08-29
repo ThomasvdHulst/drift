@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useAuth } from "@/components/AuthProvider";
-import { PasswordField } from "@/components/PasswordField";
+import { AccountUsernameField, PasswordField } from "@/components/PasswordField";
 import { passwordHint, passwordProblem } from "@/lib/auth";
 
 // Password-recovery landing (the reset link's redirectTo). When the link is
@@ -87,8 +87,18 @@ export default function ResetPasswordPage() {
           onSubmit={onSubmit}
           className="rounded-2xl border border-line bg-paper-raised p-6"
         >
+          {/* Which login this password belongs to — said out loud for the reader,
+              and carried in a username field for their password manager. */}
+          {user.email && (
+            <p className="mb-4 text-sm leading-relaxed text-ink-soft">
+              Setting a new password for{" "}
+              <span className="font-medium text-ink">{user.email}</span>.
+            </p>
+          )}
+          <AccountUsernameField email={user.email ?? ""} />
           <PasswordField
             label="New password"
+            name="new-password"
             value={password}
             onChange={setPassword}
             autoComplete="new-password"
@@ -97,6 +107,7 @@ export default function ResetPasswordPage() {
           <div className="mt-4">
             <PasswordField
               label="Confirm new password"
+              name="confirm-password"
               value={confirm}
               onChange={setConfirm}
               autoComplete="new-password"
@@ -110,7 +121,8 @@ export default function ResetPasswordPage() {
           <button
             type="submit"
             disabled={busy}
-            className="mt-6 w-full rounded-full bg-accent px-6 py-2.5 text-sm font-semibold text-paper-raised shadow-sm transition hover:bg-accent-strong disabled:opacity-60"
+            aria-busy={busy}
+            className="focus-ring mt-6 w-full rounded-full bg-accent px-6 py-2.5 text-sm font-semibold text-paper-raised shadow-sm transition hover:bg-accent-strong disabled:opacity-60"
           >
             {busy ? "Updating…" : "Update password"}
           </button>

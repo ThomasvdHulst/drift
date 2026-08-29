@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useAuth } from "@/components/AuthProvider";
 import { PasswordField } from "@/components/PasswordField";
-import { passwordHint, passwordProblem } from "@/lib/auth";
+import { ALREADY_REGISTERED, passwordHint, passwordProblem } from "@/lib/auth";
 import {
   MINIMUM_AGE,
   AGE_SETTING_KEY,
@@ -21,10 +21,28 @@ import { parseOAuthProviders } from "@/lib/auth";
 // password" request, and a clear "check your email" state for confirmation +
 // reset. Self-contained: it reads everything it needs from useAuth.
 
-type Mode = "signin" | "signup" | "reset";
+export type AuthMode = "signin" | "signup" | "reset";
 type Sent = { kind: "confirm" | "reset"; email: string };
+/** A refusal, tagged with the mode it was produced in. */
+type Notice = { mode: AuthMode; text: string; unconfirmed: boolean };
 
-export function AuthForm({ initialMode = "signin" }: { initialMode?: Mode } = {}) {
+export function AuthForm({
+  initialMode = "signin",
+  mode: controlledMode,
+  onModeChange,
+}: {
+  initialMode?: AuthMode;
+  /**
+   * Optional CONTROLLED mode. The landing page passes this so a "Sign in" link
+   * elsewhere on the page (the sticky header, the hero) can open the form on the
+   * right tab. Someone who clicked "Sign in", typed their credentials into a
+   * form still sitting on "Create account" and got told the account already
+   * exists had done nothing wrong; the form was.
+   * Pass `onModeChange` alongside it, so the tabs here keep the parent in step.
+   */
+  mode?: AuthMode;
+  onModeChange?: (mode: AuthMode) => void;
+} = {}) {
   const {
     signIn,
     signUp,
@@ -33,35 +51,48 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: Mode } = {}
     cloudConfigured,
   } = useAuth();
 
-  const [mode, setMode] = useState<Mode>(initialMode);
+  const [internalMode, setInternalMode] = useState<AuthMode>(initialMode);
+  const mode = controlledMode ?? internalMode;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   // Never pre-ticked: a pre-ticked box is a default, not a declaration.
   const [age16Plus, setAge16Plus] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // A refusal is remembered WITH the mode that produced it, and only shown while
+  // that mode is on screen. Deriving it that way (rather than clearing it in the
+  // tab handler) also covers a mode change that comes from outside this form,
+  // e.g. the landing page's "Sign in" link.
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const error = notice?.mode === mode ? notice.text : null;
+  // Sign-in was refused only for lack of verification (see AuthResult).
+  const unconfirmed = !!error && !!notice?.unconfirmed;
   // When set, we show a dedicated panel instead of the form: "confirm" after a
   // sign-up that needs verification, "reset" after a reset email is sent.
   const [sent, setSent] = useState<Sent | null>(null);
   const [resendMsg, setResendMsg] = useState<string | null>(null);
-  // Sign-in was refused only for lack of verification (see AuthResult).
-  const [unconfirmed, setUnconfirmed] = useState(false);
+
+  const emailId = useId();
+  const errorId = useId();
 
   const showOAuth =
     cloudConfigured &&
     parseOAuthProviders(process.env.NEXT_PUBLIC_OAUTH_PROVIDERS).length > 0;
 
-  function switchMode(m: Mode) {
-    setMode(m);
-    setError(null);
-    setUnconfirmed(false);
+  function switchMode(m: AuthMode) {
+    setInternalMode(m);
+    onModeChange?.(m);
+    setNotice(null);
     setResendMsg(null);
+  }
+
+  /** Record a refusal against the mode that is on screen right now. */
+  function refuse(text: string, opts?: { unconfirmed?: boolean }) {
+    setNotice({ mode, text, unconfirmed: !!opts?.unconfirmed });
   }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    setError(null);
-    setUnconfirmed(false);
+    setNotice(null);
     setResendMsg(null);
     setBusy(true);
     const addr = email.trim();
@@ -69,7 +100,7 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: Mode } = {}
     if (mode === "reset") {
       const res = await requestPasswordReset(addr);
       setBusy(false);
-      if (res.error) return setError(res.error);
+      if (res.error) return refuse(res.error);
       setSent({ kind: "reset", email: addr });
       return;
     }
@@ -80,20 +111,19 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: Mode } = {}
       // password for an account they may not have (compliance audit M-8).
       if (!mayCreateAccount(age16Plus)) {
         setBusy(false);
-        return setError(ageDeclarationError());
+        return refuse(ageDeclarationError());
       }
       const problem = passwordProblem(password);
       if (problem) {
         setBusy(false);
-        return setError(problem);
+        return refuse(problem);
       }
     }
 
     const res =
       mode === "signup" ? await signUp(addr, password) : await signIn(addr, password);
     setBusy(false);
-    setUnconfirmed(!!res.unconfirmed);
-    if (res.error) return setError(res.error);
+    if (res.error) return refuse(res.error, { unconfirmed: res.unconfirmed });
     // Record the declaration once the account exists. Best-effort: it syncs with
     // the rest of settings and appears in the data export, and a storage failure
     // must never turn a successful sign-up into an error the user cannot act on.
@@ -150,7 +180,7 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: Mode } = {}
           <button
             type="button"
             onClick={resend}
-            className="mt-4 text-sm font-medium text-accent-strong underline decoration-accent/40 underline-offset-4 hover:decoration-accent"
+            className="focus-ring mt-4 rounded text-sm font-medium text-accent-strong underline decoration-accent/40 underline-offset-4 hover:decoration-accent"
           >
             Resend the link
           </button>
@@ -166,7 +196,7 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: Mode } = {}
             setSent(null);
             switchMode("signin");
           }}
-          className="mt-5 block w-full text-sm text-ink-soft transition hover:text-ink"
+          className="focus-ring mt-5 block w-full rounded text-sm text-ink-soft transition hover:text-ink"
         >
           ← Back to sign in
         </button>
@@ -181,7 +211,11 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: Mode } = {}
       className="rounded-2xl border border-line bg-paper-raised p-6"
     >
       {mode !== "reset" && (
-        <div className="mb-5 flex gap-1 rounded-full border border-line p-1 text-sm">
+        <div
+          role="group"
+          aria-label="Sign in or create an account"
+          className="mb-5 flex gap-1 rounded-full border border-line p-1 text-sm"
+        >
           <ModeTab
             active={mode === "signin"}
             onClick={() => switchMode("signin")}
@@ -206,28 +240,48 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: Mode } = {}
         <h2 className="mb-4 font-serif text-2xl text-ink">Reset your password</h2>
       )}
 
-      <label className="block text-xs font-medium uppercase tracking-wide text-ink-soft">
+      <label
+        htmlFor={emailId}
+        className="block text-xs font-medium uppercase tracking-wide text-ink-soft"
+      >
         Email
-        <input
-          type="email"
-          required
-          autoComplete="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-line-strong bg-paper px-3 py-2 text-sm text-ink focus-ring"
-        />
       </label>
+      {/* `autocomplete="username"` (not "email") is what Apple Keychain, 1Password
+          and Chrome's password manager look for as the account identifier next to
+          a password field; "email" gets treated as a contact detail instead. The
+          iOS trio (no autocapitalise/autocorrect/spellcheck) stops a phone
+          keyboard from quietly editing an address as it is typed. */}
+      <input
+        id={emailId}
+        name="email"
+        type="email"
+        required
+        autoComplete="username"
+        inputMode="email"
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
+        enterKeyHint={mode === "reset" ? "send" : "go"}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? errorId : undefined}
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        className="mt-1 w-full rounded-lg border border-line-strong bg-paper px-3 py-2 text-sm text-ink focus-ring"
+      />
 
       {mode !== "reset" && (
         <div className="mt-4">
           <PasswordField
             label="Password"
+            name="password"
             value={password}
             onChange={setPassword}
             autoComplete={mode === "signup" ? "new-password" : "current-password"}
             // Only while CHOOSING one: repeating the rules at sign-in would
             // imply the existing password is wrong.
             hint={mode === "signup" ? passwordHint() : undefined}
+            invalid={!!error}
+            describedBy={error ? errorId : undefined}
           />
         </div>
       )}
@@ -236,7 +290,7 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: Mode } = {}
         <button
           type="button"
           onClick={() => switchMode("reset")}
-          className="mt-2 text-xs text-ink-soft underline decoration-line underline-offset-4 transition hover:text-accent-strong"
+          className="focus-ring mt-2 rounded text-xs text-ink-soft underline decoration-line underline-offset-4 transition hover:text-accent-strong"
         >
           Forgot your password?
         </button>
@@ -244,7 +298,9 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: Mode } = {}
 
       {error && (
         <div className="mt-4">
-          <p className="text-sm text-ink" role="alert">
+          {/* The id sits on the message itself, not the wrapper: the buttons
+              below it are actions, not part of the field's description. */}
+          <p id={errorId} className="text-sm text-ink" role="alert">
             {error}
           </p>
           {/* Sign-in refused purely because the address is unverified: the link
@@ -254,9 +310,22 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: Mode } = {}
             <button
               type="button"
               onClick={resendFromSignIn}
-              className="mt-1.5 text-xs font-medium text-accent-strong underline decoration-accent/40 underline-offset-4 transition hover:decoration-accent"
+              className="focus-ring mt-1.5 rounded text-xs font-medium text-accent-strong underline decoration-accent/40 underline-offset-4 transition hover:decoration-accent"
             >
               {resendMsg ?? "Send me a new confirmation link"}
+            </button>
+          )}
+          {/* "That address already has an account" is a dead end unless the way
+              out is right here: switching keeps the email AND the password that
+              were just typed, so the answer is one click and one button, not a
+              retype. */}
+          {error === ALREADY_REGISTERED && (
+            <button
+              type="button"
+              onClick={() => switchMode("signin")}
+              className="focus-ring mt-1.5 rounded text-xs font-medium text-accent-strong underline decoration-accent/40 underline-offset-4 transition hover:decoration-accent"
+            >
+              Sign in with this email instead
             </button>
           )}
         </div>
@@ -265,7 +334,8 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: Mode } = {}
       <button
         type="submit"
         disabled={busy}
-        className="mt-6 w-full rounded-full bg-accent px-6 py-2.5 text-sm font-semibold text-paper-raised shadow-sm transition hover:bg-accent-strong disabled:opacity-60"
+        aria-busy={busy}
+        className="focus-ring mt-6 w-full rounded-full bg-accent px-6 py-2.5 text-sm font-semibold text-paper-raised shadow-sm transition hover:bg-accent-strong disabled:opacity-60"
       >
         {busy
           ? "One moment…"
@@ -330,7 +400,7 @@ export function AuthForm({ initialMode = "signin" }: { initialMode?: Mode } = {}
         <button
           type="button"
           onClick={() => switchMode("signin")}
-          className="mt-3 block w-full text-sm text-ink-soft transition hover:text-ink"
+          className="focus-ring mt-3 block w-full rounded text-sm text-ink-soft transition hover:text-ink"
         >
           ← Back to sign in
         </button>
@@ -362,7 +432,10 @@ function ModeTab({
     <button
       type="button"
       onClick={onClick}
-      className={`flex-1 rounded-full px-3 py-1.5 transition ${
+      // Two buttons that look different but sound identical to a screen reader:
+      // pressed state is what tells you which one you are on.
+      aria-pressed={active}
+      className={`focus-ring flex-1 rounded-full px-3 py-1.5 transition ${
         active ? "bg-accent text-paper-raised" : "text-ink-soft hover:text-ink"
       }`}
     >

@@ -6,6 +6,8 @@ import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { useTour } from "@/components/tour/TourProvider";
 import { AuthForm } from "@/components/AuthForm";
+import { AccountUsernameField, PasswordField } from "@/components/PasswordField";
+import { passwordHint, passwordProblem } from "@/lib/auth";
 import {
   getSyncStatus,
   onSyncStatus,
@@ -80,7 +82,7 @@ export default function AccountPage() {
           <Suspense fallback={null}>
             <SupporterSection />
           </Suspense>
-          <ChangePassword />
+          <ChangePassword email={user.email ?? ""} />
           {socialEnabled() && <ProfileSection />}
           <DownloadData user={user} />
           <DeleteAccount />
@@ -260,7 +262,13 @@ function ProfileSection() {
 // Set / change the account password (works for password accounts and adds one
 // to an OAuth-only account). No current-password prompt — enable Supabase's
 // "Secure password change" (reauth) later if you want that extra step.
-function ChangePassword() {
+//
+// It is a real <form> with a real submit button, and it carries the account's
+// email in a username field, because that is the shape a password manager
+// recognises as "this person just changed their password": a bare pair of
+// inputs and a click handler gets no save prompt at all, so the manager keeps
+// offering the old password forever.
+function ChangePassword({ email }: { email: string }) {
   const { updatePassword } = useAuth();
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState("");
@@ -269,9 +277,14 @@ function ChangePassword() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  async function save() {
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
     setError(null);
-    if (password.length < 6) return setError("Use at least 6 characters.");
+    // The shared rule, not a local copy of it. This panel asked for six
+    // characters while the server required eight and a mix, so a password it
+    // accepted was refused on submit — the same bug /account/reset already fixed.
+    const problem = passwordProblem(password);
+    if (problem) return setError(problem);
     if (password !== confirm) return setError("The two passwords don't match.");
     setBusy(true);
     const res = await updatePassword(password);
@@ -296,36 +309,30 @@ function ChangePassword() {
               setOpen(true);
               setSaved(false);
             }}
-            className="shrink-0 rounded-full border border-line px-4 py-2 text-sm text-ink transition hover:border-accent/50 hover:text-accent-strong"
+            className="focus-ring shrink-0 rounded-full border border-line px-4 py-2 text-sm text-ink transition hover:border-accent/50 hover:text-accent-strong"
           >
             Change password
           </button>
         )}
       </div>
       {open && (
-        <div className="mt-4 space-y-3">
-          <label className="block text-xs font-medium uppercase tracking-wide text-ink-soft">
-            New password
-            <input
-              type="password"
-              minLength={6}
-              autoComplete="new-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-line-strong bg-paper px-3 py-2 text-sm text-ink focus-ring"
-            />
-          </label>
-          <label className="block text-xs font-medium uppercase tracking-wide text-ink-soft">
-            Confirm new password
-            <input
-              type="password"
-              minLength={6}
-              autoComplete="new-password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-line-strong bg-paper px-3 py-2 text-sm text-ink focus-ring"
-            />
-          </label>
+        <form onSubmit={save} className="mt-4 space-y-3">
+          <AccountUsernameField email={email} />
+          <PasswordField
+            label="New password"
+            name="new-password"
+            value={password}
+            onChange={setPassword}
+            autoComplete="new-password"
+            hint={passwordHint()}
+          />
+          <PasswordField
+            label="Confirm new password"
+            name="confirm-password"
+            value={confirm}
+            onChange={setConfirm}
+            autoComplete="new-password"
+          />
           {error && (
             <p className="text-sm text-ink" role="alert">
               {error}
@@ -333,10 +340,10 @@ function ChangePassword() {
           )}
           <div className="flex gap-3">
             <button
-              type="button"
+              type="submit"
               disabled={busy}
-              onClick={save}
-              className="rounded-full bg-accent px-6 py-2.5 text-sm font-semibold text-paper-raised shadow-sm transition hover:bg-accent-strong disabled:opacity-60"
+              aria-busy={busy}
+              className="focus-ring rounded-full bg-accent px-6 py-2.5 text-sm font-semibold text-paper-raised shadow-sm transition hover:bg-accent-strong disabled:opacity-60"
             >
               {busy ? "Updating…" : "Update password"}
             </button>
@@ -346,12 +353,12 @@ function ChangePassword() {
                 setOpen(false);
                 setError(null);
               }}
-              className="rounded-full border border-line px-5 py-2.5 text-sm text-ink transition hover:border-accent/50"
+              className="focus-ring rounded-full border border-line px-5 py-2.5 text-sm text-ink transition hover:border-accent/50"
             >
               Cancel
             </button>
           </div>
-        </div>
+        </form>
       )}
       {saved && !open && (
         <p className="mt-3 text-sm text-accent-strong" role="status">
