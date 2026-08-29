@@ -60,10 +60,13 @@ assistant all the way from nothing to a formal plan for the next phase.
 >   hard-flick, and `commitAt` keeps the trail honest even if it does not hold. Watch also for
 >   WebKit's cached snap positions going stale as the queue adds and removes children
 >   (`docs/continuous-feed.md` §4.9, finding 20). **Try it on a phone.**
-> - **The 25-reader load rehearsal has not been re-run** since the harness was repointed. So
->   `docs/beta-readiness.md`'s ≈2.4 Wikimedia calls per card still describes the OLD feed, and the
->   new retry ladder has still never been measured against a throttling Met. The harness is ready;
->   the run is not done. Two boxes in Phase 7 are open for exactly this.
+> - **The FULL 25-reader rehearsal has not been run.** A 3-bot smoke run passed cleanly (see the
+>   Phase 7 log), which proves the repointed harness drives the scroller — the thing that was
+>   actually broken. But 23 cards cannot produce the numbers the full run exists for: the edge cache
+>   hit ratio needs readers whose paths overlap, and the Met's 403s and breaker trips need enough
+>   Gallery traffic to provoke them. So `docs/beta-readiness.md`'s ≈2.4 Wikimedia calls per card
+>   still describes the OLD feed, and the new retry ladder is still unmeasured against a throttling
+>   museum.
 > - **`day-done` end to end.** The meter needs a signed-in account and a backend; with the cloud
 >   vars blanked it correctly fails open. Its arithmetic is unit-tested and it renders through the
 >   same `TerminusCard` as the three endings that ARE tested in a browser.
@@ -269,10 +272,17 @@ measure the app that actually exists.
       "Save trail".
 - [x] **`CLAUDE.md` §12** is the feed's map for anyone who never reads `docs/continuous-feed.md`;
       §2.2 records the reversal, §6 drops the motion sentence, §7 lists `verify:feed`.
-- [ ] **Full load rehearsal**: 25 readers, both realms, against the local production rig. Compare
-      Met requests, 403s and breaker trips against the 96-requests / zero-403s Gallery baseline,
-      and re-measure Wikimedia calls per card for `docs/beta-readiness.md` (currently ≈2.4, which
-      predates the scroller).
+- [x] **Smoke rehearsal, 3 bots / 2 minutes** — enough to prove the repointed harness actually
+      drives the scroller, which is the thing that was broken. 23 cards, **0 presses needing a
+      repeat**, 0 bot errors, 0 upstream throttles, every bot ending "time up" rather than
+      "stopped advancing". Driver calibration **22% apart** (HTTP 3.00 vs browser 3.83 requests per
+      card), inside the report's 35% band — a wider spread than the old 4%, which is what 23 cards
+      buys you. Report: `reports/loadtest/2026-08-29T12-17-53-349Z/`.
+- [ ] **Full load rehearsal**: 25 readers, 20 minutes, both realms. The smoke run proves the
+      harness; only volume can produce the numbers this box is for — the edge cache hit ratio (0.0%
+      at 3 bots, because nothing overlaps), Met 403s and breaker trips against the 96-requests /
+      zero-403s Gallery baseline, and a fresh Wikimedia-calls-per-card figure for
+      `docs/beta-readiness.md` (currently ≈2.4, which predates the scroller).
 - [ ] **Measure the new retry ladder against a THROTTLING Met.** Every failure probe in the
       pre-Phase-7 audit used Wikipedia routes. The rehearsal above is where this gets settled;
       `rig.mjs` already counts throttles per host and breaker openings from the instance logs.
@@ -697,7 +707,16 @@ comes back when the screen closes — so the disclosure is deferred by a moment,
 after the engine strip. The focus banner and the storage notice were each measured directly rather
 than inferred from the suite passing.
 
-**What was not.** The load rehearsal. The harness is correct now, but the 25-reader run has not
-happened, so `docs/beta-readiness.md`'s ≈2.4 Wikimedia calls per card still describes the old feed
-and the retry ladder is still unmeasured against a throttling museum. It is stated as open rather
-than quietly rounded off, because a number in that file is one somebody will quote.
+**The harness was then proved on a 3-bot smoke run**, which is the part the fixes above are
+actually about: 23 cards, **0 presses needing a repeat**, 0 errors, 0 upstream throttles, and every
+bot ending "time up". Against the unfixed driver that same run would have been zero cards and three
+bots reporting `stopped advancing`. Driver calibration came out **22% apart** (HTTP 3.00 against
+browser 3.83 requests per card) — inside the report's 35% band, and a wider spread than the old 4%
+purely because 23 cards is a small sample.
+
+**What was not done.** The FULL 25-reader rehearsal. Volume is the whole point of it and 23 cards
+cannot stand in: the edge cache hit ratio needs readers whose paths overlap (it read 0.0% here,
+correctly), and the Met's 403s and breaker trips need enough Gallery traffic to provoke them. So
+`docs/beta-readiness.md`'s ≈2.4 Wikimedia calls per card still describes the old feed, and the retry
+ladder is still unmeasured against a throttling museum. Stated as open rather than quietly rounded
+off, because a number in that file is one somebody will quote.

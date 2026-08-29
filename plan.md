@@ -136,9 +136,13 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > harness was repointed at the scroller in the same change (the browser driver was reading
 > `main h1`.first(), which in a scroller is the first stop of the session forever — every browser
 > bot would have reported a healthy app as `stopped advancing`), and `bot-http.mjs` now models the
-> queue. But the 25-reader run itself has not happened since, so `docs/beta-readiness.md`'s
-> **≈2.4 Wikimedia calls per card predates the scroller** and the new retry ladder has never been
-> measured against a throttling Met. Run `npm run bots:run` before quoting either.
+> queue. **A 3-bot smoke run passed cleanly** (23 cards, zero re-presses, zero errors, drivers 22%
+> apart), which proves the harness drives the scroller — but volume is what the full run is for, and
+> 23 cards produce neither an edge cache hit ratio nor enough Gallery traffic to provoke the museum.
+> So `docs/beta-readiness.md`'s **≈2.4 Wikimedia calls per card predates the scroller** and the new
+> retry ladder has never been measured against a throttling Met.
+> `npm run bots:seed -- --count 25` then `npm run bots:run -- --bots 25 --minutes 20` before quoting
+> either.
 >
 > Otherwise open. **Phase 29 (branches) is complete and verified.** Phases 28 and 29 together are the answer
 > to "what is actually ours": Drift borrows its nodes, so it owns the connections between them. A

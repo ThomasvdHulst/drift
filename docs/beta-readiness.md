@@ -45,7 +45,9 @@ The four questions this answers:
 > card.** Discover went DOWN (a thread pull hands three materialised cards back to the buffer); the
 > two 1.36s are lookahead not yet consumed and amortise with session length, to 1.15 over 26 cards.
 > Those are CLIENT requests and are NOT the same measurement as the UPSTREAM Wikimedia figure
-> below. **Re-measure with `npm run bots:run` before quoting the ≈2.4 to anyone.**
+> below. A 3-bot smoke run of the repointed harness came out at 3.22 app requests per card with zero
+> throttles, but 23 cards is not a load figure. **Re-measure with a full `npm run bots:run` (25 bots,
+> 20 minutes) before quoting the ≈2.4 to anyone.**
 >
 > - **Cost per card, measured over a real 12-card session** (Read more every 4th, a reaction every
 >   6th): **≈2.4 Wikimedia calls per card** — threads 1.0, discover ~0.5, Read more ~0.6 (the HTML
