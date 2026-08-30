@@ -10,9 +10,41 @@ const defaultSleep = (ms: number): Promise<void> =>
     setTimeout(resolve, ms);
   });
 
+/**
+ * What one caller asks of the gate. Both fields exist for the same reason: one
+ * shared window, callers that are not equally important.
+ *
+ * On The Met a card with no thread chips still reads, but a room with no cards
+ * is broken and the feed has nothing to fall back to. So threads and the
+ * doorway declare themselves `optional`, and the essential work is protected
+ * from them in two different ways — one about TIME, one about VOLUME.
+ */
+export interface GateTicket {
+  /**
+   * Refuse rather than hold THIS caller longer than this, overriding the gate's
+   * own ceiling. Callers are strictly serialised, so one that sits waiting five
+   * seconds also delays everyone queued behind it; giving up at 1.2s hands back
+   * the time as well as the slot. A refusal charges nothing (see below), so the
+   * budget declined here really is still there for the next caller.
+   */
+  maxWaitMs?: number;
+  /**
+   * This is OPTIONAL work and must leave the gate's `reserve` alone.
+   *
+   * ⚠️ WITHOUT THIS, YIELDING ON TIME IS NOT ENOUGH, and the difference was
+   * measured rather than reasoned. On 30 August two rooms plus five cards' worth
+   * of threads spent all 30 slots in four seconds, and the next reader to open a
+   * room got ZERO cards. Those threads never waited, so they never yielded —
+   * they simply arrived first and ate the window. A ceiling cannot fix that;
+   * only a floor can. This is the same failure as the three Gallery bots that
+   * ended "no seed card" in the 25-reader rehearsal.
+   */
+  optional?: boolean;
+}
+
 export interface Gate {
   /** Wait for this caller's turn, keeping starts at least `minGapMs` apart. */
-  next(sleep: (ms: number) => Promise<void>): Promise<void>;
+  next(sleep: (ms: number) => Promise<void>, ticket?: GateTicket): Promise<void>;
 }
 
 export interface GateOptions {
@@ -44,6 +76,17 @@ export interface GateOptions {
    * degrades the way it already does for an empty batch (a thread neighbour).
    */
   maxWaitMs?: number;
+  /**
+   * Slots in every window that `optional` callers may not take.
+   *
+   * A floor under the essential work, not a quota on the optional work: an
+   * optional caller sees a burst of `burst - reserve` and is refused past it,
+   * while everything else still sees the whole `burst`. So threads cost nothing
+   * extra while the window is quiet, and stop eating it once they have had the
+   * larger share. Sized so a room can always land: a Gallery discover is 8 to 12
+   * records, and returning half a room beats returning none.
+   */
+  reserve?: number;
 }
 
 /** Thrown when a gate refuses rather than holding a caller past `maxWaitMs`.
@@ -69,25 +112,41 @@ export function isBudgetExhausted(err: unknown): err is GateBudgetError {
  *  bucket-shaped limit is never asked for more than it grants. */
 export function makeGate(minGapMs: number, opts: GateOptions = {}): Gate {
   const { burst, windowMs, maxWaitMs } = opts;
+  // Clamped here rather than checked at every use: a reserve at or above the
+  // burst would leave optional callers an allowance of zero, and the index that
+  // finds their blocking slot would run off the end of the window. One slot has
+  // to stay available to them for the arithmetic below to mean anything.
+  const reserve = burst
+    ? Math.max(0, Math.min(opts.reserve ?? 0, burst - 1))
+    : 0;
   let chain: Promise<void> = Promise.resolve();
   let lastStartAt = 0;
   // Start times inside the current window, oldest first. Bounded by `burst`.
   const recent: number[] = [];
 
   return {
-    next(sleep) {
+    next(sleep, ticket = {}) {
+      // The caller's own ceiling wins when it states one, so a low-priority
+      // caller can yield the window without changing it for anybody else.
+      const ceiling = ticket.maxWaitMs ?? maxWaitMs;
       const mine = chain.then(async () => {
         let wait = Math.max(0, lastStartAt + minGapMs - Date.now());
         if (burst && windowMs) {
-          // Drop anything that has aged out, then wait for the oldest survivor
-          // to age out if the window is already full.
+          // Optional work may not touch the reserve. Everything else sees the
+          // whole budget, so the floor costs nothing while the window is quiet.
+          const allowed = ticket.optional ? Math.max(0, burst - reserve) : burst;
+          // Drop anything that has aged out, then wait for the slot THIS caller
+          // needs to free up. For a full-budget caller that is the oldest entry;
+          // for an optional one it is the one `allowed` back from the end, which
+          // is what holds the reserve open.
           const cutoff = Date.now() - windowMs;
           while (recent.length && recent[0] <= cutoff) recent.shift();
-          if (recent.length >= burst) {
-            wait = Math.max(wait, recent[0] + windowMs - Date.now());
+          if (recent.length >= allowed) {
+            const blocking = recent[recent.length - allowed];
+            wait = Math.max(wait, blocking + windowMs - Date.now());
           }
         }
-        if (maxWaitMs !== undefined && wait > maxWaitMs) throw new GateBudgetError(wait);
+        if (ceiling !== undefined && wait > ceiling) throw new GateBudgetError(wait);
         if (wait > 0) await sleep(wait);
         lastStartAt = Date.now();
         if (burst && windowMs) {
@@ -285,6 +344,16 @@ export interface FetchJsonOptions {
    * instead of being retried into the ground. See `makeBreaker`.
    */
   breaker?: Breaker;
+  /**
+   * How long the GATE may hold this particular request waiting for budget,
+   * overriding the gate's own ceiling. See `Gate.next`: this is how one source
+   * ranks its callers against a shared window, so the optional work (threads,
+   * the doorway) yields to the work without which the screen is empty.
+   */
+  maxWaitMs?: number;
+  /** Marks this request as optional work, so the gate keeps its `reserve` for
+   *  the calls the screen cannot do without. See `GateTicket.optional`. */
+  optional?: boolean;
 }
 
 /**
@@ -309,13 +378,15 @@ async function fetchUpstream(
     timeoutMs,
     retryOn = [],
     breaker,
+    maxWaitMs,
+    optional,
   } = opts;
 
   for (let attempt = 0; ; attempt++) {
     // Before the gate, not after: an open circuit should cost nothing at all,
     // not a turn in the queue.
     breaker?.guard(url);
-    if (gate) await gate.next(sleep);
+    if (gate) await gate.next(sleep, { maxWaitMs, optional });
     let res: Response;
     try {
       res = await fetch(url, {

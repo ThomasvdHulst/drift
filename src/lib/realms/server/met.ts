@@ -97,7 +97,18 @@ const UA =
  * after 6 seconds, so holding one for longer would spend the museum's budget on
  * a batch nobody is still listening for.
  */
-const metGate = makeGate(50, { burst: 30, windowMs: 15_000, maxWaitMs: 5_000 });
+const metGate = makeGate(50, {
+  burst: 30,
+  windowMs: 15_000,
+  maxWaitMs: 5_000,
+  // A floor under the cards, and SIZED BY MEASUREMENT rather than by what a
+  // full room costs. At 10 a single reader lost the thread chips on three cards
+  // out of four in a quiet window: a 12-record seed plus one card's threads is
+  // already 21, so a reserve of 10 cut the optional work off almost at once.
+  // Six leaves optional work 24 of the 30 and still guarantees a room can land
+  // — a partial one, which is exactly what this phase decided is acceptable.
+  reserve: 6,
+});
 
 /** The museum's edge throttles with 403. See the header note. */
 const RETRY_ON = [403];
@@ -145,7 +156,32 @@ const metBreaker = makeBreaker({ threshold: 5, cooldownMs: 35_000 });
  */
 const METRETRIES = 1;
 
-async function metFetch(url: string, timeoutMs = 6000): Promise<unknown> {
+/**
+ * HOW LONG EACH KIND OF CALLER MAY HOLD THE WINDOW.
+ *
+ * One reader opening the Gallery already spends most of a burst: a seed is 15
+ * record fetches (SEED_LIMIT 12 × the baked overfetch) and the first card's
+ * threads are another four or so, against a budget of 30 per 15 seconds. So the
+ * budget IS contended in normal use, and something has to lose.
+ *
+ * The order falls straight out of what the reader sees. A card with no thread
+ * chips still reads; a room with no cards is broken and the feed has nothing to
+ * fall back to. So CARDS wait and EVERYTHING OPTIONAL yields:
+ *
+ *  - discover and summary keep the gate's own 5s, sized to the feed's 6s abort;
+ *  - threads and the doorway give up at 1.2s and leave the window behind them.
+ *
+ * Yielding is real, not cosmetic: a gate refusal takes no slot (pinned by
+ * "charges nothing for a refusal" in upstream.test.ts), so the budget a thread
+ * declines to wait for is still there for the next discover.
+ */
+const WAIT_OPTIONAL_MS = 1200;
+
+async function metFetch(
+  url: string,
+  timeoutMs = 6000,
+  optional = false,
+): Promise<unknown> {
   return fetchJson(url, {
     headers: headers(),
     gate: metGate,
@@ -153,6 +189,9 @@ async function metFetch(url: string, timeoutMs = 6000): Promise<unknown> {
     retries: METRETRIES,
     breaker: metBreaker,
     timeoutMs,
+    // The two halves of the same decision: optional work gives up sooner AND
+    // keeps its hands off the reserve.
+    ...(optional ? { maxWaitMs: WAIT_OPTIONAL_MS, optional: true } : {}),
   });
 }
 
@@ -227,7 +266,7 @@ function rememberObject(id: number, obj: MetObject) {
  */
 async function searchIds(
   params: Record<string, string>,
-  opts: { rethrow?: boolean } = {},
+  opts: { rethrow?: boolean; optional?: boolean } = {},
 ): Promise<number[]> {
   const { q, ...rest } = params;
   const qs = new URLSearchParams({
@@ -248,7 +287,10 @@ async function searchIds(
     run = (async () => {
       // The largest department is ~700 KB of ids, so this gets a longer budget
       // than a record fetch.
-      const raw = (await metFetch(`${API}/search?${qs}`, 12000)) as {
+      // The first caller's ceiling is the one the shared promise runs under,
+      // exactly as `rethrow` already works: whoever arrives first sets the
+      // terms for everyone waiting behind them.
+      const raw = (await metFetch(`${API}/search?${qs}`, 12000, opts.optional)) as {
         objectIDs?: number[] | null;
       };
       const ids = Array.isArray(raw?.objectIDs) ? raw.objectIDs : [];
@@ -347,7 +389,7 @@ async function poolFor(bucket: string): Promise<number[]> {
  *  `null`, because a discover batch that loses a record still serves. */
 async function fetchObject(
   id: number,
-  opts: { rethrow?: boolean } = {},
+  opts: { rethrow?: boolean; optional?: boolean } = {},
 ): Promise<MetObject | null> {
   const hit = objectCache.get(id);
   if (hit) return hit;
@@ -360,7 +402,11 @@ async function fetchObject(
   let run = inFlightObject.get(id);
   if (!run) {
     run = (async () => {
-      const raw = (await metFetch(`${API}/objects/${id}`)) as MetObject;
+      const raw = (await metFetch(
+        `${API}/objects/${id}`,
+        6000,
+        opts.optional,
+      )) as MetObject;
       if (!raw || typeof raw.objectID !== "number") return null;
       rememberObject(id, raw);
       return raw;
@@ -383,11 +429,94 @@ async function fetchObject(
   }
 }
 
+/**
+ * Why a batch came up short. `refused` counts the records we could not even ASK
+ * for — our own gate's budget, or an open circuit — as opposed to records the
+ * museum answered about (a 404 is a real answer and is not counted here).
+ *
+ * ⚠️ THE DISTINCTION IS THE WHOLE POINT. `refused > 0` means the batch is short
+ * because of us, and asking for the remaining ids in this window can only
+ * produce more refusals — which is what lets `metDiscover` stop early instead of
+ * firing fifteen requests that are all going to throw.
+ */
+interface BatchOutcome {
+  objs: MetObject[];
+  refused: number;
+  /** What did the refusing: our rate budget, or the breaker. For the log line. */
+  reason: "rate budget" | "circuit open" | null;
+}
+
+/**
+ * Fetch many records, dropping the ones that fail, and SAY WHY when some do.
+ *
+ * ⚠️ THIS EXISTS BECAUSE THE REFUSAL WE ACTUALLY HIT WAS INVISIBLE. `fetchObject`
+ * returns `null` for everything and its comment reasoned that "a throttle has
+ * already been logged by the retry core" — true for a 403, and FALSE for a
+ * `GateBudgetError` or a `CircuitOpenError`, because both are thrown before
+ * `fetchUpstream` ever logs a line. So the one class of refusal that fires in
+ * normal use left no trace anywhere: measured 30 August, four Gallery rooms in a
+ * row served zero cards in 1.4ms each and the server log was completely empty.
+ *
+ * Aggregated deliberately: fifteen refused records are ONE line, not fifteen.
+ */
+async function fetchObjectsWithOutcome(
+  ids: number[],
+  optional = false,
+): Promise<BatchOutcome> {
+  let refused = 0;
+  let reason: BatchOutcome["reason"] = null;
+  const settled = await Promise.all(
+    ids.map(async (id) => {
+      try {
+        // `rethrow` so the failure reaches us at all — it already treats a 404
+        // as a settled answer rather than an error, which is exactly right: a
+        // record the museum says does not exist is not a refusal.
+        return await fetchObject(id, { rethrow: true, optional });
+      } catch (err) {
+        if (isBudgetExhausted(err)) {
+          refused++;
+          reason ??= "rate budget";
+        } else if (isCircuitOpen(err)) {
+          refused++;
+          reason ??= "circuit open";
+        }
+        // Anything else (a timeout, a 403 that exhausted its retry) has already
+        // been logged by the retry core, and still costs us the record.
+        return null;
+      }
+    }),
+  );
+  return {
+    objs: settled.filter((o): o is MetObject => o !== null),
+    refused,
+    reason,
+  };
+}
+
 /** Fetch many records, dropping the ones that fail. Order is not preserved
- *  because the caller filters and truncates anyway. */
-async function fetchObjects(ids: number[]): Promise<MetObject[]> {
-  const settled = await Promise.all(ids.map((id) => fetchObject(id)));
-  return settled.filter((o): o is MetObject => o !== null);
+ *  because the caller filters and truncates anyway.
+ *
+ *  `label` names the caller in the one line this prints when records were
+ *  refused, so a thinned room can be told apart from an empty one in a deploy
+ *  log. Callers that want to REACT to the shortfall (rather than only report it)
+ *  use `fetchObjectsWithOutcome` directly. */
+async function fetchObjects(
+  ids: number[],
+  label: string,
+  optional = false,
+): Promise<MetObject[]> {
+  const out = await fetchObjectsWithOutcome(ids, optional);
+  reportShortfall(label, out, ids.length);
+  return out.objs;
+}
+
+/** The one line. Silent when nothing was refused, which is the normal case. */
+function reportShortfall(label: string, out: BatchOutcome, asked: number) {
+  if (!out.refused) return;
+  console.warn(
+    `[met] ${label}: ${out.objs.length}/${asked} records, ` +
+      `${out.refused} refused (${out.reason})`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -527,7 +656,7 @@ function byExactArtist(objs: MetObject[], name: string): MetObject[] {
 
 async function artistSample(name: string, limit = ARTIST_SAMPLE): Promise<MetObject[]> {
   const ids = (await searchIds({ artistOrCulture: "true", q: name })).slice(0, limit);
-  return usable(await fetchObjects(ids));
+  return usable(await fetchObjects(ids, `artist-sample:${name}`));
 }
 
 /**
@@ -545,7 +674,7 @@ export async function metArtistSearch(query: string): Promise<
   if (q.length < 2) return [];
   const ids = (await searchIds({ artistOrCulture: "true", q })).slice(0, 40);
   if (!ids.length) return [];
-  const objs = await fetchObjects(ids);
+  const objs = await fetchObjects(ids, `artist-search:${q}`);
 
   // Rank over works we could actually SHOW: public domain here, with an image.
   const shown = usable(objs);
@@ -649,7 +778,10 @@ async function metArtistDiscover(
     if (!ids.length) return [];
     const start = windowStart(offset, ids.length);
     const slice = ids.slice(start, start + Math.ceil(limit * OVERFETCH_LIVE));
-    const mine = byExactArtist(usable(await fetchObjects(slice)), name);
+    const mine = byExactArtist(
+      usable(await fetchObjects(slice, `artist:${name}`)),
+      name,
+    );
     const cards = mine.slice(0, limit);
     await resolveArtistArticles(cards);
     return cards.map(toCardWithBody);
@@ -675,7 +807,7 @@ async function metArtistDiscover(
   // Ring 1 is "around" the artist, so their OWN work is excluded — otherwise
   // widening would keep serving what ring 0 already showed.
   const want = foldName(name);
-  const others = usable(await fetchObjects(slice)).filter(
+  const others = usable(await fetchObjects(slice, `artist-ring:${name}`)).filter(
     (o) => foldName(o.artistDisplayName ?? "") !== want,
   );
   const cards = others.slice(0, limit);
@@ -766,7 +898,7 @@ async function metFormDiscover(
   for (let i = 0; i < take && i < ordered.length; i++) {
     slice.push(ordered[(start + i) % ordered.length]);
   }
-  const cards = usable(await fetchObjects(slice)).slice(0, limit);
+  const cards = await fetchInWaves(slice, limit, bucket);
   await resolveArtistArticles(cards);
   return cards.map(toCardWithBody);
 }
@@ -802,10 +934,72 @@ export async function metDiscover(
     slice.push(ordered[(start + i) % ordered.length]);
   }
 
-  const objs = await fetchObjects(slice);
-  const cards = usable(objs).slice(0, lim);
+  const cards = await fetchInWaves(slice, lim, bucket);
   await resolveArtistArticles(cards);
   return cards.map(toCardWithBody);
+}
+
+/**
+ * Fetch a candidate slice in waves, and STOP EARLY for either good reason.
+ *
+ * ⚠️ THIS REPLACED ONE `Promise.all` OVER THE WHOLE SLICE, AND THAT SHAPE IS THE
+ * BUG IT FIXES. Every id went out at once, so when the gate's window was spent
+ * all fifteen threw together and the room served ZERO cards — measured in
+ * production on 30 August, where five sequential room requests from one person
+ * left the last two empty. A room that is short by half still reads. A room with
+ * nothing in it is broken, and the feed has to fall back to a thread neighbour.
+ *
+ * Two stops, and they are different things:
+ *
+ *  - ENOUGH. The first wave asks for exactly `want`, not `want × overfetch`. The
+ *    overfetch exists to cover records the filter drops, and on a baked pool
+ *    almost nothing is dropped, so paying for it up front was pure waste. A cold
+ *    room measured 15 requests before this and 12 after, for the same 12 cards.
+ *  - REFUSED. If a wave came back short because OUR OWN gate or breaker refused
+ *    it, the remaining ids cannot do better inside this window; they would only
+ *    throw. Return what we have and say so.
+ *
+ * A record the museum answered about (a 404, a filtered work) is NOT a refusal
+ * and does not stop anything: that is what the next wave is for.
+ */
+async function fetchInWaves(
+  slice: number[],
+  want: number,
+  label: string,
+): Promise<MetObject[]> {
+  const kept: MetObject[] = [];
+  let asked = 0;
+  let refused = 0;
+  let reason: BatchOutcome["reason"] = null;
+
+  while (asked < slice.length && kept.length < want) {
+    // Ask for exactly the shortfall. The first wave is therefore `want`, and any
+    // later one only tops up what the filter removed.
+    const wave = slice.slice(asked, asked + (want - kept.length));
+    if (!wave.length) break;
+    asked += wave.length;
+
+    const out = await fetchObjectsWithOutcome(wave);
+    kept.push(...usable(out.objs));
+    if (out.refused) {
+      refused += out.refused;
+      reason ??= out.reason;
+      break;
+    }
+  }
+
+  if (refused) {
+    console.warn(
+      `[met] ${label}: ${kept.length}/${want} cards, ` +
+        `${refused} of ${asked} records refused (${reason})`,
+    );
+  } else if (kept.length < want) {
+    // Not a refusal: the pool simply ran short of works that survive the filter.
+    // Worth one line all the same, because "thin room" and "throttled room" look
+    // identical from the outside and are fixed by completely different things.
+    console.info(`[met] ${label}: ${kept.length}/${want} cards from ${asked} records`);
+  }
+  return kept.slice(0, want);
 }
 
 /**
@@ -822,7 +1016,9 @@ export async function metDiscover(
  * "THE MOVEMENT" over a subject is a small lie to the reader.
  */
 export async function metRelated(id: string): Promise<RelatedCandidate[]> {
-  const self = await fetchObject(Number(id));
+  // The card's own record, on the optional lane like everything else this
+  // route does: threads are a bonus, and the reader is already reading the card.
+  const self = await fetchObject(Number(id), { optional: true });
   if (!self) return [];
 
   const out: RelatedCandidate[] = [];
@@ -852,11 +1048,12 @@ export async function metRelated(id: string): Promise<RelatedCandidate[]> {
     // makes the common case cost three searches instead of four.
     if (facetsFound() >= FACETS_SHOWN) return;
     try {
-      const ids = (await searchIds(params))
+      const ids = (await searchIds(params, { optional: true }))
         .filter((n) => !usedIds.has(n))
         .slice(0, FETCH_PER_FACET);
       if (!ids.length) return;
-      for (const a of usable(await fetchObjects(ids)).slice(0, PER_FACET)) {
+      const found = await fetchObjects(ids, `threads ${facet}`, true);
+      for (const a of usable(found).slice(0, PER_FACET)) {
         if (usedIds.has(a.objectID)) continue;
         usedIds.add(a.objectID);
         out.push(metToCandidate(a, label, facet, eyebrow));
@@ -960,7 +1157,7 @@ export async function metArtworkMeta(id: string): Promise<ForwardEntities | null
   // "no doorway" onto that card at the edge until tomorrow. The route turns a
   // throw into no doorway + NO_STORE, which is the same thing for the reader
   // and a very different thing for the cache.
-  const obj = await fetchObject(Number(id), { rethrow: true });
+  const obj = await fetchObject(Number(id), { rethrow: true, optional: true });
   if (!obj) return null;
   const [ok] = usable([obj]);
   if (!ok) return null;
@@ -998,7 +1195,9 @@ export async function metTopMatch(
   //
   // `rethrow` because the doorway must be able to tell "nothing here" from
   // "could not look" — the route caches the first for a day.
-  const ids = (await searchIds({ q: phraseQuery(q) }, { rethrow: true })).slice(0, 5);
+  const ids = (
+    await searchIds({ q: phraseQuery(q) }, { rethrow: true, optional: true })
+  ).slice(0, 5);
   if (!ids.length) return null;
 
   // ONE AT A TIME, STOPPING AT THE FIRST THAT WILL DO. This used to fetch all
@@ -1010,7 +1209,7 @@ export async function metTopMatch(
   // The gate itself stays in lib/crossrealm.ts and is passed in: this adapter
   // should not know what makes a doorway good, only how to stop early.
   for (const id of ids) {
-    const obj = await fetchObject(id);
+    const obj = await fetchObject(id, { optional: true });
     if (!obj) continue;
     const [ok] = usable([obj]);
     if (!ok) continue;

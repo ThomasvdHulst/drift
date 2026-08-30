@@ -5,9 +5,27 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 **tested with success**. Keep the "Current status" line accurate. Full product detail is in
 `drift-spec.md`; working rules are in `CLAUDE.md`.
 
-> ## Current status: 2026-08-29
+> ## Current status: 2026-08-30
 >
-> ### 📜 The reading feed is now a CONTINUOUS SCROLLER
+> ### 🏛️ The Gallery's rate ceiling was measured, and it is not what anyone assumed
+>
+> **Phase 33I (30 August).** The Met's 403 is an **Imperva bot-mitigation block**, not the
+> 80 req/sec their docs promise: the measured ceiling is about **2.4 req/s per IP**. The gate's
+> rate was already right. What was wrong is that **our own gate refused before the museum did,
+> all-or-nothing and completely silently** — reproduced on the live site with five sequential
+> room requests from one person. Refusals are now logged, `metDiscover` thins instead of
+> emptying, and optional work (threads, the doorway) yields to cards by both time and volume.
+> Full entry at the bottom, including why the `reserve` is 6 and not 10.
+>
+> ⚠️ **This allocates a scarce budget; it does not create one.** The actual fix is to spend
+> less, and the two candidates are costed in the study
+> (<https://claude.ai/code/artifact/8ceed2ec-fd08-4e34-80cb-b06cddcd5879>): a **baked doorway
+> index** from The Met's CC0 CSV (the doorway is ~2.5 Met requests per Encyclopedia card and
+> most of the museum's load), and **Cleveland Museum of Art as a second Gallery source** — CC0,
+> no key, and its search returns **whole records** rather than ids, so a room is one request
+> instead of twenty-one. Both are for their own branch.
+>
+> ### 📜 The reading feed is a CONTINUOUS SCROLLER
 >
 > **The card-at-a-time swipe is gone.** `/drift` is a CSS scroll-snap feed, one card per screen,
 > 1:1 with your finger, with a bounded three-card queue below the reader and an ending you scroll
@@ -5966,3 +5984,106 @@ re-read as RENDERED TEXT in a real Chromium (a throwaway script that walks the D
 prose, which is the only way to read copy that is split across a dozen JSX fragments) — that is how
 the two clumsy sentences this pass first introduced were caught, one of them a subject-verb
 disagreement.
+
+---
+
+## Phase 33I — a Gallery that thins instead of emptying (2026-08-30)
+
+**The Gallery's rate problem was measured properly, and the thing refusing us first turned out
+not to be The Met.** The study is at
+<https://claude.ai/code/artifact/8ceed2ec-fd08-4e34-80cb-b06cddcd5879>; this entry is what was
+built from it.
+
+### What the study found
+
+⚠️ **The Met's 403 is an Imperva bot-mitigation block, not the rate limit their docs describe.**
+`X-CDN: Imperva` is on every response. The docs promise **80 requests per SECOND**; measured
+from one IP on 30 August, the first refusal lands at request **73** of a 10/s burst, i.e. a real
+ceiling of about **2.4 req/s**. That is a 30x gap between documented and actual, and it explains
+the note in §4 about the budget staying shrunk for a day: that is Imperva reputation scoring on
+the client IP, not a bucket refilling. Carrying their `visid_incap_*` session cookie back (we
+send none) moves first-refusal from #73 to #83 — **worth 15%, not worth a change.**
+
+✅ **The gate's rate was already right.** `makeGate(50, { burst: 30, windowMs: 15_000 })` is
+2 req/s, which is the measured ceiling. Nobody needs to re-derive that number.
+
+⚠️ **But the gate refused before the museum did, and did it silently.** Reproduced on
+`usedrift.org` with **five sequential room requests from one person**: rooms 4 and 5 returned
+`cards=0` in 0.20s and 0.09s. Locally the refusals land in **1.4 ms** — no network request
+attempted — and the server log contained **zero lines** about it. `fetchObject`'s catch returned
+`null` for everything, and its comment ("a throttle has already been logged by the retry core")
+is true for a 403 and **false for `GateBudgetError` and `CircuitOpenError`**, which are thrown
+before `fetchUpstream` ever logs. So the one class of refusal that fires in normal use left no
+trace at all.
+
+The arithmetic behind it: a Gallery seed is `SEED_LIMIT 12 × 1.2 = 15` records and a refill is
+`REFILL_TOPICS 3 × ceil(4 × 1.2) = 15`, against a burst of 30. **One reader opening the Gallery
+and drifting once already exceeds the window.** That is the "no seed card" three Gallery bots
+ended on in the 25-reader rehearsal.
+
+### What was built
+
+1. **The refusal is visible.** `fetchObjectsWithOutcome` classifies each failure with the
+   predicates already in `upstream.ts` (`isBudgetExhausted`, `isCircuitOpen`, `upstreamStatus`)
+   and reports **one aggregated line per batch**, never one per record:
+   `[met] islamic: 0/8 cards, 8 of 8 records refused (rate budget)`. A batch that is merely thin
+   (the filter dropped works) logs a different line, because "thin room" and "throttled room"
+   look identical from outside and are fixed by completely different things.
+
+2. **`metDiscover` fetches in WAVES and stops early**, replacing one `Promise.all` over the whole
+   slice — the shape that made a batch all-or-nothing. The first wave asks for exactly `lim`
+   rather than `lim × overfetch`, later waves top up only the shortfall, and a wave refused by
+   our own gate or breaker ends the batch. **Measured: a cold 12-card room went from 15 record
+   fetches to 12**, and a partial room is now the normal outcome instead of an empty one.
+
+3. **Optional work yields to cards**, through a new `GateTicket` on `Gate.next` with two halves:
+   - `maxWaitMs` (TIME): threads and the doorway give up at **1.2s** where discover may hold for
+     5s. Callers are strictly serialised, so this hands back the queue as well as the slot.
+   - `optional` + `GateOptions.reserve` (VOLUME): optional callers see a burst of
+     `burst - reserve` and may not touch the rest.
+
+   ⚠️ **THE SECOND HALF IS NOT REDUNDANT, AND MEASUREMENT IS THE ONLY REASON WE KNOW.** With the
+   ceiling alone, two rooms plus five cards' worth of threads spent all 30 slots in four seconds
+   and the next reader to open a room still got **zero cards**: those threads never waited, so
+   they never yielded — they simply arrived first and ate the window. A ceiling cannot fix that;
+   only a floor can. With `reserve: 6` the same sequence serves **6 cards**.
+
+   ⚠️ **`reserve` IS SIZED BY MEASUREMENT, NOT BY WHAT A FULL ROOM COSTS.** It was 10 first, and
+   that broke a single reader: a 12-record seed plus one card's threads is already 21, so at 10
+   the optional lane was cut off almost immediately and **three cards out of four showed no
+   thread chips at all** in a quiet window. Six leaves optional work 24 of the 30. Do not raise
+   it without re-running both checks below — they pull in opposite directions.
+
+### The trade, stated plainly
+
+A card with no thread chips still reads. A room with no cards is broken and the feed has nothing
+to fall back to. So when the window is contended, **threads and the doorway lose first, by
+design.** That is the anti-slot-machine principle applied to a rate limit rather than to a
+feature.
+
+None of this creates budget. It allocates a scarce one honestly, and the logs now say when it
+runs out. **Spending less is the actual fix and it is item 3 of the study** (a baked doorway
+index from The Met's CC0 CSV, which carries `Title`, `Tags`, `Is Public Domain` and artist death
+years — everything `passesReverseGate` and the EU copyright test need, with no upstream call).
+That goes on its own branch, and Cleveland as a second Gallery source is item 4.
+
+### Gates
+
+`npm run build` clean, `npm run lint` clean, **1,423 tests green** (12 new: the gate's ticket and
+reserve in `upstream.test.ts`, the wave/visibility behaviour in `met.request.test.ts`).
+`npm run verify:feed` re-run against a production build.
+
+Verified against the live museum on a local production rig with
+`NODE_OPTIONS="--import ./scripts/bots/upstream-count.mjs"`:
+
+| Check | Before | After |
+|---|---|---|
+| The production repro, 7 rooms back to back | rooms 4-7 `cards=0`, **empty log** | every room logs exactly why; costume 0 → 1 |
+| Cold 12-card room | 15 record fetches | **12** |
+| Starvation: rooms + a burst of threads, then a new room | `cards=0` | **`cards=6`** |
+| Paced reader, a card every 6s | — | chips on **every** card (3, 3, 5, 3) |
+| Realistic session (seed + threads + doorway + 3 refills) | — | 30 requests, **zero refusals** |
+
+⚠️ **Rooms 5-7 of the 7-in-4-seconds repro still serve zero cards, and that is correct.** Sixty
+requests were demanded against a window of thirty; no allocation policy can invent budget. The
+honest answer there is to spend less, which is items 3 and 4.

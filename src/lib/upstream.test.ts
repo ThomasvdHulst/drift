@@ -398,3 +398,167 @@ describe("makeGate with a rolling budget", () => {
     expect(isBudgetExhausted(new CircuitOpenError("host"))).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The per-caller ceiling.
+//
+// One shared window, callers that are not equally important. On The Met a card
+// with no thread chips still reads, but a room with no cards is broken — so
+// threads and the doorway give up early and leave the budget to discover. The
+// property that makes that work is the one already pinned above: a refusal
+// charges nothing, so yielding really does hand the window over.
+// ---------------------------------------------------------------------------
+describe("a per-call maxWaitMs", () => {
+  /** Spend the whole budget, then report what each kind of caller gets. */
+  function spent() {
+    const gate = makeGate(50, { burst: 2, windowMs: 10_000, maxWaitMs: 5_000 });
+    const realNow = Date.now;
+    let t = 1_000_000;
+    Date.now = () => t;
+    const tick = async (ms: number) => {
+      t += ms;
+    };
+    return { gate, tick, restore: () => (Date.now = realNow), at: () => t };
+  }
+
+  it("refuses earlier than the gate's own ceiling", async () => {
+    const { gate, tick, restore } = spent();
+    try {
+      await gate.next(tick);
+      await gate.next(tick);
+      // The third would wait ~9.9s. The gate's own ceiling is 5s, so a caller
+      // that states 1.2s is refused by ITS ceiling, not the gate's.
+      await expect(gate.next(tick, { maxWaitMs: 1_200 })).rejects.toThrow(GateBudgetError);
+    } finally {
+      restore();
+    }
+  });
+
+  it("does not change the ceiling, or the budget, for the next caller", async () => {
+    const gate = makeGate(50, { burst: 2, windowMs: 10_000, maxWaitMs: 5_000 });
+    const realNow = Date.now;
+    let t = 1_000_000;
+    Date.now = () => t;
+    const tick = async (ms: number) => {
+      t += ms;
+    };
+    try {
+      await gate.next(tick);
+      await gate.next(tick);
+      // A caller stating 1.2s is refused where the gate would have allowed 5s.
+      await expect(gate.next(tick, { maxWaitMs: 1_200 })).rejects.toThrow(GateBudgetError);
+      // That refusal must leave nothing behind: neither a spent slot nor its
+      // own ceiling. Roll the window over and a plain caller is served at once.
+      t += 10_100;
+      await expect(gate.next(tick)).resolves.toBeUndefined();
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  it("lets a patient caller through where an impatient one was refused", async () => {
+    // The pair that matters: the same moment, two ceilings, two outcomes.
+    const gate = makeGate(50, { burst: 2, windowMs: 3_000, maxWaitMs: 5_000 });
+    const realNow = Date.now;
+    let t = 1_000_000;
+    Date.now = () => t;
+    const tick = async (ms: number) => {
+      t += ms;
+    };
+    try {
+      await gate.next(tick);
+      await gate.next(tick);
+      // ~2.95s of wait. Threads refuse at 1.2s…
+      await expect(gate.next(tick, { maxWaitMs: 1_200 })).rejects.toThrow(GateBudgetError);
+      // …and discover, which may hold for 5s, gets served.
+      await expect(gate.next(tick)).resolves.toBeUndefined();
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  it("keeps the reserve for essential work once optional work has had its share", async () => {
+    // The floor, and the measured reason for it: a ceiling alone did not help,
+    // because threads that never WAIT never yield — they just arrive first.
+    // burst 10, reserve 4 ⇒ optional callers stop at 6, essential ones get 10.
+    const gate = makeGate(0, { burst: 10, windowMs: 10_000, maxWaitMs: 5_000 });
+    const withReserve = makeGate(0, {
+      burst: 10,
+      windowMs: 10_000,
+      maxWaitMs: 5_000,
+      reserve: 4,
+    });
+    const realNow = Date.now;
+    let t = 1_000_000;
+    Date.now = () => t;
+    const tick = async (ms: number) => {
+      t += ms;
+    };
+    try {
+      // Without a reserve, optional work can take the whole window…
+      for (let i = 0; i < 10; i++) await gate.next(tick, { optional: true });
+      await expect(gate.next(tick)).rejects.toThrow(GateBudgetError);
+
+      // …with one, it is cut off at `burst - reserve`…
+      for (let i = 0; i < 6; i++) {
+        await expect(
+          withReserve.next(tick, { optional: true }),
+        ).resolves.toBeUndefined();
+      }
+      await expect(
+        withReserve.next(tick, { optional: true }),
+      ).rejects.toThrow(GateBudgetError);
+
+      // …and the four it left are still there for the work that matters.
+      for (let i = 0; i < 4; i++) {
+        await expect(withReserve.next(tick)).resolves.toBeUndefined();
+      }
+      // Only now is the window genuinely full, for everyone.
+      await expect(withReserve.next(tick)).rejects.toThrow(GateBudgetError);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  it("charges optional work nothing extra while the window is quiet", async () => {
+    // The reserve is a floor under the essential work, not a tax on the
+    // optional work: below the line it must behave exactly as it always did.
+    const gate = makeGate(50, {
+      burst: 30,
+      windowMs: 15_000,
+      maxWaitMs: 5_000,
+      reserve: 10,
+    });
+    const realNow = Date.now;
+    let t = 1_000_000;
+    Date.now = () => t;
+    const tick = async (ms: number) => {
+      t += ms;
+    };
+    try {
+      const start = t;
+      for (let i = 0; i < 20; i++) await gate.next(tick, { optional: true });
+      // Twenty starts at 50ms spacing and not one moment more.
+      expect(t - start).toBe(950);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  it("is inert when omitted, so every existing caller is unchanged", async () => {
+    const gate = makeGate(50, { burst: 2, windowMs: 1_000, maxWaitMs: 100 });
+    const realNow = Date.now;
+    let t = 1_000_000;
+    Date.now = () => t;
+    const tick = async (ms: number) => {
+      t += ms;
+    };
+    try {
+      await gate.next(tick);
+      await gate.next(tick);
+      await expect(gate.next(tick)).rejects.toThrow(GateBudgetError);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+});
