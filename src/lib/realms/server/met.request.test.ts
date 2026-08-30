@@ -62,125 +62,101 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+// ---------------------------------------------------------------------------
+// The doorway reads a BAKED INDEX and asks the museum nothing to decide
+// (Phase 34). These run against the real `met.doorway.*` files, deliberately:
+// the whole claim is about the real catalogue, and a synthetic blob would prove
+// only that the matcher works — which doorwayindex.test.ts already pins.
+// ---------------------------------------------------------------------------
 describe("metTopMatch — the doorway lookup", () => {
-  it("phrase-quotes the term", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(json({ objectIDs: [] }));
+  it("costs NOTHING when there is no Gallery match", async () => {
+    // The point of the phase. About half of all cards land here, and each of
+    // those used to pay a search plus up to five record fetches to find out.
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    await met.metTopMatch("Powers of the president of the United States");
-
-    // Read it back through URL, not decodeURIComponent: URLSearchParams encodes
-    // a space as `+`, which decodeURIComponent leaves as a literal plus.
-    const q = new URL(url(searchCalls(fetchMock)[0])).searchParams.get("q");
-    expect(q).toBe('"Powers of the president of the United States"');
+    expect(await met.metTopMatch("Existentialism")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("costs ONE request when the search finds nothing", async () => {
-    // The common case for an ordinary article, and it used to cost six.
-    const fetchMock = vi.fn().mockResolvedValue(json({ objectIDs: [] }));
+  it("costs ONE request when there is one", async () => {
+    // The image path is the only thing the published catalogue lacks, so a hit
+    // is exactly one record fetch and never a search.
+    const fetchMock = vi.fn(async (u: string) =>
+      json(work(Number(u.split("/objects/")[1]))),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
-    expect(await met.metTopMatch("Unicode")).toBeNull();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(await met.metTopMatch("Octopus")).not.toBeNull();
+    expect(searchCalls(fetchMock)).toHaveLength(0);
+    expect(objectCalls(fetchMock)).toHaveLength(1);
   });
 
-  it("stops at the first record the caller accepts, rather than fetching five", async () => {
+  it("never searches, whatever the term", async () => {
+    const fetchMock = vi.fn(async (u: string) =>
+      json(work(Number(u.split("/objects/")[1]))),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    for (const term of ["Octopus", "Mount Fuji", "Quantum mechanics", "Cat"]) {
+      await met.metTopMatch(term);
+    }
+    expect(searchCalls(fetchMock)).toHaveLength(0);
+  });
+
+  it("falls through to the next candidate when a record is unusable", async () => {
+    // A work the museum has withdrawn since the index was baked, or one whose
+    // record fails `usable()`. The spares exist for exactly this.
+    let n = 0;
     const fetchMock = vi.fn(async (u: string) => {
-      if (u.includes("/search?")) return json({ objectIDs: [1, 2, 3, 4, 5] });
       const id = Number(u.split("/objects/")[1]);
-      return json(work(id, { title: id === 1 ? "A cat" : "An octopus" }));
+      n++;
+      return json(n === 1 ? work(id, { primaryImage: "" }) : work(id));
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const top = await met.metTopMatch("octopus", ({ title }) =>
-      title.toLowerCase().includes("octopus"),
-    );
-
-    expect(top?.title).toBe("An octopus");
-    // Record 1 was rejected, record 2 accepted: two fetches, not five.
+    expect(await met.metTopMatch("Octopus")).not.toBeNull();
     expect(objectCalls(fetchMock)).toHaveLength(2);
   });
 
-  it("gives up after five candidates rather than walking the whole result set", async () => {
-    const fetchMock = vi.fn(async (u: string) => {
-      if (u.includes("/search?")) {
-        return json({ objectIDs: Array.from({ length: 200 }, (_, i) => i + 1) });
-      }
-      return json(work(Number(u.split("/objects/")[1])));
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    expect(await met.metTopMatch("nothing matches", () => false)).toBeNull();
-    expect(objectCalls(fetchMock)).toHaveLength(5);
-  });
-
-  it("THROWS when the search fails, instead of reporting 'no doorway'", async () => {
-    // The load-bearing half of caching a miss for a day: a throttled lookup must
-    // not be indistinguishable from a settled "there is nothing here", or the
-    // route freezes a busy moment onto a card until tomorrow.
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({}, 403)));
-    await expect(met.metTopMatch("Octopus")).rejects.toThrow();
-  });
-});
-
-describe("de-duplication, which is what more than one reader needs", () => {
-  it("makes one request for two concurrent identical searches", async () => {
-    let resolveSearch: (v: Response) => void = () => {};
-    const gate = new Promise<Response>((r) => (resolveSearch = r));
-    const fetchMock = vi.fn(async (u: string) => {
-      if (u.includes("/search?")) return gate;
-      return json(work(Number(u.split("/objects/")[1])));
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    // Both start before either resolves — the case a cache cannot help with.
-    const a = met.metTopMatch("Octopus", () => true);
-    const b = met.metTopMatch("Octopus", () => true);
-    resolveSearch(json({ objectIDs: [7] }));
-    await Promise.all([a, b]);
-
-    expect(searchCalls(fetchMock)).toHaveLength(1);
-  });
-
-  it("makes one request for the same object fetched twice at once", async () => {
-    let release: (v: Response) => void = () => {};
-    const gate = new Promise<Response>((r) => (release = r));
-    const fetchMock = vi.fn(async (u: string) => {
-      if (u.includes("/search?")) return json({ objectIDs: [42] });
-      return gate;
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const a = met.metTopMatch("Octopus", () => true);
-    const b = met.metSummary("42");
-    release(json(work(42)));
-    await Promise.all([a, b]);
-
-    expect(objectCalls(fetchMock).filter((c) => url(c).endsWith("/42"))).toHaveLength(1);
-  });
-
-  it("serves a repeated search from cache without asking again", async () => {
+  it("gives up after three records rather than walking the candidates", async () => {
     const fetchMock = vi.fn(async (u: string) =>
-      u.includes("/search?")
-        ? json({ objectIDs: [1] })
-        : json(work(Number(u.split("/objects/")[1]))),
+      json(work(Number(u.split("/objects/")[1]), { primaryImage: "" })),
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await met.metTopMatch("Octopus", () => true);
-    await met.metTopMatch("Octopus", () => true);
-    expect(searchCalls(fetchMock)).toHaveLength(1);
+    expect(await met.metTopMatch("Cat")).toBeNull();
+    expect(objectCalls(fetchMock).length).toBeLessThanOrEqual(3);
   });
 
-  it("never caches an empty search result", async () => {
-    // An empty answer is far more likely a throttle than an empty room; holding
-    // it for an hour would freeze that room shut. Same rule `poolFor` states.
-    const fetchMock = vi.fn().mockResolvedValue(json({ objectIDs: [] }));
+  it("answers the canonical cases, and stays silent on the abstract ones", async () => {
+    // The same cases the old gate was verified against against the live API,
+    // now answered from the baked catalogue with no request behind the decision.
+    const fetchMock = vi.fn(async (u: string) =>
+      json(work(Number(u.split("/objects/")[1]))),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
-    await met.metTopMatch("Unicode");
-    await met.metTopMatch("Unicode");
-    expect(searchCalls(fetchMock)).toHaveLength(2);
+    for (const term of ["Octopus", "Samurai", "Mount Fuji", "Cat", "Hokusai"]) {
+      expect(await met.metTopMatch(term), term).not.toBeNull();
+    }
+    for (const term of [
+      "Quantum mechanics",
+      "Existentialism",
+      "Inflation",
+      "Game theory",
+      "Photosynthesis",
+    ]) {
+      expect(await met.metTopMatch(term), term).toBeNull();
+    }
+  });
+
+  it("THROWS when the record cannot be fetched, instead of saying 'no doorway'", async () => {
+    // The load-bearing half of caching a miss for a day. The decision is now
+    // local and cannot be throttled, but the record fetch behind a HIT still
+    // can, and that failure must not be cached as a settled "nothing here".
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({}, 403)));
+    await expect(met.metTopMatch("Octopus")).rejects.toThrow();
   });
 });
 
@@ -196,10 +172,15 @@ describe("a throttle must never be cached as 'no doorway'", () => {
     await expect(crossRealmDoorway("encyclopedia", "Octopus")).rejects.toThrow();
   });
 
-  it("still returns null for a search that genuinely found nothing", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ objectIDs: [] })));
+  it("still returns null for an article with genuinely no match", async () => {
+    // And now without asking anyone: the index settles it locally.
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
     const { crossRealmDoorway } = await import("./doorway");
-    await expect(crossRealmDoorway("encyclopedia", "Unicode")).resolves.toBeNull();
+    await expect(
+      crossRealmDoorway("encyclopedia", "Existentialism"),
+    ).resolves.toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 
@@ -218,6 +199,11 @@ describe("a throttle must never be cached as 'no doorway'", () => {
 // ---------------------------------------------------------------------------
 
 describe("thread facets are not phrase-quoted", () => {
+  // ⚠️ THESE NOW EXERCISE THE FALLBACK, and the values are chosen so they must.
+  // Phase 35 answers a facet from the baked index whenever it has one, so a real
+  // artist like Winslow Homer never reaches a search any more. The quoting and
+  // parameter-order rules still govern the search that runs when the index has
+  // nothing, so the values below are deliberately absent from the catalogue.
   async function facetQueries(self: Record<string, unknown>) {
     const fetchMock = vi.fn(async (u: string) =>
       u.includes("/search?")
@@ -233,13 +219,13 @@ describe("thread facets are not phrase-quoted", () => {
 
   it("sends the artist, subject and department bare", async () => {
     const qs = await facetQueries({
-      artistDisplayName: "Winslow Homer",
-      tags: [{ term: "Boats" }],
-      department: "American Decorative Arts",
+      artistDisplayName: "Zzz Nonexistent Painter",
+      tags: [{ term: "Zzzsubject" }],
+      department: "Zzz Nonexistent Department",
     });
-    expect(qs).toContain("Winslow Homer");
-    expect(qs).toContain("Boats");
-    expect(qs).toContain("American Decorative Arts");
+    expect(qs).toContain("Zzz Nonexistent Painter");
+    expect(qs).toContain("Zzzsubject");
+    expect(qs).toContain("Zzz Nonexistent Department");
     expect(qs.some((q) => q?.startsWith('"'))).toBe(false);
   });
 
@@ -251,7 +237,7 @@ describe("thread facets are not phrase-quoted", () => {
     const fetchMock = vi.fn(async (u: string) =>
       u.includes("/search?")
         ? json({ objectIDs: [] })
-        : json(work(9, { artistDisplayName: "Winslow Homer" })),
+        : json(work(9, { artistDisplayName: "Zzz Nonexistent Painter" })),
     );
     vi.stubGlobal("fetch", fetchMock);
     await met.metRelated("9");
@@ -262,12 +248,16 @@ describe("thread facets are not phrase-quoted", () => {
     expect(qs.indexOf("q=")).toBeGreaterThan(qs.indexOf("artistOrCulture"));
   });
 
-  it("keeps the quoting on the doorway, where it is measured to pay", async () => {
+  it("and the doorway does not search at all any more", async () => {
+    // This case used to assert the OPPOSITE — that the doorway phrase-quoted,
+    // because quoting was measured to pay there and only there. Phase 34 removed
+    // the search itself, so the facet searches below are the only ones left and
+    // `phraseQuery` is gone. Kept, inverted, because "the doorway must not
+    // search" is now the property worth pinning.
     const fetchMock = vi.fn().mockResolvedValue(json({ objectIDs: [] }));
     vi.stubGlobal("fetch", fetchMock);
     await met.metTopMatch("Winslow Homer");
-    const q = new URL(url(searchCalls(fetchMock)[0])).searchParams.get("q");
-    expect(q).toBe('"Winslow Homer"');
+    expect(searchCalls(fetchMock)).toHaveLength(0);
   });
 });
 
@@ -402,6 +392,16 @@ describe("metDiscover thins instead of emptying", () => {
 // discover. Asserted at the seam, on the options `fetchJson` actually receives.
 // ---------------------------------------------------------------------------
 describe("threads and the doorway yield the window to cards", () => {
+  // ⚠️ `vi.doMock` REGISTRATIONS SURVIVE `vi.resetModules()`, so this block has to
+  // clean up after itself. Without this every test declared BELOW it silently ran
+  // against a mocked `fetchJson` that never touches the fetch stub — and three of
+  // the Phase 35 tests passed for that reason rather than on their merits, which
+  // is the worst way for a test to be green.
+  afterEach(() => {
+    vi.doUnmock("@/lib/upstream");
+    vi.resetModules();
+  });
+
   type Opts = { maxWaitMs?: number; optional?: boolean };
   /** Re-import the adapter with `fetchJson` replaced, and report its options. */
   async function withSpy() {
@@ -442,12 +442,121 @@ describe("threads and the doorway yield the window to cards", () => {
   it("gives the doorway a short ceiling too, in both directions", async () => {
     const { calls, mod } = await withSpy();
 
-    await mod.metTopMatch("Octopus", () => true);
+    await mod.metTopMatch("Octopus");
     expect(calls.length).toBeGreaterThan(0);
     expect(calls.every((c) => c.opts.optional === true)).toBe(true);
 
     calls.length = 0;
     await mod.metArtworkMeta("11");
     expect(calls.every((c) => c.opts.optional === true)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 35 — the Gallery's own lookups stop searching too.
+//
+// Measured before any of this, on 30 August 2026: six cards read in European
+// Paintings cost 26 Met requests (7 searches, 19 record fetches), one artist
+// search cost 30 to return two names, and one artist profile about 24. The
+// artist and subject facets differ on every card, so unlike the room and
+// department searches they could never be cached — which is why an artist-rich
+// room cost twice what `medieval` did.
+//
+// These run against the real baked tables, like the doorway's, because the claim
+// is about the real catalogue.
+// ---------------------------------------------------------------------------
+describe("the Gallery's threads come from the baked facets", () => {
+  /** A record whose facets all exist in the baked index. */
+  function gallery(id: number) {
+    return work(id, {
+      artistDisplayName: "Rembrandt (Rembrandt van Rijn)",
+      culture: "",
+      country: "",
+      department: "Drawings and Prints",
+      tags: [{ term: "Cats" }],
+    });
+  }
+
+  it("makes NO search at all for a card's threads", async () => {
+    const fetchMock = vi.fn(async (u: string) =>
+      json(gallery(Number(u.split("/objects/")[1]))),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const threads = await met.metRelated("11");
+    expect(threads.length).toBeGreaterThan(0);
+    expect(searchCalls(fetchMock)).toHaveLength(0);
+  });
+
+  it("fetches at most two records per facet, not three", async () => {
+    // FETCH_PER_FACET was 3 only because a live search returned works the filter
+    // then dropped. The baked lists are already filtered.
+    const fetchMock = vi.fn(async (u: string) =>
+      json(gallery(Number(u.split("/objects/")[1]))),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await met.metRelated("11");
+    // The card itself, plus at most 2 per facet across at most 3 facets.
+    expect(objectCalls(fetchMock).length).toBeLessThanOrEqual(1 + 2 * 3);
+  });
+
+  it("falls back to the live search for a facet the index cannot answer", async () => {
+    // The fallback is a real one, not a formality: a card with no doorway chip is
+    // ordinary, but a card with no threads is a dead end. So unlike the doorway,
+    // a facet the index has nothing for degrades to the search it replaced —
+    // which also covers a newly acquired work, or a missing index file.
+    const fetchMock = vi.fn(async (u: string) =>
+      u.includes("/search?")
+        ? json({ objectIDs: [91, 92, 93] })
+        : json(
+            work(Number(u.split("/objects/")[1]), {
+              artistDisplayName: "Zzz Nonexistent Painter",
+              department: "Zzz Nonexistent Department",
+            }),
+          ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const threads = await met.metRelated("11");
+    expect(searchCalls(fetchMock).length).toBeGreaterThan(0);
+    expect(threads.length).toBeGreaterThan(0);
+  });
+});
+
+describe("the artist lookups cost nothing", () => {
+  it("answers an artist search without a single request", async () => {
+    // This was the most expensive single action in the app, and it fired while
+    // the reader was waiting: 30 requests to return two names.
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const hits = await met.metArtistSearch("Rembrandt");
+    expect(hits.length).toBeGreaterThan(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("still separates the two Rembrandts", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    // The museum's own spelling is what the table is keyed on, and the case the
+    // live version was verified against: both Rembrandts, told apart.
+    const names = (await met.metArtistSearch("Rembrandt")).map((a) => a.name);
+    expect(names).toContain("Rembrandt (Rembrandt van Rijn)");
+    expect(names).toContain("Rembrandt Peale");
+  });
+
+  it("refuses an artist still in copyright, rather than offering an empty feed", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    expect(await met.metArtistSearch("Picasso")).toEqual([]);
+  });
+
+  it("answers a profile without a single request", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const profile = await met.metArtistProfile("Rembrandt (Rembrandt van Rijn)");
+    expect(profile?.works).toBeGreaterThan(0);
+    expect(profile?.department).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

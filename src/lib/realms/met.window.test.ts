@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { randomOffset } from "../discover";
+import { windowStart } from "./dailyorder";
 
-// `windowStart` is not exported (it lives in the server adapter, which pulls in
-// server-only fetch code), so this pins the CONTRACT it has to satisfy: the
-// offset the feed sends is a card index, and a batch must start at that card.
-const windowStart = (offset: number, poolSize: number) =>
-  poolSize > 0 ? offset % poolSize : 0;
+// ⚠️ THIS USED TO RE-IMPLEMENT `windowStart` here, because it lived in the server
+// adapter and importing that pulls in server-only fetch code. Phase 35 moved it
+// (and the daily shuffle) to lib/realms/dailyorder.ts, so this now tests the
+// real function instead of a copy of it that could quietly drift.
 
 describe("the discover offset contract", () => {
   // The bug this pins: the adapter multiplied the offset by the limit, squaring

@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   realmOfSource,
   forwardEntities,
-  passesReverseGate,
   trailRealms,
   DOORWAY_EYEBROW,
 } from "./crossrealm";
@@ -58,50 +57,6 @@ describe("forwardEntities (Gallery → Encyclopedia)", () => {
       forwardEntities({ artist: "", movement: "Ukiyo-e" }),
     ).toEqual(["Ukiyo-e"]);
     expect(forwardEntities({})).toEqual([]);
-  });
-});
-
-describe("passesReverseGate (Encyclopedia → Gallery)", () => {
-  const gate = passesReverseGate;
-
-  // Every case below was re-verified against The Met's live search when the
-  // score clause was dropped (Phase 31B): the four concrete subjects open a
-  // doorway and the three abstract ones stay silent, without any score.
-  it("passes when the term appears in the top result's title", () => {
-    expect(gate("Octopus", { title: "Terracotta stirrup jar with octopus" })).toBe(true);
-    expect(gate("Samurai", { title: "Two Young Samurai" })).toBe(true);
-    // multi-word term present in the full title
-    expect(
-      gate("Mount Fuji", { title: "Dish in shape of Mount Fuji with horse" }),
-    ).toBe(true);
-  });
-
-  it("passes on a subject-tag (stem) match", () => {
-    expect(gate("Cat", { title: "Border Fragments", term_titles: ["cats", "animals"] })).toBe(true);
-    expect(gate("Octopus", { title: "Stirrup jar", term_titles: ["fish", "octopus"] })).toBe(true);
-  });
-
-  it("rejects abstract / unrelated tops (term not in title or tags)", () => {
-    expect(
-      gate("Quantum mechanics", {
-        title: "The Bewitched Mill",
-        term_titles: ["oil on canvas", "painting"],
-      }),
-    ).toBe(false);
-    expect(gate("Inflation", { title: "Jar", term_titles: [] })).toBe(false);
-    expect(gate("Napoleon", { title: "Cinderella", term_titles: ["etching", "print"] })).toBe(false);
-  });
-
-  // The Art Institute's relevance score used to add a floor here. The Met returns
-  // no score, so the term-in-title-or-tags rule stands alone — and it should: a
-  // work whose TITLE is the article's subject is a good doorway however the
-  // upstream happened to rank it.
-  it("passes a title match that the old score floor would have refused", () => {
-    expect(gate("Cat", { title: "Cat on a Cushion" })).toBe(true);
-  });
-
-  it("rejects empty input", () => {
-    expect(gate("", { title: "Anything" })).toBe(false);
   });
 });
 

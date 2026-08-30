@@ -315,32 +315,25 @@ function artDescription(a: MetObject): string | undefined {
   return d || undefined;
 }
 
-/**
- * Wrap a free-text search term so The Met matches it as a PHRASE.
- *
- * ⚠️ THEIR SEARCH IS A LOOSE OR OVER WORDS, AND THAT COST US MORE THAN ANYTHING
- * ELSE IN THE APP. The cross-realm doorway searches the museum for the current
- * article's title, and `passesReverseGate` (lib/crossrealm.ts) then requires that
- * title to appear as a SUBSTRING of the artwork's title or one of its subject
- * tags. An OR search cannot answer that question. Measured:
- *
- *   q=Powers of the president of the United States    ->  55,804 results
- *   q="Powers of the president of the United States"  ->        0 results
- *
- * Every one of those 55,804 was going to fail the gate, and we were paying five
- * record fetches per card to discover that. Quoting asks the question the gate is
- * actually asking. A single word is unaffected (`House` returns 21,105 either
- * way), so nothing that used to match stops matching.
- *
- * `*` is returned untouched: the place facet searches `{ geoLocation, q: "*" }`
- * and the wildcard is doing the work there — quoting it would ask for artworks
- * literally titled "*".
- */
-export function phraseQuery(term: string | null | undefined): string {
-  const cleaned = (term ?? "").replace(/"/g, " ").replace(/\s+/g, " ").trim();
-  if (!cleaned || cleaned === "*") return cleaned;
-  return `"${cleaned}"`;
-}
+// ⚠️ `phraseQuery` LIVED HERE AND IS GONE (Phase 34), because nothing searches
+// the museum for an article title any more.
+//
+// Kept as a note because the measurement behind it is still true and still
+// surprising, and someone will be tempted to reach for quoting again. Their
+// search is a loose OR over words, and quoting changes the answer wildly in both
+// directions (measured 27 August 2026):
+//
+//   q=Powers of the president of the United States    ->  55,804 results
+//   q="Powers of the president of the United States"  ->        0 results
+//   artistOrCulture q=Winslow Homer  -> 13    q="Winslow Homer"  ->   0
+//   artistOrCulture q=Hokusai        -> 10    q="Hokusai"        -> 427
+//
+// It is not a phrase operator in any consistent sense. It paid for exactly one
+// caller — the reverse doorway, which searched for an article title and then
+// required that title to appear in the result — and that caller now answers from
+// a baked index instead (lib/realms/doorwayindex.ts). It was measured NOT to pay
+// for `metRelated`'s facet searches, where it silently deleted thread chips, so
+// there is no surviving use. Do not reintroduce it without a measurement.
 
 /** The subject keywords, cleaned and de-duplicated, keeping the museum's own
  *  order — that is the order a cataloguer chose, and the first tag is what the

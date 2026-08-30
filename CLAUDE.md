@@ -172,25 +172,38 @@ without them:
     `FACETS_SHOWN`/`PER_FACET`/`FETCH_PER_FACET` constants in `metRelated` — the client only ever
     shows ONE candidate per facet, capped at three (`selectFacetThreads`), so fetching more than a
     spare each is pure waste.
-  - ⚠️ **THE BIGGEST CONSUMER OF THE MUSEUM IS THE ENCYCLOPEDIA, NOT THE GALLERY.** `/api/doorway`
-    fires on EVERY card in BOTH realms (`fetchThreadsFor` in `drift/useDriftSession.ts`), and from an Encyclopedia card it
-    searches The Met for the article title. In a 25-reader load rehearsal that was **491 of 494
-    cards and 92.6% of all Met traffic**; nineteen Encyclopedia readers cost the museum twelve times
-    what six Gallery readers did. Do not reason about Gallery load without counting the doorway.
-    Measure with `NODE_OPTIONS="--import ./scripts/bots/upstream-count.mjs"` rather than guessing —
-    the cost is all fan-out and invisible in the code.
-  - ⚠️ **Their search ORs the words together, and it accepts PHRASE QUOTES — but ONLY the doorway
-    may use them.** Unquoted, `q=Powers of the president of the United States` returns **55,804**
-    results; quoted it returns **0**. The doorway's gate (`passesReverseGate`) wants the term as a
-    SUBSTRING of the artwork's title or tags, so every one of those 55,804 was going to be rejected
-    after five record fetches. `phraseQuery` (`lib/realms/met.ts`) is therefore used by `metTopMatch`
-    and **nowhere else**. It was briefly applied to `metRelated`'s three facet searches too and that
-    silently deleted thread chips: a facet search costs one request whatever it returns and only the
-    first three ids are ever fetched, so quoting saves nothing there and sometimes returns nothing at
-    all. Measured live, twice (27 Aug): `artistOrCulture q=Winslow Homer` → **13** works,
+  - ⚠️ **THE ENCYCLOPEDIA USED TO BE THE BIGGEST CONSUMER OF THE MUSEUM, AND SINCE PHASE 34 IT IS
+    BARELY A CONSUMER AT ALL.** `/api/doorway` still fires on EVERY card in BOTH realms
+    (`fetchThreadsFor` in `drift/useDriftSession.ts`), and it used to SEARCH The Met for the article
+    title: in a 25-reader rehearsal that was **491 of 494 cards and 92.6% of all Met traffic**, and
+    nineteen Encyclopedia readers cost the museum twelve times what six Gallery readers did.
+    It now decides from a **baked index** of the museum's own CC0 catalogue
+    (`met.doorway.*`, built by `scripts/build-met-index.mjs`, matched by `lib/realms/doorwayindex.ts`),
+    so a card with no Gallery match — about half of them — costs **nothing**, and a card with one
+    costs a single record fetch for the image path. Measured on the same twelve article titles both
+    ways: **30 Met requests before, 4 after** (2.5/card → 0.33/card).
+    The habit the old warning taught still stands: do not reason about Met load by reading the code,
+    because the cost is fan-out. Measure with `NODE_OPTIONS="--import ./scripts/bots/upstream-count.mjs"`.
+    **Phase 35 did the same for the Gallery's own calls**: `metRelated`'s four facet searches,
+    `metArtistSearch` and `metArtistProfile` all read baked tables now. An artist search cost **30
+    requests to return two names** and costs **0**; a profile cost ~24 and costs 0.
+    ⚠️ **WHAT IS LEFT IS THE RECORD FETCHES, AND THEY CANNOT BE BAKED.** The catalogue publishes no
+    image path and it is not derivable — measured, the filenames are internal photo IDs
+    (`DP-42549-001.jpg`, `DT3154.jpg`) unrelated to the accession number. Harvesting all 223,576 at
+    ~2.4 req/s is ~26 hours of hammering the source we depend on entirely. **Do not try it.** A card
+    pays for the works it actually shows, and that is the floor.
+  - ⚠️ **Their search ORs the words together and accepts PHRASE QUOTES, and `phraseQuery` IS NOW
+    GONE — do not reintroduce it without a measurement.** It existed for the doorway, which searched
+    for an article title and then required that title to appear in the result: unquoted,
+    `q=Powers of the president of the United States` returns **55,804** results, quoted it returns
+    **0**, and every one of those 55,804 was going to be rejected after five record fetches. Phase 34
+    removed that search entirely, so its only paying caller is gone. It was measured NOT to pay for
+    `metRelated`'s facet searches, the only searches left: quoting them silently deleted thread chips,
+    because a facet search costs one request whatever it returns and only the first three ids are ever
+    fetched. Measured live, twice (27 Aug): `artistOrCulture q=Winslow Homer` → **13** works,
     `q="Winslow Homer"` → **0**; and it moves the other way just as arbitrarily (Hokusai 10 → 427).
-    Their quoting is not a phrase operator in any consistent sense — use it only where it is measured
-    to pay. **Never quote `q: "*"`** — the place facet needs the wildcard.
+    Their quoting is not a phrase operator in any consistent sense. **Never quote `q: "*"`** — the
+    place facet needs the wildcard.
   - **A refusal must not be retried into the ground.** `retryOn: [403]` with two retries makes every
     403 cost three requests exactly when the museum is telling us to stop, which is how a rehearsal
     turned ~3,181 requests into 1,470 refusals and left the budget shrunk all day. Met calls now use
@@ -254,6 +267,31 @@ without them:
     `scripts/probe-met-pools.mjs` (hand-run, merges the two passes). That is what keeps a room
     readable while the museum is throttling us. The EU copyright test is deliberately NOT baked: it
     is recomputed per request because the cut-off widens every 1 January.
+  - **The reverse doorway is BAKED too** (Phase 34), into `src/lib/realms/met.doorway.*` by
+    `scripts/build-met-index.mjs` — 223,576 works that were public domain, imaged and titled at build
+    time, as a 2.5 MB gzipped blob of normalised titles and subject tags plus a parallel id/death-year
+    array. It is read with `fs` rather than imported (a 12 MB JSON module would be parsed by the
+    bundler and inflated into the heap), which is why **`next.config.ts` has `outputFileTracingIncludes`
+    for it** — without that entry the deployed function finds nothing and the doorway goes quiet in
+    production while working perfectly on your machine. Cold load is 37 ms, a lookup ~1 ms.
+    The build script makes **one** request to the museum (`hasImages=true&q=*`, which returns all
+    367,931 imaged ids at once); the catalogue itself comes from GitHub. Same rule as the pools: the
+    EU copyright test is NOT baked, only the artist's death YEAR, and the cut-off is recomputed per
+    request.
+    Phase 35 added `met.facets.*` (artist/place/dept/tag → object ids) and `met.artists.*` (20,130
+    artists with their true work counts, modal department, date span and death year) beside it, read
+    the same way. ⚠️ **Two tables, two normalisers, and they are not interchangeable**: facet keys use
+    `normalizeForIndex`, the artist table uses `foldName`, because that is what each one is looked up
+    with. Both are pinned by tests against the built files.
+    ⚠️ **Combining marks are REMOVED, never turned into a space.** Getting that wrong split accented
+    names around the accent — measured, "Maison Léoty" became `maison le oty` and was unfindable, and
+    the same bug was silently in the doorway.
+    ⚠️ **The matching rule is NOT the old `passesReverseGate`, and must not be reverted to it.** That
+    was a raw substring test which only held up as a *confirmation* on relevance-ranked search
+    results. Run directly over the whole catalogue it answered **"Owl" with an "Open Bowl"** and would
+    match "cathedral", "delicate" and "catalogue" for "Cat". `doorwayCandidates` requires a WORD
+    BOUNDARY with a ≤3-letter inflection allowance, so `octopus` still finds `octopuses` while `cart`
+    never reaches `cartography`.
 - 🎨 **Artwork is served through `/api/img/met/{dept}/{name}/{width}`** (sharp resize), and there
   is deliberately no flag to disable it. ⚠️ **`width` is an ALLOWLIST of exactly `160 | 843 | 1686`**
   (`MET_IMAGE_WIDTHS`, `lib/realms/met.ts`), not a range. It accepted any integer 16-1686 until
@@ -362,6 +400,11 @@ npm run verify:supabase # Phase 9: check the cloud backend (tables + RLS + upser
 npm run verify:social   # Phase 10: check the friends/sharing tables + RLS
 npm run audit:contrast  # WCAG 2.2 AA contrast sweep of the RUNNING app (see §10)
 npm run verify:feed     # drive a real Chromium over the reading feed (see §12)
+
+# Hand-run, offline, against The Met. Neither is part of any gate; re-run them
+# only when the museum's catalogue has visibly shifted.
+node scripts/probe-met-pools.mjs    # room pools + form/period counts (~25 min)
+node scripts/build-met-index.mjs    # the baked reverse doorway (~317 MB stream)
 
 # Load rehearsal — simulated readers against a local production rig (see §11)
 npm run bots:seed -- --count 25   # burner accounts + supporter unlock (idempotent)
