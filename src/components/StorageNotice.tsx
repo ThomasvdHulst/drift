@@ -73,7 +73,7 @@ export function StorageNotice() {
             href="/privacy"
             className="text-accent-strong underline-offset-2 hover:underline"
           >
-            What we store
+            What Drift stores
           </Link>
         </p>
         <button

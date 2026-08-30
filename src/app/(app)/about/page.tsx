@@ -7,7 +7,7 @@ import { LicenseLink } from "@/components/LicenseLink";
 export const metadata = {
   title: "About Drift",
   description:
-    "Drift is a calm feed of knowledge cards where you are the algorithm. What it is, why it exists, where the content comes from, and who makes it.",
+    "A calm feed of knowledge cards from Wikipedia and The Met, where you pick the direction. What Drift is, why it exists, where the content comes from, and who makes it.",
   alternates: { canonical: "/about" },
 };
 
@@ -31,39 +31,37 @@ export default function AboutPage() {
             <h1 className="font-serif text-4xl text-ink">About Drift</h1>
           </div>
           <p className="mt-3 text-base leading-relaxed text-ink-soft">
-            Drift is a calm feed of knowledge cards where you are the algorithm.
-            It is built to be the opposite of an endless, addictive feed: a place
-            to be curious on purpose, then put down.
+            Drift is a calm feed of knowledge cards from Wikipedia and The
+            Metropolitan Museum of Art. You pick the direction at every step,
+            and every session has an end.
           </p>
         </header>
 
         <div className="space-y-8 text-ink">
           <Section title="What Drift is">
             <p className="text-ink-soft">
-              Every card is a full screen of real, human knowledge: a Wikipedia
-              article or a public domain artwork, shown one at a time. Each card
-              carries visible <span className="text-ink">threads</span>, which are
-              related directions you can pull to steer where you go next. You are
-              not fed by a hidden recommender. You choose the path, and the feed
-              follows you.
+              Every card fills the screen: a Wikipedia article or a public
+              domain artwork, one at a time. Each card carries visible{" "}
+              <span className="text-ink">threads</span>, which are related
+              directions you can pull to decide where you go next. There is no
+              recommender choosing for you.
             </p>
             <p className="mt-3 text-ink-soft">
-              Every session has a shape: a beginning (a topic to start from), a
-              middle (the trail you wander), and an end (a small map of where your
-              curiosity went, which you can save and share). The reward waits at
-              the exit, not at the next swipe.
+              A session has a beginning (a topic to start from), a middle (the
+              trail you wander) and an end (a small map of where you went, which
+              you can save and share). The map is only reachable by stopping.
             </p>
           </Section>
 
           <Section title="Why it exists">
             <p className="text-ink-soft">
-              Most feeds are built to hold your attention as long as possible.
-              Autoplay, infinite scroll, and opaque ranking are designed to keep
-              you guessing and keep you there. Drift is a deliberate antidote to
-              that. Nothing advances on its own. Nothing is hidden. There are no
-              streaks, no red badges, and no notifications trying to pull you
-              back. It is scrolling that leaves you a little more curious, not a
-              little more numb.
+              Most feeds are built to hold attention for as long as possible;
+              autoplay, infinite scroll and hidden ranking are the mechanics of
+              it. Drift started as an attempt to build one that works the other
+              way: nothing advances on its own, the reason each card appeared is
+              written on the card, and there are no streaks, badges or
+              notifications. Whether that is actually better is something you
+              would have to use it for a week to know.
             </p>
           </Section>
 
@@ -75,9 +73,10 @@ export default function AboutPage() {
                 curiosity surprise you.
               </li>
               <li>
-                <span className="text-ink">Steer.</span>  Pull the visible threads
-                to choose your own direction. You always see why the next card
-                appeared: the thread you chose, or an honest &ldquo;drift&rdquo;.
+                <span className="text-ink">Steer.</span> Pull the visible
+                threads to choose your own direction. Every card says why it
+                appeared: the thread you pulled, or &ldquo;drifting&rdquo; when
+                you did not choose.
               </li>
               <li>
                 <span className="text-ink">Arrive.</span> When you stop, your
@@ -86,10 +85,17 @@ export default function AboutPage() {
             </ul>
           </Section>
 
-          <Section title="What we believe">
+          <Section title="The rules it is built under">
             <p className="text-ink-soft">
-              A few principles hold for every part of Drift, even when a shortcut
-              would be easier:
+              A few rules hold for every part of Drift. The full set, with what
+              each one rules out, is on the{" "}
+              <Link
+                href="/principles"
+                className="text-accent-strong hover:underline"
+              >
+                principles
+              </Link>{" "}
+              page.
             </p>
             <ul className="mt-2 list-disc space-y-1.5 pl-5 text-ink-soft">
               <li>
@@ -97,17 +103,17 @@ export default function AboutPage() {
                 always see why a card appeared. No hidden ranking.
               </li>
               <li>
-                <span className="text-ink">Agency over autoplay.</span> Every card
-                waits for you. There is no bottomless feed teasing one more.
+                <span className="text-ink">Agency over autoplay.</span> Nothing
+                advances on its own. Every card waits for you.
               </li>
               <li>
-                <span className="text-ink">Sessions have shape.</span> A clear
-                beginning, middle, and end, with the trail map as the payoff.
+                <span className="text-ink">Sessions have shape.</span> A
+                beginning, a middle and an end, with the trail map at the end.
               </li>
               <li>
                 <span className="text-ink">Gentle awareness, not guilt.</span> A
-                quiet count of your stops and a soft nudge after a while, and
-                nothing more.
+                count of your stops, and one note after about 25 of them.
+                Nothing stronger than that.
               </li>
             </ul>
           </Section>
@@ -118,19 +124,19 @@ export default function AboutPage() {
               Wikipedia articles, under <LicenseLink license={CC_BY_SA_4} />, and
               public domain artworks from The Metropolitan Museum of Art, under{" "}
               <LicenseLink license={CC0_1} />. Every card links back to the page it
-              came from, whose history credits the people who wrote it. Drift only
-              reshapes that content into cards and threads. It never invents facts,
-              and it is never in the driver&apos;s seat. You are.
+              came from, whose history credits the people who wrote it. Drift
+              only reshapes that content into cards and threads. It does not
+              write the facts.
             </p>
           </Section>
 
           <Section title="Who makes Drift">
             <p className="text-ink-soft">
-              Drift is a small, independent project, built and maintained by one
-              person, Thomas, not a company. It began as a personal experiment in
-              healthier scrolling and is shared with a small circle of friends and
-              anyone else who wants a calmer way to be curious. It is not built to
-              maximize your time or harvest your attention, and it never will be.
+              Drift is built and maintained by one person, Thomas, in the
+              Netherlands. There is no company behind it. It began as a personal
+              experiment in whether a feed could work differently, and it is
+              shared with a small circle of friends and anyone else who wants to
+              try it. Nothing in it is tuned for time spent.
             </p>
           </Section>
 
@@ -172,8 +178,8 @@ export default function AboutPage() {
 
           <Section title="Get in touch">
             <p className="text-ink-soft">
-              A real person reads every message. Tell us what is working, what is
-              broken, or what you wish Drift did.{" "}
+              Messages come to me and I read all of them. Tell me what is
+              working, what is broken, or what you wish Drift did.{" "}
               <Link
                 href="/contact"
                 className="text-accent-strong hover:underline"

@@ -189,10 +189,10 @@ export function ThreadDemo() {
         {/* Gentle guidance, never a countdown or a tease (§2). */}
         <p className="h-5 text-center text-xs text-ink-soft" aria-live="polite">
           {pulls === 0
-            ? "Tap a thread above. You choose every turn."
+            ? "Tap a thread above to move on."
             : pulls < 3
               ? `${pulls + 1} stops so far.`
-              : `${pulls + 1} stops, and this little wander is becoming a trail.`}
+              : `${pulls + 1} stops. In Drift this would be saved as a trail.`}
         </p>
       </div>
     </div>

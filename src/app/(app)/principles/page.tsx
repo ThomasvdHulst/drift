@@ -51,10 +51,10 @@ export default function PrinciplesPage() {
             last card, never for one scrolled up re-reading, and never for a
             source that is merely quiet. */}
         <P>
-          Nothing advances on its own. No autoplay, no timers. Every card you
-          reach is one you moved to. The single exception is the end of a
-          session: when there is nothing left to show you, the feed carries you
-          the last step onto the card that says so.
+          Nothing advances on its own. There is no autoplay and there are no
+          timers, and every card you reach is one you moved to. The single
+          exception is the end of a session: when there is nothing left to show
+          you, the feed carries you the last step onto the card that says so.
         </P>
         <P>
           <Lead>What this rules out: </Lead>anything that decides for you when
@@ -92,15 +92,15 @@ export default function PrinciplesPage() {
           <li>No daily goal and no time-spent target.</li>
         </Bullets>
         <P>
-          Drift does send email, but only ever about something you did: a welcome
-          when you confirm your address, a password reset when you ask for one, a
-          receipt and a refund confirmation if you buy the supporter unlock, and a
-          note when you delete your account. Nothing on that list exists to pull
-          you back, and there is no list to be added to.
+          Drift does send email, but only ever about something you did: a
+          welcome when you confirm your address, a password reset when you ask
+          for one, a receipt and a refund confirmation if you buy the supporter
+          unlock, and a note when you delete your account. There is no mailing
+          list to be added to.
         </P>
         <P>
-          The counter is deliberately the whole of it. Anything stronger tends to
-          become pressure of a different kind rather than less pressure.
+          The counter is deliberately the whole of it. Anything stronger tends
+          to become its own kind of pressure.
         </P>
       </Section>
 

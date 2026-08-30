@@ -92,9 +92,10 @@ export function Landing() {
             </p>
             <p className="mx-auto mt-5 max-w-md text-base leading-relaxed text-ink/80 lg:mx-0">
               A calm feed of knowledge cards where <em>you</em> are the
-              algorithm. No autoplay, no hidden ranking. Every card shows visible
-              threads you can pull to steer your own rabbit hole, and every
-              session ends with a map of where your curiosity wandered.
+              algorithm. Nothing advances on its own and no hidden ranking
+              decides what you see. Every card shows threads you can pull to
+              choose where you go next, and every session ends with a map of
+              where you went.
             </p>
             <div className="mt-7 flex flex-col items-center gap-3 sm:flex-row lg:justify-start">
               <a
@@ -131,9 +132,8 @@ export function Landing() {
             title="Pull a thread, and the feed follows you"
           />
           <p className="mx-auto mb-8 max-w-xl text-center text-base leading-relaxed text-ink/75">
-            Here&apos;s a little rabbit hole you can actually wander. Pull a
-            thread and watch where it leads. Nothing moves until you do. That&apos;s
-            the whole idea.
+            Here is a small rabbit hole you can wander. Pull a thread and see
+            where it leads. Nothing moves until you do.
           </p>
           <ThreadDemo />
         </Reveal>
@@ -148,19 +148,19 @@ export function Landing() {
             <Step
               n={1}
               title="Start"
-              body="Begin with a topic seed, pick a realm, or let curiosity surprise you. A clear beginning, not an endless feed."
+              body="Begin with a topic seed, pick a realm, or let curiosity surprise you. A session starts somewhere you chose."
             />
             <Step
               n={2}
               title="Steer"
-              body="Pull the visible threads to choose your own direction. You always see why the next card appeared: the thread you chose, or an honest “drift”."
+              body="Pull the visible threads to choose your own direction. Every card says why it appeared: the thread you pulled, or “drifting” when you did not choose."
             >
               <DirectionGlyphs />
             </Step>
             <Step
               n={3}
               title="Arrive"
-              body="Every wander becomes a trail map you can save and share. The reward waits at the exit, never at the next swipe."
+              body="When you stop, the session is drawn as a trail map you can save and share, or export as an image."
             />
           </ol>
         </Reveal>
@@ -168,12 +168,13 @@ export function Landing() {
         {/* --- The trail-map reward (reuses the real component) --- */}
         <Reveal as="section" className="py-14 sm:py-20">
           <SectionHeading
-            eyebrow="The reward"
-            title="Where your curiosity actually went"
+            eyebrow="The trail map"
+            title="Where you went"
           />
           <p className="mx-auto mb-8 max-w-xl text-center text-base leading-relaxed text-ink/75">
-            No streaks, no counters to feed. Just a quiet map of your rabbit
-            hole: the stops you made and the threads that took you there.
+            There are no streaks or counters to keep up. When you stop, you
+            get a map of the session: the stops you made and the threads that
+            took you there.
           </p>
           <div className="mx-auto max-w-xl rounded-2xl border border-line bg-paper-raised/60 p-4 sm:p-6">
             <TrailMap steps={EXAMPLE_TRAILS[trailIdx]} />
@@ -183,13 +184,13 @@ export function Landing() {
         {/* --- What makes it different (the anti-slot-machine soul) --- */}
         <Reveal as="section" className="py-14 sm:py-20">
           <SectionHeading
-            eyebrow="The opposite of a casino"
-            title="Built to be put down, not to trap you"
+            eyebrow="What is missing, on purpose"
+            title="Built to be put down"
           />
           <div className="mt-10 grid gap-6 sm:grid-cols-2">
             <Principle
               title="Transparency over opacity"
-              body="You always see why a card appeared. No hidden ranking deciding what's good for you."
+              body="You always see why a card appeared. Nothing is ranked behind the scenes."
               icon={
                 <>
                   <circle cx="12" cy="12" r="3" />
@@ -199,7 +200,7 @@ export function Landing() {
             />
             <Principle
               title="Agency over autoplay"
-              body="Nothing advances on its own. Every card waits for you to choose. No bottomless feed teasing “just one more”."
+              body="Nothing advances on its own. Every card waits for you to choose, and the feed ends instead of going on forever."
               icon={
                 <>
                   <path d="M8 5v14l11-7z" />
@@ -209,7 +210,7 @@ export function Landing() {
             />
             <Principle
               title="Sessions have shape"
-              body="A beginning, a middle, and an end. The trail map is the payoff, placed at the exit."
+              body="A beginning, a middle, and an end. The trail map comes when you stop."
               icon={
                 <>
                   <path d="M4 19c4-1 4-9 8-10s4 8 8 7" />
@@ -220,7 +221,7 @@ export function Landing() {
             />
             <Principle
               title="Gentle awareness, not guilt"
-              body="A quiet count of your stops and a soft nudge after a while. No red badges, no streaks, no notification bait."
+              body="A count of your stops in the corner, and one gentle note after a while. No streaks, no badges, no notifications."
               icon={
                 <>
                   <path d="M12 3a6 6 0 0 0-6 6c0 4-2 5-2 5h16s-2-1-2-5a6 6 0 0 0-6-6z" />
@@ -234,19 +235,19 @@ export function Landing() {
         {/* --- Realms --- */}
         <Reveal as="section" className="py-14 sm:py-20">
           <SectionHeading
-            eyebrow="Vetted human knowledge"
-            title="Vetted realms, one calm reading room"
+            eyebrow="Where the cards come from"
+            title="Two realms, one reading room"
           />
           <p className="mx-auto mb-8 max-w-xl text-center text-base leading-relaxed text-ink/75">
-            Everything comes from sources curated by people, never scraped. AI is
-            never in the driver&apos;s seat. You are.
+            Everything comes from collections curated by people, never
+            scraped. Drift reshapes what is there; it does not write it.
           </p>
           <div className="grid gap-6 sm:grid-cols-2">
             <RealmPanel
               image="/landing/realm-encyclopedia.jpg"
               glyph="✦"
               label="Encyclopedia"
-              body="All of Wikipedia, as full-screen cards. Threads become real directions: go deeper, zoom out, or take a tangent."
+              body="All of Wikipedia, as full-screen cards. Each thread is labelled, so you know where it goes before you pull it: deeper, wider, or off at a tangent."
             />
             <RealmPanel
               realm="gallery"

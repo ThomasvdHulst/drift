@@ -56,6 +56,12 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 > **Phase 33H (28 August) added `/start`**, the page a QR code on a sticker or a flyer lands on,
 > plus a stale-credit fix on `/how-it-works`. Entry at the bottom.
 >
+> **A copy pass over the public pages (30 August)** took the AI tells out of the writing: the
+> catchy negation, the inverted closer, and the visionary paragraph. Four calibration decisions were
+> the owner's and are recorded in the entry at the bottom, including the one that matters most for
+> future edits: **"you are the algorithm" belongs on the landing page and nowhere else.** `/faq`,
+> `/sources`, `/colophon`, `/install` and the notes were read and deliberately left alone.
+>
 > **The join form now obeys the link you clicked (29 August).** "Sign in" in the landing header
 > scrolled you to a form still set to "Create account", so typing your real credentials answered
 > "there is already an account with that email". Fixed, along with a formal pass over every auth
@@ -5904,3 +5910,59 @@ use existing tokens, and this confirms it.
 LANDING page when signed out, so the audit measures the gate, never the change-password panel. It
 was read in a browser with a stubbed session instead (above); its colours are the same tokens the
 rest of `/account` already uses.
+
+---
+
+## A copy pass over the public pages (30 August 2026)
+
+**The complaint, in the owner's words: the writing reads as AI-written.** Not because anything on
+the site is untrue, but because the same three rhetorical devices run through every page, and a
+reader who meets them ten times stops hearing the argument and starts hearing the pitch. Named
+specifically: the catchy negation ("No X, no Y"), the inverted closer ("not X, but Y"), and
+paragraph after paragraph of visionary framing where a plain statement would do.
+
+**Calibrated with the owner before editing, because "less AI" is a dial and not a switch**, and
+over-editing was the stated risk ("do not exaggerate in changing everything"). Four decisions, all
+theirs:
+
+1. **"you are the algorithm" stays on the landing page and nowhere else.** It is the one-line
+   explanation of the whole product, and it was on four surfaces plus two meta descriptions, which
+   is what made it read as a slogan rather than a sentence. The signed-in home, `/start` and
+   `/about` now say the plain thing. The site-level description in `layout.tsx` and the PWA
+   manifest keep it: both ARE the landing's description.
+2. **A "No X, no Y" that is a real list stays; one that is rhetorical punctuation goes.**
+   `/start`'s "No advertising, no tracking, no third-party cookies" and the bulleted negatives on
+   `/principles` are information a reader wants. "No autoplay, no hidden ranking" dropped after a
+   full sentence was decoration, and is now part of that sentence.
+3. **At most one inverted closer per page, and only on pages that are selling.** The owner added
+   the second half: the signed-in home is not a pitch and gets none at all. The landing keeps
+   "Nothing moves until you do"; `/supporter` keeps "This is the alternative to advertising, not an
+   addition to it". Everything else lost its tail.
+4. **In-app copy is out of scope**: `TerminusCard`, `DayDone`, the tour and `WelcomeModal` are
+   untouched, including "The source is catching its breath" and the tour's own "You are the
+   algorithm". They use the same devices and would be a separate pass.
+
+**What changed, by page.** `/about` was the worst and took the most: three closers in two
+paragraphs, a "What we believe" heading, and "It is not built to maximize your time or harvest your
+attention, and it never will be". The landing lost six flourishes and two section headings ("The
+opposite of a casino" → "What is missing, on purpose"; "Where your curiosity actually went" →
+"Where you went"). `/start`, `/how-it-works`, `/principles` and `/supporter` took two to four edits
+each. **`/faq`, `/sources`, `/colophon`, `/install` and the four notes were read and left alone** —
+they were already written plainly, and the notes in particular are the best writing on the site.
+
+**Two things fixed on the way that were not about tone.** `/about` addressed the reader as "we"
+("Tell us what is working") on a page whose own next section says Drift is one person; that and
+`/supporter`'s two "we"s are now first person, matching `/faq`, `/principles` and `/colophon`. And
+the cookie notice's link said "What we store" while the page it links to is titled "What Drift
+stores".
+
+⚠️ **One line was deliberately NOT changed and is worth a decision later**: the footer's "A calm
+corner of the internet, for the curious", which appears under the monogram on every public page. It
+is the most brand-voiced line on the site, but it is a brand line in a brand position, and the rule
+agreed above allows a phrase here and there.
+
+Gates: `npm run build` clean, `npm run lint` clean, **1,411 tests green**. Every edited page was
+re-read as RENDERED TEXT in a real Chromium (a throwaway script that walks the DOM and prints the
+prose, which is the only way to read copy that is split across a dozen JSX fragments) — that is how
+the two clumsy sentences this pass first introduced were caught, one of them a subject-verb
+disagreement.

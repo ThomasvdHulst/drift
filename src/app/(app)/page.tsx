@@ -224,9 +224,9 @@ export default function Home() {
           Pull a thread. See where it goes.
         </p>
         <p className="mt-4 max-w-md text-base leading-relaxed text-ink/75">
-          A calm feed of knowledge cards where <em>you</em> are the algorithm.
-          No autoplay, no hidden ranking. Pick a realm, pick a direction, or let
-          curiosity surprise you.
+          A calm feed of knowledge cards where you choose what comes next.
+          Nothing advances on its own, and there is no ranking deciding what you
+          see. Pick a realm, pick a direction, or let curiosity surprise you.
         </p>
 
         <div className="mt-7" data-tour="realm-tabs">

@@ -61,8 +61,8 @@ export default function SupporterPage() {
           <p className="mt-4 text-base leading-relaxed text-ink/75">
             Drift is one person&rsquo;s project. It has no advertising, no
             tracking, no algorithm deciding what you see, and nothing in the feed
-            but cards. Keeping it that way costs money, and this is the only
-            thing here that asks you for any.
+            but cards. Keeping it that way costs money, and this page is the only
+            place Drift asks you for any.
           </p>
         </header>
 
@@ -99,7 +99,7 @@ export default function SupporterPage() {
                 <span className="font-medium text-ink">
                   You will never meet the daily reading limit.
                 </span>{" "}
-                There is no cap on free reading at the moment, while we work out
+                There is no cap on free reading at the moment, while I work out
                 what an ordinary day looks like. If one is ever introduced,
                 because a day&rsquo;s reading should have an end, this unlock
                 means it will not apply to you. Buying today is mostly a way of
@@ -119,9 +119,9 @@ export default function SupporterPage() {
               <span className="font-medium text-ink">
                 Everything added to the unlock later is included,
               </span>{" "}
-              at no extra cost. We are not promising particular features here,
-              because promising things that do not exist yet is how software
-              lies. We are promising that you will not be asked again.
+              at no extra cost. I am not naming particular features here,
+              because they do not exist yet. What I am promising is that you will
+              not be asked to pay again.
             </li>
             <li>
               <span className="font-medium text-ink">
@@ -135,10 +135,10 @@ export default function SupporterPage() {
         <section className="mt-10">
           <h2 className="font-serif text-2xl text-ink">What it does not change</h2>
           <p className="mt-4 text-base leading-relaxed text-ink/75">
-            Nothing about how Drift reads. There is no supporter-only content, no
-            better cards, no faster feed and no badge. The reading experience is
-            the same one everybody gets, which is the point: what you are paying
-            for is that it continues to exist, not a better seat.
+            Nothing about how Drift reads. There is no supporter-only content,
+            no better cards, no faster feed and no badge. The reading experience
+            is the same one everybody gets. What you are paying for is that Drift
+            keeps running.
           </p>
         </section>
 

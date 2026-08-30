@@ -39,7 +39,8 @@ export default function HowItWorksPage() {
           inside the card, with tables and the infobox.
         </P>
         <P>
-          Nothing on a card moves on its own. No autoplay, no countdown.
+          Nothing on a card moves on its own. There is no autoplay and no
+          countdown.
         </P>
       </Section>
 
@@ -50,9 +51,8 @@ export default function HowItWorksPage() {
           closely related. <Lead>Tangent </Lead>means further out.
         </P>
         <P>
-          Pulling one is a choice rather than a continuation: you say where to go
-          next instead of taking whatever comes. Here is the demo, bundled into
-          the page:
+          Pulling one is how you say where to go next. Here is the demo, bundled
+          into the page:
         </P>
         <div className="mt-5">
           <ThreadDemo />
@@ -89,9 +89,9 @@ export default function HowItWorksPage() {
             neighbourhood.
           </li>
           <li>
-            <Lead>In the news. </Lead>Wander the articles behind this
-            month&apos;s stories in one subject. Not headlines: the encyclopedia
-            pages behind them.
+            <Lead>In the news. </Lead>Wander the encyclopedia articles behind
+            this month&apos;s stories, in one subject. The articles, not the
+            reporting.
           </li>
         </Bullets>
         <P>

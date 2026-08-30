@@ -67,9 +67,9 @@ export default function StartPage() {
           </h1>
           <p className="mt-4 text-base leading-relaxed text-ink/75">
             Drift is a calm feed of full-screen knowledge cards, from Wikipedia
-            and The Metropolitan Museum of Art. You are the algorithm: every card
-            shows threads you can pull, and nothing moves until you do. Every
-            session ends with a map of where your curiosity wandered.
+            and The Metropolitan Museum of Art. Every card shows threads you can
+            pull to decide what comes next, and nothing moves until you do. When
+            you stop, you get a map of where you went.
           </p>
 
           <div className="mt-7 flex flex-col gap-3">
@@ -111,7 +111,7 @@ export default function StartPage() {
         <section className="mt-12">
           <CardPreview />
           <p className="mt-3 text-center text-sm leading-relaxed text-ink-soft">
-            One card at a time, and threads you can see.
+            One card at a time, with the threads visible.
           </p>
         </section>
 
@@ -141,8 +141,8 @@ export default function StartPage() {
               <p className="mb-4">
                 Drift is a web app, so there is no app store and nothing to
                 download. Adding it to your home screen gives it its own icon and
-                opens it full screen, with no browser bar. This is the step worth
-                doing.
+                opens it full screen, with no browser bar. It takes a few taps
+                and is worth doing.
               </p>
               <StartInstall />
             </BigStep>
@@ -150,8 +150,8 @@ export default function StartPage() {
             <BigStep n={3} title="Pull a thread">
               <p>
                 Pick a card that looks interesting and follow it. Nothing
-                autoplays and nothing is queued up behind it, so the pace is
-                yours. When you stop, you get the map.
+                autoplays and nothing is queued up behind it, so you set the
+                pace. When you stop, you get the map.
               </p>
             </BigStep>
           </ol>
@@ -163,10 +163,9 @@ export default function StartPage() {
             <span className="font-medium text-ink">
               No advertising, no tracking, no third-party cookies.
             </span>{" "}
-            There is no algorithm deciding what you see, because that is the
-            point of the whole thing. Drift is one person&apos;s project, and
-            everything in it comes from openly licensed sources written by
-            people.
+            Nothing ranks the cards for you; the threads under each one are the
+            steering. Drift is one person&apos;s project, and everything in it
+            comes from openly licensed sources written by people.
           </p>
           <p className="mt-3 text-sm">
             <Link
