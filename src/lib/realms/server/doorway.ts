@@ -3,21 +3,17 @@
 //   Gallery → Encyclopedia: resolve the artwork's artist/movement/place onto a
 //     Wikipedia article (the summary endpoint follows redirects, so "Katsushika
 //     Hokusai" → Hokusai).
-//   Encyclopedia → Gallery: search The Met for the article title, gated so only a
-//     genuine match becomes a doorway (Octopus → a stirrup jar painted with one,
-//     but abstract topics stay silent). The gate rests on the term appearing in
-//     the work's title or its subject tags; the Art Institute's relevance score,
-//     which it used to also require, has no equivalent here and turned out not to
-//     be the load-bearing half (see passesReverseGate).
+//   Encyclopedia → Gallery: look the article title up in a blob baked from The
+//     Met's own CC0 catalogue, so only a genuine match becomes a doorway
+//     (Octopus → a stirrup jar painted with one, but abstract topics stay
+//     silent) and a card with no match costs the museum NOTHING. The rule lives
+//     in lib/realms/doorwayindex.ts; a hit still fetches one record, because the
+//     published catalogue does not carry the image path.
 // Best-effort by construction: any miss/failure ⇒ null ⇒ no doorway (§4).
 
 import type { RelatedCandidate } from "@/lib/types";
 import { isJunk } from "@/lib/wiki";
-import {
-  forwardEntities,
-  passesReverseGate,
-  DOORWAY_EYEBROW,
-} from "@/lib/crossrealm";
+import { forwardEntities, DOORWAY_EYEBROW } from "@/lib/crossrealm";
 import { wikiSummary } from "./wikipedia";
 import { metArtworkMeta, metTopMatch } from "./met";
 
@@ -60,15 +56,18 @@ export async function crossRealmDoorway(
   if (fromRealm === "encyclopedia") {
     // For an Encyclopedia card the native id IS the Wikipedia title.
     //
-    // The gate is handed DOWN rather than applied to the answer. It used to run
-    // here, on whichever single work five record fetches had already paid for —
-    // so a card that was never going to have a doorway still cost five requests,
-    // and across a real session that was 92% of everything the museum was asked.
-    // Passing it in lets the adapter stop at the first record that satisfies it,
-    // while the rule itself stays here, where cross-realm decisions belong.
-    const top = await metTopMatch(id, ({ title, term_titles }) =>
-      passesReverseGate(id, { title, term_titles }),
-    );
+    // ⚠️ NO GATE IS PASSED DOWN ANY MORE, AND THAT IS THE PHASE 34 CHANGE. The
+    // rule used to live here and be handed to the adapter to apply as records
+    // arrived, because deciding cost upstream requests and the cheapest place to
+    // stop was mid-fetch. It now costs none: the adapter answers from a blob
+    // baked out of the museum's own CC0 catalogue, so a card with no Gallery
+    // match is settled locally and the request is never made.
+    //
+    // The rule itself moved with it, to lib/realms/doorwayindex.ts, and got
+    // stricter on the way — `passesReverseGate` was a raw substring test that
+    // only held up as a confirmation on relevance-ranked results, and over the
+    // whole catalogue it answered "Owl" with an Open Bowl.
+    const top = await metTopMatch(id);
     if (!top) return null;
     const c = top.card;
     return {

@@ -21,7 +21,6 @@ import {
   parseMetImageWidth,
   isMetImageHostFailure,
   type MetObject,
-  phraseQuery,
 } from "./met";
 import { artworkEuPublicDomain } from "./publicdomain";
 
@@ -253,49 +252,6 @@ describe("artSubjects", () => {
   it("copes with a null tag list", () => {
     expect(artSubjects({ objectID: 1, tags: null })).toEqual([]);
     expect(artSubjects({ objectID: 1 })).toEqual([]);
-  });
-});
-
-describe("phraseQuery", () => {
-  // The single change that fixed the app's most expensive call. The museum's
-  // search ORs the words together; the doorway's gate wants the whole phrase as a
-  // substring. Measured before this existed:
-  //   q=Powers of the president of the United States    ->  55,804 results
-  //   q="Powers of the president of the United States"  ->        0 results
-  // Every one of those 55,804 was going to fail the gate, at five record fetches
-  // a card.
-  it("quotes a multi-word term", () => {
-    expect(phraseQuery("Cherry blossom")).toBe('"Cherry blossom"');
-    expect(phraseQuery("Powers of the president")).toBe(
-      '"Powers of the president"',
-    );
-  });
-
-  it("quotes a single word too, which changes nothing upstream", () => {
-    // Verified live: `House` returns 21,105 either way. So nothing that used to
-    // match stops matching — the quoting only bites on multi-word terms.
-    expect(phraseQuery("House")).toBe('"House"');
-  });
-
-  it("leaves the wildcard alone", () => {
-    // The place facet searches { geoLocation, q: "*" } and the wildcard is doing
-    // the work. Quoting it would ask for artworks literally titled "*".
-    expect(phraseQuery("*")).toBe("*");
-  });
-
-  it("strips embedded quotes rather than emitting a broken query", () => {
-    expect(phraseQuery('Portrait of "Madame X"')).toBe('"Portrait of Madame X"');
-  });
-
-  it("collapses whitespace and trims", () => {
-    expect(phraseQuery("  Cherry   blossom \n")).toBe('"Cherry blossom"');
-  });
-
-  it("returns empty for nothing, so no query is built from it", () => {
-    expect(phraseQuery("")).toBe("");
-    expect(phraseQuery("   ")).toBe("");
-    expect(phraseQuery(null)).toBe("");
-    expect(phraseQuery(undefined)).toBe("");
   });
 });
 

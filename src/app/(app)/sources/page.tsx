@@ -98,6 +98,14 @@ export default function SourcesPage() {
           museum, so that they can be sized to the page. They are the
           museum&apos;s own photographs, unaltered apart from being resized.
         </P>
+        <P>
+          Drift also keeps a copy of part of the museum&apos;s published
+          catalogue: the titles, subject keywords, artists and departments of its
+          open-access works.
+          The museum releases that catalogue under <LicenseLink license={CC0_1} />
+          as well. It is what lets Drift tell you when an article has a matching
+          artwork without asking the museum on every card you read.
+        </P>
       </Section>
 
       <Section title="Current events">

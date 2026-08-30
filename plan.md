@@ -7,6 +7,39 @@ current phase in order, and tick boxes (`- [ ]` → `- [x]`) as steps are comple
 
 > ## Current status: 2026-08-30
 >
+> ### 🚪 The Met is answered from a baked catalogue now, not asked (Phases 34 and 35)
+>
+> **Phase 35 (30 August)** did for the Gallery's own calls what Phase 34 did for the doorway. An
+> artist search cost **30 Met requests to return two names** and now costs **0**; an artist profile
+> cost ~24 and costs 0; a card's four facet searches are gone. Six cards in European Paintings went
+> from 26 requests to 20 — less than projected, because the saving partly bought **richer cards**
+> (three facets reliably, where a search often came back empty). Full entry at the bottom, including
+> the three bugs it exposed and the one decision left open (`PER_FACET`, where half the thread
+> fetches are insurance the reader usually never sees).
+>
+> ⚠️ **What is left CANNOT be baked**: the record fetches. The catalogue publishes no image path and
+> it is not derivable, and harvesting all 223,576 would be ~26 hours against the museum. That is the
+> floor.
+>
+> ### 🚪 The doorway no longer asks the museum anything to decide (Phase 34)
+>
+> **On branch `doorway-index`.** `/api/doorway` was 92.6% of all Met traffic and cost ~2.5 requests
+> per Encyclopedia card. It now answers from a **baked index of The Met's own CC0 catalogue**
+> (223,576 works, 2.5 MB gzipped, `scripts/build-met-index.mjs`): a card with no Gallery match costs
+> **nothing**, one with a match costs a single record fetch for the image path. Measured on the same
+> twelve article titles both ways: **30 Met requests before, 4 after.**
+>
+> ⚠️ **The old `passesReverseGate` could not be reused and is gone.** It was a raw substring test
+> that only worked as a confirmation on relevance-ranked results; over the whole catalogue it
+> answered **"Owl" with an "Open Bowl"**. The replacement needs a word boundary. Full entry at the
+> bottom, along with why `phraseQuery` went with it.
+>
+> ⚠️ **`next.config.ts` now has `outputFileTracingIncludes`** for the index files. Nothing imports
+> them, so without that entry the doorway would go quiet in production while working locally.
+>
+> **Next, and now the biggest remaining consumer:** `metRelated`'s facet searches, ~4.3 Met requests
+> per Gallery card. Then Cleveland as a second Gallery source (item 4 of the study).
+>
 > ### 🏛️ The Gallery's rate ceiling was measured, and it is not what anyone assumed
 >
 > **Phase 33I (30 August).** The Met's 403 is an **Imperva bot-mitigation block**, not the
@@ -6087,3 +6120,186 @@ Verified against the live museum on a local production rig with
 ⚠️ **Rooms 5-7 of the 7-in-4-seconds repro still serve zero cards, and that is correct.** Sixty
 requests were demanded against a window of thirty; no allocation policy can invent budget. The
 honest answer there is to spend less, which is items 3 and 4.
+
+---
+
+## Phase 34 — the doorway stops asking the museum (2026-08-30)
+
+Branch `doorway-index`. **Item 3 of the upstream capacity study**
+(<https://claude.ai/code/artifact/8ceed2ec-fd08-4e34-80cb-b06cddcd5879>). Phase 33I allocated the
+Met's scarce budget honestly and made its exhaustion visible; it did not create budget. **This
+spends less**, and it went after the single biggest consumer.
+
+### The result
+
+| | Before | After |
+|---|--:|--:|
+| Twelve real article titles, Met requests | **30** | **4** |
+| Per Encyclopedia card | 2.5 | **0.33** |
+| A card with no Gallery match (about half of them) | 1 search + up to 5 fetches | **nothing** |
+| A card with one | search + 1-5 fetches | **1 fetch** |
+| Doorway latency, warm | ~1-2 s | **5 ms** |
+
+`/api/doorway` fires on every card in both realms and was **92.6% of all Met traffic** in the
+25-reader rehearsal. It now decides locally from a blob baked out of the museum's own **CC0
+catalogue**, and only spends a request once it knows there is something to fetch. The one thing the
+published catalogue does not carry is the image path, which is exactly why a hit still costs one
+fetch and a miss costs none.
+
+### What was built
+
+- **`scripts/build-met-index.mjs`** (hand-run, in the spirit of `probe-met-pools.mjs`). Makes
+  **one** request to the museum — `hasImages=true&q=*` returns all **367,931** imaged ids at once —
+  and streams the 317 MB `MetObjects.csv` from GitHub. Keeps a work when it is public domain **and**
+  imaged **and** titled, which are precisely the three conditions of `isUsableArtwork`, so the index
+  cannot promise a work the card filter then rejects. Emits **223,576 works** as
+  `met.doorway.txt.gz` (2.5 MB) + `met.doorway.ids.gz` (0.6 MB) + a meta file.
+- **`src/lib/realms/doorwayindex.ts`** — the pure matcher, unit-tested against a synthetic blob.
+- The loader in `met.ts` reads the files with `fs` and gunzips once, lazily. **Cold 37 ms, warm
+  5 ms.** Missing or unreadable files just make the doorway quiet, the same contract every optional
+  dependency here has.
+
+### ⚠️ The finding that shaped it: the old gate could not be reused
+
+`passesReverseGate` was a **raw substring test**, and it only ever worked because it *confirmed*
+results The Met's relevance search had already ranked. Run directly over all 223,576 works it fell
+apart — measured, not reasoned:
+
+- **Owl → "Open Bowl"**, because `"bowl".includes("owl")`
+- **Cat → "Adam and Eve"**, and it would equally match *cathedral*, *delicate*, *catalogue*
+
+The replacement requires a **word-boundary match with a ≤3-letter inflection allowance**: `octopus`
+still finds `octopuses` (the museum catalogues subjects in the plural while an article title is
+singular, and losing that loses most good doorways), while `cart` never reaches `cartography`. Three
+is the ceiling for exactly that reason.
+
+A **tag-only** index was measured and rejected: only 1,116 distinct tags exist, and it loses 10 of
+29 hits including Mount Fuji, Hokusai, Aurora, Wolf and Glacier. Titles had to be in the index.
+
+**Title matches outrank tag matches**, which is a product decision rather than a technical one:
+principle 1 is that the reader always sees *why*. "Swiss Glacier" visibly answers the article
+*Glacier*; a landscape merely tagged so reads as arbitrary even though a cataloguer put the tag
+there. Tag matches stay as the fallback because they are already what the live gate admitted.
+
+Live spot-check through the real route: Octopus → "Terracotta stirrup jar with octopus", Volcano →
+"Crater of Volcano, Quetzaltenango", Hokusai → "Various Pictures by Hokusai", Aurora → "Aurora";
+Bioluminescence, Silk Road, Existentialism, Great Barrier Reef, Photosynthesis, Game theory,
+Cartography and Fermentation all silent, at zero cost.
+
+### Two things were removed, not left lying around
+
+- **`passesReverseGate` and `ReverseTopResult`** are gone from `lib/crossrealm.ts`, replaced by a
+  note saying where the rule went and why it got stricter. `forwardEntities` stays: Gallery →
+  Encyclopedia never needed a gate.
+- **`phraseQuery`** is gone from `lib/realms/met.ts`. It existed for exactly one caller — the
+  doorway's search — and was measured NOT to pay for `metRelated`'s facets, the only searches left.
+  Its measurements are kept as a comment, because someone will be tempted to reach for quoting again.
+
+⚠️ **`next.config.ts` now carries `outputFileTracingIncludes` for `met.doorway.*`.** Nothing imports
+those files, so Next's tracing cannot see them; without that entry the deployed function finds
+nothing and the doorway goes quiet **in production while working perfectly locally**. Verified in
+`.next/server/**/*.nft.json`: all three files traced for `/api/doorway` and both realm routes.
+
+### Gates
+
+`npm run build` clean, `npm run lint` clean, **1,433 tests green** (23 new in
+`doorwayindex.test.ts`, including a test that pins the build script's copied normaliser against the
+runtime one — the same arrangement `loadbot.test.ts` uses, because if those two ever disagree every
+lookup silently misses). `npm run verify:feed` re-run against a production build.
+
+### What is left, and it is now the biggest thing
+
+The same CSV carries artist, culture, country and department, so it could also serve
+**`metRelated`'s four facet searches — ~4.3 Met requests per Gallery card**, which is now the
+largest remaining consumer by a distance. Item 4 of the study (Cleveland Museum of Art as a second
+Gallery source) is the other half. Neither is this phase.
+
+---
+
+## Phase 35 — the Gallery stops searching too (2026-08-30)
+
+Branch `doorway-index`, continuing Phase 34. **Item 4 of the upstream capacity study.** The same CC0
+catalogue that made the doorway free now answers the Gallery's own lookups.
+
+### What was measured first, because the split decides the fix
+
+Six cards read in **European Paintings** (an artist-rich room, the worst case): **26 Met requests**,
+and the split matters more than the total:
+
+| | Requests |
+|---|--:|
+| Facet **searches** (artist 4, tags 2, dept 1) | 7 |
+| Candidate **record fetches** | 19 |
+
+The same six cards in `medieval` cost only 12, because those works have no named artist and the
+place/dept searches cache within a room. **The artist and subject facets change on every card, so
+unlike the room and department searches they could never be cached** — that is what makes an
+artist-rich room expensive.
+
+Two single actions were far worse than any card, and both fired while the reader was waiting:
+
+| Action | Before | After |
+|---|--:|--:|
+| `metArtistSearch` ("Rembrandt") | **30 requests** to return 2 names | **0** |
+| `metArtistProfile` | ~24 requests for a department and a span | **0** |
+| Artist drift, ring 0 | 1 search + fetches | **0 searches** |
+| Six cards' threads, European Paintings | 26 (7 searches + 19 fetches) | **20 (0 searches + 20 fetches)** |
+
+### What was built
+
+- **`met.facets.*`** (0.82 MB gz) — inverted lists, artist/place/dept/tag → object ids, in the same
+  quality order as the doorway blob so no query-time ranking is needed. ⚠️ **Artist is uncapped**
+  (102,705 postings); everything else caps at 48. A cap on artist would make a prolific oeuvre look
+  exhausted after 48 works, because `metArtistDiscover` ring 0 pages through the whole thing.
+- **`met.artists.*`** (0.52 MB gz) — 20,130 artists with their **true** work counts, modal
+  department, date span and death year. `rankArtists` used to tally these from a 40-work sample of a
+  relevance-sorted search, so "works" was really a relevance proxy; Hokusai now reports 278 and
+  Rembrandt 384 because that is what the catalogue holds.
+- **`src/lib/realms/metfacets.ts`** — pure, unit-tested, with a **daily rotation** (the same trick
+  room pools use) so a reader returning to the same subject tomorrow meets different work.
+- **`src/lib/realms/dailyorder.ts`** — `dailyWindowOrder`/`windowStart` extracted out of the server
+  adapter. `met.window.test.ts` had been RE-IMPLEMENTING `windowStart` because importing the adapter
+  pulls in server-only fetch code; it now tests the real function.
+
+### ⚠️ Three bugs the work exposed, all found by tests rather than by reading
+
+1. **`Artist Display Name` is pipe-separated for a work with several hands**, and so is
+   `Artist End Date`, index for index. The first build treated the whole string as one artist and
+   invented ~3,900 people, including "Edgar Degas|Rembrandt (Rembrandt van Rijn)" with one work.
+   Splitting and pairing each name with its own death year took the table from 24,033 to 20,130.
+   `metRelated` now threads on the **first** hand, which also stops a chip reading
+   "More by Rembrandt (Rembrandt van Rijn)|Charles Blanc|Gide".
+2. **`normalizeForIndex` turned a combining accent into a SPACE**, splitting words around it:
+   "Maison Léoty" folded to `maison le oty` and "Santos Hernández" to `santos herna ndez`, so every
+   accented artist was unfindable. **The same bug was silently in the Phase 34 doorway** — an article
+   about a "Café" could never have matched a work catalogued with one. Marks are now removed, not
+   replaced.
+3. **`vi.doMock` registrations survive `vi.resetModules()`**, so the Phase 34 `withSpy()` block leaked
+   a mocked `fetchJson` into every test declared below it. Three of this phase's new tests were
+   passing because no request ever reached the fetch stub — green for the worst possible reason.
+   That block now cleans up after itself.
+
+### Why the fetch count did not fall
+
+Searches went 7 → 0, but record fetches went 19 → 20, so the total is 26 → 20 rather than the ~14
+the plan projected. Two honest reasons, both measured:
+
+- **The cards got richer.** Every card now reliably shows **three** facets (artist, subject, room);
+  before, a facet search often came back empty and the card showed two. The saving was spent on
+  completeness rather than banked.
+- **Cache locality fell.** The old searches returned overlapping, relevance-ranked ids that
+  `objectCache` deduplicated; the baked lists spread across the whole collection.
+
+⚠️ **HALF THE THREAD FETCHES ARE INSURANCE, and that is the next decision, not a bug.**
+`selectFacetThreads` shows ONE candidate per facet; `PER_FACET = 2` exists only so a facet still has
+something when the reader has already seen the first. So six records are fetched and three are ever
+shown. Dropping to one per facet would take six cards from 20 requests to roughly 12, at the cost of
+a chip occasionally going missing in a room the reader is lingering in. **Left as the owner's call**
+rather than changed unilaterally, because it is a change to what the reader sees.
+
+### Gates
+
+`npm run build` clean, `npm run lint` clean, **1,459 tests green** (26 new). `npm run verify:feed`
+re-run against a production build. Live spot-checks: Hokusai's drift opens on "Under the Wave off
+Kanagawa" with no search; "Rembrandt" separates Rembrandt van Rijn, Rembrandt, and School of
+Rembrandt van Rijn, at zero cost.
